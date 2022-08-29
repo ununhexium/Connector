@@ -24,38 +24,23 @@ plugins {
 val rsApi: String by project
 
 dependencies {
-    api(project(":spi"))
     implementation(project(":common:util"))
 
-    implementation(project(":core:transfer"))
-    implementation(project(":extensions:data-plane-transfer:data-plane-transfer-client"))
+    implementation(project(":core:control-plane:control-plane-core"))
+    implementation(project(":core:data-plane:data-plane-core"))
+    implementation(project(":extensions:control-plane:data-plane-transfer:data-plane-transfer-client"))
     implementation(project(":extensions:data-plane-selector:selector-client"))
-    implementation(project(":extensions:data-plane-selector:selector-core"))
-    implementation(project(":extensions:data-plane-selector:selector-store"))
-    implementation(project(":extensions:data-plane:data-plane-framework"))
-
-    implementation(project(":extensions:data-plane:data-plane-spi"))
-
-
-    api(project(":extensions:dataloading"))
+    implementation(project(":core:data-plane-selector:data-plane-selector-core"))
 
     implementation("jakarta.ws.rs:jakarta.ws.rs-api:${rsApi}")
     implementation("io.opentelemetry:opentelemetry-extension-annotations:${openTelemetryVersion}")
 
-    implementation(project(":core"))
+    implementation(project(":extensions:common:api:observability"))
 
+    implementation(project(":extensions:common:configuration:filesystem-configuration"))
+    implementation(project(":extensions:common:iam:iam-mock"))
 
-
-
-
-    implementation(project(":extensions:api:observability"))
-
-    implementation(project(":extensions:filesystem:configuration-fs"))
-    implementation(project(":extensions:iam:iam-mock"))
-
-    implementation(project(":data-protocols:ids")) {
-        exclude("org.eclipse.dataspaceconnector","ids-token-validation")
-    }
+    implementation(project(":data-protocols:ids"))
 }
 
 application {

@@ -9,6 +9,7 @@
  *
  *  Contributors:
  *       Amadeus - initial API and implementation
+ *       Fraunhofer Institute for Software and Systems Engineering - refactoring
  *
  */
 
@@ -22,10 +23,11 @@ import de.fraunhofer.iais.eis.ParticipantUpdateMessageBuilder;
 import okhttp3.OkHttpClient;
 import org.eclipse.dataspaceconnector.ids.api.multipart.dispatcher.sender.response.IdsMultipartParts;
 import org.eclipse.dataspaceconnector.ids.api.multipart.dispatcher.sender.response.MultipartResponse;
+import org.eclipse.dataspaceconnector.ids.spi.domain.IdsConstants;
 import org.eclipse.dataspaceconnector.ids.spi.transform.IdsTransformerRegistry;
-import org.eclipse.dataspaceconnector.ids.transform.IdsProtocol;
 import org.eclipse.dataspaceconnector.spi.iam.IdentityService;
 import org.eclipse.dataspaceconnector.spi.monitor.Monitor;
+import org.eclipse.dataspaceconnector.spi.types.TypeManager;
 import org.eclipse.dataspaceconnector.spi.types.domain.edr.EndpointDataReferenceMessage;
 import org.jetbrains.annotations.NotNull;
 
@@ -40,14 +42,18 @@ import static org.eclipse.dataspaceconnector.ids.api.multipart.dispatcher.sender
  * expects an IDS MessageProcessedMessage as the response.
  */
 public class MultipartEndpointDataReferenceRequestSender extends IdsMultipartSender<EndpointDataReferenceMessage, String> {
+    private final TypeManager typeManager;
 
     public MultipartEndpointDataReferenceRequestSender(@NotNull String connectorId,
                                                        @NotNull OkHttpClient httpClient,
                                                        @NotNull ObjectMapper objectMapper,
                                                        @NotNull Monitor monitor,
                                                        @NotNull IdentityService identityService,
-                                                       @NotNull IdsTransformerRegistry transformerRegistry) {
+                                                       @NotNull IdsTransformerRegistry transformerRegistry,
+                                                       @NotNull TypeManager typeManager) {
         super(connectorId, httpClient, objectMapper, monitor, identityService, transformerRegistry);
+
+        this.typeManager = typeManager;
     }
 
     @Override
@@ -70,7 +76,7 @@ public class MultipartEndpointDataReferenceRequestSender extends IdsMultipartSen
     @Override
     protected Message buildMessageHeader(EndpointDataReferenceMessage request, DynamicAttributeToken token) {
         return new ParticipantUpdateMessageBuilder()
-                ._modelVersion_(IdsProtocol.INFORMATION_MODEL_VERSION)
+                ._modelVersion_(IdsConstants.INFORMATION_MODEL_VERSION)
                 ._securityToken_(token)
                 ._issuerConnector_(getConnectorId())
                 ._senderAgent_(getConnectorId())
@@ -87,7 +93,8 @@ public class MultipartEndpointDataReferenceRequestSender extends IdsMultipartSen
      */
     @Override
     protected String buildMessagePayload(EndpointDataReferenceMessage request) throws Exception {
-        return getObjectMapper().writeValueAsString(request.getEndpointDataReference());
+        // Note: EndpointDataReference is not an IDS object, so there is no need to serialize is with the IDS object mapper
+        return typeManager.writeValueAsString(request.getEndpointDataReference());
     }
 
     /**

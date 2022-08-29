@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2021 Fraunhofer Institute for Software and Systems Engineering
+ *  Copyright (c) 2021 - 2022 Fraunhofer Institute for Software and Systems Engineering
  *
  *  This program and the accompanying materials are made available under the
  *  terms of the Apache License, Version 2.0 which is available at
@@ -17,11 +17,9 @@ package org.eclipse.dataspaceconnector.ids.api.multipart.client;
 
 import kotlin.NotImplementedError;
 import org.eclipse.dataspaceconnector.common.util.junit.annotations.ComponentTest;
-import org.eclipse.dataspaceconnector.ids.core.serialization.ObjectMapperFactory;
 import org.eclipse.dataspaceconnector.policy.model.Action;
 import org.eclipse.dataspaceconnector.policy.model.Permission;
 import org.eclipse.dataspaceconnector.policy.model.Policy;
-import org.eclipse.dataspaceconnector.policy.model.PolicyDefinition;
 import org.eclipse.dataspaceconnector.policy.model.PolicyType;
 import org.eclipse.dataspaceconnector.spi.asset.AssetIndex;
 import org.eclipse.dataspaceconnector.spi.asset.AssetSelectorExpression;
@@ -39,6 +37,7 @@ import org.eclipse.dataspaceconnector.spi.message.MessageContext;
 import org.eclipse.dataspaceconnector.spi.message.Range;
 import org.eclipse.dataspaceconnector.spi.message.RemoteMessageDispatcher;
 import org.eclipse.dataspaceconnector.spi.message.RemoteMessageDispatcherRegistry;
+import org.eclipse.dataspaceconnector.spi.policy.PolicyDefinition;
 import org.eclipse.dataspaceconnector.spi.policy.store.PolicyArchive;
 import org.eclipse.dataspaceconnector.spi.query.QuerySpec;
 import org.eclipse.dataspaceconnector.spi.response.StatusResult;
@@ -47,7 +46,9 @@ import org.eclipse.dataspaceconnector.spi.system.Provides;
 import org.eclipse.dataspaceconnector.spi.system.ServiceExtension;
 import org.eclipse.dataspaceconnector.spi.system.ServiceExtensionContext;
 import org.eclipse.dataspaceconnector.spi.transfer.store.TransferProcessStore;
+import org.eclipse.dataspaceconnector.spi.types.domain.DataAddress;
 import org.eclipse.dataspaceconnector.spi.types.domain.asset.Asset;
+import org.eclipse.dataspaceconnector.spi.types.domain.asset.AssetEntry;
 import org.eclipse.dataspaceconnector.spi.types.domain.contract.agreement.ContractAgreement;
 import org.eclipse.dataspaceconnector.spi.types.domain.contract.negotiation.ContractNegotiation;
 import org.eclipse.dataspaceconnector.spi.types.domain.contract.negotiation.ContractNegotiationStates;
@@ -77,8 +78,7 @@ import static org.mockito.Mockito.mock;
 @Provides({
         AssetIndex.class, TransferProcessStore.class, ContractDefinitionStore.class, IdentityService.class,
         ContractNegotiationManager.class, ConsumerContractNegotiationManager.class, ProviderContractNegotiationManager.class,
-        ContractOfferService.class, ContractValidationService.class, PolicyArchive.class,
-        ObjectMapperFactory.class, ContractNegotiationStore.class
+        ContractOfferService.class, ContractValidationService.class, PolicyArchive.class, ContractNegotiationStore.class
 })
 class IdsApiMultipartDispatcherV1IntegrationTestServiceExtension implements ServiceExtension {
     private final List<Asset> assets;
@@ -125,7 +125,6 @@ class IdsApiMultipartDispatcherV1IntegrationTestServiceExtension implements Serv
         context.registerService(ProviderContractNegotiationManager.class, new FakeProviderContractNegotiationManager());
         context.registerService(ConsumerContractNegotiationManager.class, new FakeConsumerContractNegotiationManager());
         context.registerService(PolicyArchive.class, mock(PolicyArchive.class));
-        context.registerService(ObjectMapperFactory.class, new ObjectMapperFactory());
         context.registerService(ContractNegotiationStore.class, negotiationStore);
     }
 
@@ -151,6 +150,20 @@ class IdsApiMultipartDispatcherV1IntegrationTestServiceExtension implements Serv
             return assets.stream().filter(a -> a.getId().equals(assetId)).findFirst().orElse(null);
         }
 
+        @Override
+        public void accept(AssetEntry item) {
+
+        }
+
+        @Override
+        public Asset deleteById(String assetId) {
+            return null;
+        }
+
+        @Override
+        public DataAddress resolveForAsset(String assetId) {
+            return null;
+        }
     }
 
     private static class FakeContractOfferService implements ContractOfferService {
@@ -259,7 +272,7 @@ class IdsApiMultipartDispatcherV1IntegrationTestServiceExtension implements Serv
 
         @Override
         public @NotNull Stream<ContractDefinition> findAll(QuerySpec spec) {
-            throw new UnsupportedOperationException();
+            return contractDefinitions.stream();
         }
 
         @Override

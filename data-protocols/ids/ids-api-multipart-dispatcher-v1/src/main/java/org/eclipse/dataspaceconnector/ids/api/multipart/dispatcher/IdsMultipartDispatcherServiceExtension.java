@@ -24,10 +24,9 @@ import org.eclipse.dataspaceconnector.ids.api.multipart.dispatcher.sender.Multip
 import org.eclipse.dataspaceconnector.ids.api.multipart.dispatcher.sender.MultipartContractRejectionSender;
 import org.eclipse.dataspaceconnector.ids.api.multipart.dispatcher.sender.MultipartDescriptionRequestSender;
 import org.eclipse.dataspaceconnector.ids.api.multipart.dispatcher.sender.MultipartEndpointDataReferenceRequestSender;
-import org.eclipse.dataspaceconnector.ids.core.serialization.ObjectMapperFactory;
-import org.eclipse.dataspaceconnector.ids.spi.IdsIdParser;
-import org.eclipse.dataspaceconnector.ids.spi.IdsType;
 import org.eclipse.dataspaceconnector.ids.spi.transform.IdsTransformerRegistry;
+import org.eclipse.dataspaceconnector.ids.spi.types.IdsId;
+import org.eclipse.dataspaceconnector.ids.spi.types.IdsType;
 import org.eclipse.dataspaceconnector.spi.EdcException;
 import org.eclipse.dataspaceconnector.spi.EdcSetting;
 import org.eclipse.dataspaceconnector.spi.iam.IdentityService;
@@ -63,9 +62,6 @@ public class IdsMultipartDispatcherServiceExtension implements ServiceExtension 
     private IdsApiConfiguration idsApiConfiguration;
 
     @Inject
-    private ObjectMapperFactory objectMapperFactory;
-
-    @Inject
     private RemoteMessageDispatcherRegistry dispatcherRegistry;
 
     @Inject
@@ -79,36 +75,36 @@ public class IdsMultipartDispatcherServiceExtension implements ServiceExtension 
     @Override
     public void initialize(ServiceExtensionContext context) {
         var connectorId = resolveConnectorId(context);
-
-        // TODO ObjectMapper needs to be replaced by one capable to write proper IDS JSON-LD
-        //      once https://github.com/eclipse-dataspaceconnector/DataSpaceConnector/issues/236 is done
-        var objectMapper = objectMapperFactory.getObjectMapper();
-
         var idsWebhookAddress = idsApiConfiguration.getIdsWebhookAddress();
 
-        var multipartDispatcher = new IdsMultipartRemoteMessageDispatcher();
-        multipartDispatcher.register(new MultipartArtifactRequestSender(connectorId, httpClient, objectMapper, monitor, vault, identityService, transformerRegistry, idsWebhookAddress));
-        multipartDispatcher.register(new MultipartDescriptionRequestSender(connectorId, httpClient, objectMapper, monitor, identityService, transformerRegistry));
-        multipartDispatcher.register(new MultipartContractOfferSender(connectorId, httpClient, objectMapper, monitor, identityService, transformerRegistry, idsWebhookAddress));
-        multipartDispatcher.register(new MultipartContractAgreementSender(connectorId, httpClient, objectMapper, monitor, identityService, transformerRegistry, idsWebhookAddress));
-        multipartDispatcher.register(new MultipartContractRejectionSender(connectorId, httpClient, objectMapper, monitor, identityService, transformerRegistry));
-        multipartDispatcher.register(new MultipartCatalogDescriptionRequestSender(connectorId, httpClient, objectMapper, monitor, identityService, transformerRegistry));
-        multipartDispatcher.register(new MultipartEndpointDataReferenceRequestSender(connectorId, httpClient, objectMapper, monitor, identityService, transformerRegistry));
+        var objectMapper = context.getTypeManager().getMapper("ids");
+        var typeManager = context.getTypeManager();
 
-        dispatcherRegistry.register(multipartDispatcher);
+        var dispatcher = new IdsMultipartRemoteMessageDispatcher();
+        dispatcher.register(new MultipartArtifactRequestSender(connectorId, httpClient, objectMapper, monitor, vault, identityService, transformerRegistry, idsWebhookAddress));
+        dispatcher.register(new MultipartDescriptionRequestSender(connectorId, httpClient, objectMapper, monitor, identityService, transformerRegistry));
+        dispatcher.register(new MultipartContractOfferSender(connectorId, httpClient, objectMapper, monitor, identityService, transformerRegistry, idsWebhookAddress));
+        dispatcher.register(new MultipartContractAgreementSender(connectorId, httpClient, objectMapper, monitor, identityService, transformerRegistry, idsWebhookAddress));
+        dispatcher.register(new MultipartContractRejectionSender(connectorId, httpClient, objectMapper, monitor, identityService, transformerRegistry));
+        dispatcher.register(new MultipartCatalogDescriptionRequestSender(connectorId, httpClient, objectMapper, monitor, identityService, transformerRegistry));
+        dispatcher.register(new MultipartEndpointDataReferenceRequestSender(connectorId, httpClient, objectMapper, monitor, identityService, transformerRegistry, typeManager));
+
+        dispatcherRegistry.register(dispatcher);
     }
 
     private String resolveConnectorId(@NotNull ServiceExtensionContext context) {
         Objects.requireNonNull(context);
 
         var value = context.getSetting(EDC_IDS_ID, DEFAULT_EDC_IDS_ID);
-        try {
-            // Hint: use stringified uri to keep uri path and query
-            var idsId = IdsIdParser.parse(value);
-            if (idsId != null && idsId.getType() == IdsType.CONNECTOR) {
+
+        // Hint: use stringified uri to keep uri path and query
+        var result = IdsId.from(value);
+        if (result.succeeded()) {
+            var idsId = result.getContent();
+            if (idsId.getType() == IdsType.CONNECTOR) {
                 return idsId.getValue();
             }
-        } catch (IllegalArgumentException e) {
+        } else {
             var message = "IDS Settings: Expected valid URN for setting '%s', but was %s'. Expected format: 'urn:connector:[id]'";
             throw new EdcException(String.format(message, EDC_IDS_ID, DEFAULT_EDC_IDS_ID));
         }

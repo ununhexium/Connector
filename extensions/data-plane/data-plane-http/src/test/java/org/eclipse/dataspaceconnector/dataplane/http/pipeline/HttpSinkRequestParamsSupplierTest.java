@@ -15,19 +15,20 @@
 package org.eclipse.dataspaceconnector.dataplane.http.pipeline;
 
 import io.netty.handler.codec.http.HttpMethod;
-import net.datafaker.Faker;
 import org.eclipse.dataspaceconnector.spi.types.domain.DataAddress;
 import org.eclipse.dataspaceconnector.spi.types.domain.HttpDataAddress;
 import org.eclipse.dataspaceconnector.spi.types.domain.transfer.DataFlowRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.Random;
+import java.util.UUID;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 class HttpSinkRequestParamsSupplierTest {
 
-    private static final Faker FAKER = new Faker();
 
     private HttpSinkRequestParamsSupplier supplier;
 
@@ -41,7 +42,7 @@ class HttpSinkRequestParamsSupplierTest {
         var source = mock(DataAddress.class);
         var destination = mock(DataAddress.class);
         var request = DataFlowRequest.Builder.newInstance()
-                .processId(FAKER.internet().uuid())
+                .processId(UUID.randomUUID().toString())
                 .sourceDataAddress(source)
                 .destinationDataAddress(destination)
                 .build();
@@ -53,7 +54,7 @@ class HttpSinkRequestParamsSupplierTest {
 
     @Test
     void extractMethod() {
-        var method = FAKER.lorem().word();
+        var method = "test-method";
         var address = HttpDataAddress.Builder.newInstance()
                 .method(method)
                 .build();
@@ -75,7 +76,7 @@ class HttpSinkRequestParamsSupplierTest {
 
     @Test
     void extractPath() {
-        var path = FAKER.lorem().word();
+        var path = "test-path";
         var address = HttpDataAddress.Builder.newInstance()
                 .path(path)
                 .build();
@@ -92,7 +93,7 @@ class HttpSinkRequestParamsSupplierTest {
 
     @Test
     void extractContentType() {
-        var contentType = FAKER.lorem().word();
+        var contentType = "test/content-type";
         var address = HttpDataAddress.Builder.newInstance()
                 .contentType(contentType)
                 .build();
@@ -105,5 +106,17 @@ class HttpSinkRequestParamsSupplierTest {
     @Test
     void extractBody() {
         assertThat(supplier.extractPath(mock(HttpDataAddress.class), null)).isNull();
+    }
+
+    @Test
+    void extractNonChunkedTransfer() {
+        var chunked = new Random().nextBoolean();
+        var address = HttpDataAddress.Builder.newInstance()
+                .nonChunkedTransfer(chunked)
+                .build();
+
+        var result = supplier.extractNonChunkedTransfer(address);
+
+        assertThat(result).isEqualTo(chunked);
     }
 }

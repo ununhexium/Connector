@@ -20,7 +20,6 @@ import de.fraunhofer.iais.eis.MessageProcessedNotificationMessage;
 import de.fraunhofer.iais.eis.ParticipantCertificateRevokedMessageBuilder;
 import de.fraunhofer.iais.eis.ParticipantUpdateMessageBuilder;
 import de.fraunhofer.iais.eis.RejectionMessage;
-import net.datafaker.Faker;
 import org.eclipse.dataspaceconnector.ids.api.multipart.message.MultipartRequest;
 import org.eclipse.dataspaceconnector.spi.iam.ClaimToken;
 import org.eclipse.dataspaceconnector.spi.monitor.Monitor;
@@ -34,6 +33,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -45,7 +45,6 @@ import static org.mockito.Mockito.when;
 
 class EndpointDataReferenceHandlerTest {
 
-    private static final Faker FAKER = new Faker();
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private EndpointDataReferenceHandler handler;
@@ -55,7 +54,7 @@ class EndpointDataReferenceHandlerTest {
     @BeforeEach
     public void setUp() {
         var monitor = mock(Monitor.class);
-        var connectorId = FAKER.lorem().word();
+        var connectorId = "test-connector-id";
         receiverRegistry = mock(EndpointDataReferenceReceiverRegistry.class);
         transformerRegistry = mock(EndpointDataReferenceTransformerRegistry.class);
         var typeManager = new TypeManager();
@@ -72,6 +71,7 @@ class EndpointDataReferenceHandlerTest {
     void canHandle_messageNotSupported_shouldReturnFalse() {
         var request = MultipartRequest.Builder.newInstance()
                 .header(new ParticipantCertificateRevokedMessageBuilder().build())
+                .claimToken(createClaimToken())
                 .build();
         assertThat(handler.canHandle(request)).isFalse();
     }
@@ -87,7 +87,7 @@ class EndpointDataReferenceHandlerTest {
         when(transformerRegistry.transform(any())).thenReturn(Result.success(edrAfterTransformation));
         when(receiverRegistry.receiveAll(edrAfterTransformation)).thenReturn(CompletableFuture.completedFuture(Result.success()));
 
-        var response = handler.handleRequest(request, createClaimToken());
+        var response = handler.handleRequest(request);
 
         verify(transformerRegistry, times(1)).transform(edrCapture.capture());
 
@@ -109,9 +109,9 @@ class EndpointDataReferenceHandlerTest {
         var edr = createEndpointDataReference();
         var request = createMultipartRequest(edr);
 
-        when(transformerRegistry.transform(any())).thenReturn(Result.failure(FAKER.lorem().sentence()));
+        when(transformerRegistry.transform(any())).thenReturn(Result.failure("Test failure"));
 
-        var response = handler.handleRequest(request, createClaimToken());
+        var response = handler.handleRequest(request);
 
         assertThat(response)
                 .isNotNull()
@@ -124,33 +124,34 @@ class EndpointDataReferenceHandlerTest {
         var request = createMultipartRequest(edr);
 
         when(transformerRegistry.transform(any())).thenReturn(Result.success(edr));
-        when(receiverRegistry.receiveAll(edr)).thenReturn(CompletableFuture.completedFuture(Result.failure(FAKER.lorem().sentence())));
+        when(receiverRegistry.receiveAll(edr)).thenReturn(CompletableFuture.completedFuture(Result.failure("Test failure")));
 
-        var response = handler.handleRequest(request, createClaimToken());
+        var response = handler.handleRequest(request);
 
         assertThat(response)
                 .isNotNull()
                 .satisfies(r -> assertThat(r.getHeader()).isInstanceOf(RejectionMessage.class));
     }
 
-    private static EndpointDataReference createEndpointDataReference() {
+    private EndpointDataReference createEndpointDataReference() {
         return EndpointDataReference.Builder.newInstance()
-                .endpoint(FAKER.internet().url())
-                .authKey(FAKER.lorem().word())
-                .authCode(FAKER.internet().uuid())
-                .id(FAKER.internet().uuid())
-                .properties(Map.of(FAKER.lorem().word(), FAKER.internet().uuid()))
+                .endpoint("some.endpoint.url")
+                .authKey("test-authkey")
+                .authCode(UUID.randomUUID().toString())
+                .id(UUID.randomUUID().toString())
+                .properties(Map.of("key1", UUID.randomUUID().toString()))
                 .build();
     }
 
-    private static MultipartRequest createMultipartRequest(EndpointDataReference payload) throws JsonProcessingException {
+    private MultipartRequest createMultipartRequest(EndpointDataReference payload) throws JsonProcessingException {
         return MultipartRequest.Builder.newInstance()
                 .header(new ParticipantUpdateMessageBuilder().build())
                 .payload(MAPPER.writeValueAsString(payload))
+                .claimToken(createClaimToken())
                 .build();
     }
 
-    private static ClaimToken createClaimToken() {
+    private ClaimToken createClaimToken() {
         return ClaimToken.Builder.newInstance().build();
     }
 }

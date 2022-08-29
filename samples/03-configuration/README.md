@@ -5,16 +5,16 @@ elegant way.
 
 The Eclipse Dataspace Connector exposes configuration through its `ConfigurationExtension` interface. That is a "
 special" extension in that sense that it gets loaded at a very early stage. There is also a default implementation
-named [`FsConfigurationExtension.java`](../../extensions/filesystem/configuration-fs/src/main/java/org/eclipse/dataspaceconnector/configuration/fs/FsConfigurationExtension.java)
+named [`FsConfigurationExtension.java`](../../extensions/common/configuration/filesystem-configuration/src/main/java/org/eclipse/dataspaceconnector/configuration/fs/FsConfigurationExtension.java)
 which uses a standard Java properties file to store configuration entries.
 
 In the previous steps we had not included that in the JAR file, so we need to add
-the `:extensions:filesystem:configuration-fs` module to the dependency list:
+the `:extensions:common:configuration:filesystem-configuration` module to the dependency list:
 
 ```kotlin
 dependencies {
     // ...
-    implementation(project(":extensions:filesystem:configuration-fs"))
+    implementation(project(":extensions:common:configuration:filesystem-configuration"))
     // ...
 }
 ```
@@ -146,20 +146,20 @@ There are a few things worth mentioning here:
 ## Management API
 
 Part of most connectors will be the management api defined in the
-[`:extensions:api:data-management`](../../extensions/api/data-management) module. Therefore, we need to add the following
+[`:extensions:control-plane:api:data-management`](../../extensions/control-plane/api/data-management/) module. Therefore, we need to add the following
 module to the dependency list in our `build.gradle.kts`:
 
 ```kotlin
 dependencies {
     // ...
-    implementation(project(":extensions:api:data-management"))
+    implementation(project(":extensions:control-plane:api:data-management"))
     // ...
 }
 ```
 
-As described in the [README.md](../../extensions/api/data-management/api-configuration/README.md) of
-the [api-configuration module](../../extensions/api/data-management/api-configuration), the management api should be
-exposed on a separate jetty context. Therefor, it is necessary to provide the following configuration to the connector:
+As described in the [README.md](../../extensions/control-plane/api/data-management/api-configuration/README.md) of
+the [api-configuration module](../../extensions/control-plane/api/data-management/api-configuration), the management api should be
+exposed on a separate jetty context. Therefore, it is necessary to provide the following configuration to the connector:
 
 > Note: The ports could be chosen arbitrarily. In this example, they are aligned to the already existing `web.http.port` setting described above.
 

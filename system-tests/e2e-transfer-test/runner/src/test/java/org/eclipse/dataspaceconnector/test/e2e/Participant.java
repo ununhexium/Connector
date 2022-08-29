@@ -15,16 +15,16 @@
 package org.eclipse.dataspaceconnector.test.e2e;
 
 import org.eclipse.dataspaceconnector.common.util.postgres.PostgresqlLocalInstance;
-import org.eclipse.dataspaceconnector.policy.model.Action;
-import org.eclipse.dataspaceconnector.policy.model.Permission;
-import org.eclipse.dataspaceconnector.policy.model.Policy;
-import org.eclipse.dataspaceconnector.policy.model.PolicyDefinition;
-import org.eclipse.dataspaceconnector.policy.model.PolicyType;
+import org.eclipse.dataspaceconnector.policy.model.PolicyRegistrationTypes;
 import org.eclipse.dataspaceconnector.spi.asset.AssetSelectorExpression;
+import org.eclipse.dataspaceconnector.spi.policy.PolicyDefinition;
+import org.eclipse.dataspaceconnector.spi.types.TypeManager;
 import org.eclipse.dataspaceconnector.spi.types.domain.DataAddress;
 import org.eclipse.dataspaceconnector.spi.types.domain.catalog.Catalog;
 import org.eclipse.dataspaceconnector.spi.types.domain.contract.offer.ContractOffer;
+import org.eclipse.dataspaceconnector.spi.types.domain.edr.EndpointDataReference;
 import org.eclipse.dataspaceconnector.spi.types.domain.transfer.TransferType;
+import org.hamcrest.Matcher;
 import org.jetbrains.annotations.NotNull;
 
 import java.net.URI;
@@ -38,9 +38,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import static io.restassured.RestAssured.given;
 import static io.restassured.http.ContentType.JSON;
 import static java.io.File.separator;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.eclipse.dataspaceconnector.junit.testfixtures.TestUtils.getFreePort;
-import static org.hamcrest.CoreMatchers.notNullValue;
 
 public class Participant {
 
@@ -57,14 +57,17 @@ public class Participant {
     private final URI backendService = URI.create("http://localhost:" + getFreePort());
     private final URI idsEndpoint = URI.create("http://localhost:" + getFreePort());
     private final String name;
+    private final TypeManager typeManager = new TypeManager();
 
     public Participant(String name) {
         this.name = name;
+        PolicyRegistrationTypes.TYPES.forEach(typeManager::registerTypes);
     }
 
     public void createAsset(String assetId, String addressType) {
         var asset = Map.of(
                 "asset", Map.of(
+                        "id", assetId,
                         "properties", Map.of(
                                 "asset:prop:id", assetId,
                                 "asset:prop:description", "description"
@@ -74,7 +77,8 @@ public class Participant {
                         "properties", Map.of(
                                 "name", "transfer-test",
                                 "baseUrl", backendService + "/api/provider/data",
-                                "type", addressType
+                                "type", addressType,
+                                "proxyQueryParams", "true"
                         )
                 )
         );
@@ -88,33 +92,22 @@ public class Participant {
                 .then();
     }
 
-    public String createPolicy(String assetId) {
-        var policy = PolicyDefinition.Builder.newInstance()
-                .policy(Policy.Builder.newInstance()
-                        .permission(Permission.Builder.newInstance()
-                                .target(assetId)
-                                .action(Action.Builder.newInstance().type("USE").build())
-                                .build())
-                        .type(PolicyType.SET)
-                        .build())
-                .build();
-
+    public void createPolicy(PolicyDefinition policyDefinition) {
         given()
                 .baseUri(controlPlane.toString())
                 .contentType(JSON)
-                .body(policy)
+                .body(policyDefinition)
                 .when()
                 .post("/api/policydefinitions")
-                .then();
-
-        return policy.getUid();
+                .then()
+                .statusCode(204);
     }
 
-    public void createContractDefinition(String policyId, String assetId, String definitionId) {
+    public void createContractDefinition(String assetId, String definitionId, String accessPolicyId, String contractPolicyId) {
         var contractDefinition = Map.of(
                 "id", definitionId,
-                "accessPolicyId", policyId,
-                "contractPolicyId", policyId,
+                "accessPolicyId", accessPolicyId,
+                "contractPolicyId", contractPolicyId,
                 "criteria", AssetSelectorExpression.Builder.newInstance().constraint("asset:prop:id", "=", assetId).build().getCriteria()
         );
 
@@ -142,7 +135,7 @@ public class Participant {
         return given()
                 .baseUri(controlPlane.toString())
                 .contentType(JSON)
-                .body(request)
+                .body(typeManager.writeValueAsString(request))
                 .when()
                 .post("/api/contractnegotiations")
                 .then()
@@ -154,24 +147,34 @@ public class Participant {
         var contractAgreementId = new AtomicReference<String>();
 
         await().atMost(timeout).untilAsserted(() -> {
-            var result = given()
-                    .baseUri(controlPlane.toString())
-                    .contentType(JSON)
-                    .when()
-                    .get("/api/contractnegotiations/{id}", negotiationId)
-                    .then()
-                    .statusCode(200)
-                    .body("contractAgreementId", notNullValue())
-                    .extract().body().jsonPath().getString("contractAgreementId");
+            var agreementId = getContractNegotiationField(negotiationId, "contractAgreementId");
+            assertThat(agreementId).isNotNull().isInstanceOf(String.class);
 
-            contractAgreementId.set(result);
+            contractAgreementId.set(agreementId);
         });
 
         return contractAgreementId.get();
     }
 
-    public String dataRequest(String contractAgreementId, String assetId, Participant provider, DataAddress dataAddress) {
+    public String getContractNegotiationState(String negotiationId) {
+        return getContractNegotiationField(negotiationId, "state");
+    }
+
+    private String getContractNegotiationField(String negotiationId, String fieldName) {
+        return given()
+                .baseUri(controlPlane.toString())
+                .contentType(JSON)
+                .when()
+                .get("/api/contractnegotiations/{id}", negotiationId)
+                .then()
+                .statusCode(200)
+                .extract().body().jsonPath()
+                .getString(fieldName);
+    }
+
+    public String dataRequest(String id, String contractAgreementId, String assetId, Participant provider, DataAddress dataAddress) {
         var request = Map.of(
+                "id", id,
                 "contractId", contractAgreementId,
                 "assetId", assetId,
                 "connectorId", "provider",
@@ -207,6 +210,37 @@ public class Participant {
                 .extract().body().jsonPath().getString("state");
     }
 
+    public EndpointDataReference getDataReference(String id) {
+        var dataReference = new AtomicReference<EndpointDataReference>();
+
+        await().atMost(timeout).untilAsserted(() -> {
+            var result = given()
+                    .baseUri(backendService.toString())
+                    .when()
+                    .get("/api/consumer/dataReference/{id}", id)
+                    .then()
+                    .statusCode(200)
+                    .extract()
+                    .body()
+                    .as(EndpointDataReference.class);
+            dataReference.set(result);
+        });
+
+        return dataReference.get();
+    }
+
+    public void pullData(EndpointDataReference edr, Map<String, String> queryParams, Matcher<String> bodyMatcher) {
+        given()
+                .baseUri(edr.getEndpoint())
+                .header(edr.getAuthKey(), edr.getAuthCode())
+                .queryParams(queryParams)
+                .when()
+                .get()
+                .then()
+                .statusCode(200)
+                .body("message", bodyMatcher);
+    }
+
     public URI backendService() {
         return backendService;
     }
@@ -232,7 +266,7 @@ public class Participant {
     }
 
     public Catalog getCatalog(URI provider) {
-        return given()
+        String response = given()
                 .baseUri(controlPlane.toString())
                 .contentType(JSON)
                 .when()
@@ -240,7 +274,9 @@ public class Participant {
                 .get("/api/catalog")
                 .then()
                 .statusCode(200)
-                .extract().body().as(Catalog.class);
+                .extract().body().asString();
+
+        return typeManager.readValue(response, Catalog.class);
     }
 
     public URI idsEndpoint() {
@@ -264,10 +300,14 @@ public class Participant {
                 put("edc.keystore", resourceAbsolutePath("certs/cert.pfx"));
                 put("edc.keystore.password", "123456");
                 put("ids.webhook.address", idsEndpoint.toString());
-                put("edc.receiver.http.endpoint", backendService + "/api/consumer/pull");
+                put("edc.receiver.http.endpoint", backendService + "/api/consumer/dataReference");
                 put("edc.transfer.proxy.token.signer.privatekey.alias", "1");
                 put("edc.transfer.proxy.token.verifier.publickey.alias", "public-key");
                 put("edc.transfer.proxy.endpoint", dataPlanePublic.toString());
+                put("edc.negotiation.consumer.send.retry.limit", "1");
+                put("edc.negotiation.provider.send.retry.limit", "1");
+                put("edc.negotiation.consumer.send.retry.base-delay.ms", "100");
+                put("edc.negotiation.provider.send.retry.base-delay.ms", "100");
 
                 put("provisioner.http.entries.default.provisioner.type", "provider");
                 put("provisioner.http.entries.default.endpoint", backendService + "/api/provision");
@@ -307,7 +347,6 @@ public class Participant {
 
         return baseConfiguration;
     }
-
 
     public Map<String, String> controlPlaneCosmosDbConfiguration() {
         var baseConfiguration = controlPlaneConfiguration();
@@ -365,6 +404,6 @@ public class Participant {
 
     @NotNull
     private String resourceAbsolutePath(String filename) {
-        return System.getProperty("user.dir") + separator + "src" + separator + "test" + separator + "resources" + separator + filename;
+        return System.getProperty("user.dir") + separator + "build" + separator + "resources" + separator + "test" + separator + filename;
     }
 }

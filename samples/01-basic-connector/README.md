@@ -3,7 +3,7 @@
 A runnable connector consists of a `Runtime` and a build file, in our case this is a `build.gradle.kts`.
 
 The first thing we need is the `Runtime` which is the main entry point to the connector application, same as with any
-other Java program. In this sample we use the [`BaseRuntime`](../../core/bootstrap/src/main/java/org/eclipse/dataspaceconnector/system/runtime/BaseRuntime.java),
+other Java program. In this sample we use the [`BaseRuntime`](../../core/common/boot/src/main/java/org/eclipse/dataspaceconnector/boot/system/runtime/BaseRuntime.java),
 but this can be extended (take a look at the [`custom-runtime`](../other/custom-runtime) sample for more information)
 
 The second thing we need is a [gradle build file](build.gradle.kts)
@@ -11,7 +11,7 @@ that contains the essential dependencies. We'll need at least the following thin
 
 ```kotlin
 dependencies {
-    implementation(project(":core"))
+    implementation(project(":core:control-plane:control-plane-core"))
     
 }
 ```

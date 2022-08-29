@@ -9,6 +9,7 @@
  *
  *  Contributors:
  *       Microsoft Corporation - initial API and implementation
+ *       Fraunhofer Institute for Software and Systems Engineering - replace object mapper
  *
  */
 
@@ -17,14 +18,15 @@ package org.eclipse.dataspaceconnector.ids.api.multipart.dispatcher.sender;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.fraunhofer.iais.eis.DynamicAttributeToken;
 import de.fraunhofer.iais.eis.Message;
-import net.datafaker.Faker;
 import okhttp3.OkHttpClient;
 import org.eclipse.dataspaceconnector.ids.api.multipart.dispatcher.sender.response.IdsMultipartParts;
 import org.eclipse.dataspaceconnector.ids.api.multipart.dispatcher.sender.response.MultipartResponse;
+import org.eclipse.dataspaceconnector.ids.core.serialization.IdsTypeManagerUtil;
 import org.eclipse.dataspaceconnector.ids.spi.transform.IdsTransformerRegistry;
 import org.eclipse.dataspaceconnector.spi.iam.IdentityService;
 import org.eclipse.dataspaceconnector.spi.monitor.Monitor;
 import org.eclipse.dataspaceconnector.spi.result.Result;
+import org.eclipse.dataspaceconnector.spi.types.TypeManager;
 import org.eclipse.dataspaceconnector.spi.types.domain.message.RemoteMessage;
 import org.junit.jupiter.api.Test;
 
@@ -37,18 +39,32 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class IdsMultipartSenderTest {
-    private static final Faker FAKER = new Faker();
     private final IdentityService identityService = mock(IdentityService.class);
-    private final String remoteAddress = FAKER.internet().url();
 
     @Test
     void should_fail_if_token_retrieval_fails() {
         when(identityService.obtainClientCredentials(any())).thenReturn(Result.failure("error"));
-        var sender = new TestIdsMultipartSender("any", mock(OkHttpClient.class), new ObjectMapper(), mock(Monitor.class), identityService, mock(IdsTransformerRegistry.class));
+
+        var objectMapper = IdsTypeManagerUtil.getIdsObjectMapper(new TypeManager());
+
+        var sender = new TestIdsMultipartSender("any", mock(OkHttpClient.class), objectMapper, mock(Monitor.class), identityService, mock(IdsTransformerRegistry.class));
 
         var result = sender.send(new TestRemoteMessage(), () -> "any");
 
         assertThat(result).failsWithin(1, TimeUnit.SECONDS);
+    }
+
+    private static class TestRemoteMessage implements RemoteMessage {
+
+        @Override
+        public String getProtocol() {
+            return null;
+        }
+
+        @Override
+        public String getConnectorAddress() {
+            return null;
+        }
     }
 
     private class TestIdsMultipartSender extends IdsMultipartSender<TestRemoteMessage, MultipartResponse> {
@@ -65,7 +81,7 @@ class IdsMultipartSenderTest {
 
         @Override
         protected String retrieveRemoteConnectorAddress(TestRemoteMessage request) {
-            return remoteAddress;
+            return "some.remote.url";
         }
 
         @Override
@@ -80,19 +96,6 @@ class IdsMultipartSenderTest {
 
         @Override
         protected List<Class<? extends Message>> getAllowedResponseTypes() {
-            return null;
-        }
-    }
-
-    private static class TestRemoteMessage implements RemoteMessage {
-
-        @Override
-        public String getProtocol() {
-            return null;
-        }
-
-        @Override
-        public String getConnectorAddress() {
             return null;
         }
     }

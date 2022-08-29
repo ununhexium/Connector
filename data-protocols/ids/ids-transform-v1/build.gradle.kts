@@ -21,7 +21,7 @@ plugins {
 
 
 dependencies {
-    api(project(":spi"))
+    api(project(":spi:control-plane:control-plane-spi"))
     api(project(":data-protocols:ids:ids-spi"))
     implementation(project(":common:util"))
     api(project(":data-protocols:ids:ids-core"))
@@ -29,7 +29,7 @@ dependencies {
     api("de.fraunhofer.iais.eis.ids.infomodel:java:${infoModelVersion}")
 
     implementation("jakarta.ws.rs:jakarta.ws.rs-api:${rsApi}")
-    testImplementation(project(":extensions:junit"))
+    testImplementation(project(":extensions:common:junit"))
 
 }
 

@@ -14,15 +14,15 @@
 
 package org.eclipse.dataspaceconnector.extensions.api;
 
-import org.eclipse.dataspaceconnector.dataloading.AssetLoader;
 import org.eclipse.dataspaceconnector.dataplane.spi.pipeline.DataTransferExecutorServiceContainer;
 import org.eclipse.dataspaceconnector.dataplane.spi.pipeline.PipelineService;
 import org.eclipse.dataspaceconnector.policy.model.Action;
 import org.eclipse.dataspaceconnector.policy.model.Permission;
 import org.eclipse.dataspaceconnector.policy.model.Policy;
-import org.eclipse.dataspaceconnector.policy.model.PolicyDefinition;
+import org.eclipse.dataspaceconnector.spi.asset.AssetLoader;
 import org.eclipse.dataspaceconnector.spi.asset.AssetSelectorExpression;
 import org.eclipse.dataspaceconnector.spi.contract.offer.store.ContractDefinitionStore;
+import org.eclipse.dataspaceconnector.spi.policy.PolicyDefinition;
 import org.eclipse.dataspaceconnector.spi.policy.store.PolicyDefinitionStore;
 import org.eclipse.dataspaceconnector.spi.system.Inject;
 import org.eclipse.dataspaceconnector.spi.system.ServiceExtension;
@@ -73,7 +73,7 @@ public class FileTransferExtension implements ServiceExtension {
                 .build();
 
         return PolicyDefinition.Builder.newInstance()
-                .uid(USE_POLICY)
+                .id(USE_POLICY)
                 .policy(Policy.Builder.newInstance()
                         .permission(usePermission)
                         .build())
