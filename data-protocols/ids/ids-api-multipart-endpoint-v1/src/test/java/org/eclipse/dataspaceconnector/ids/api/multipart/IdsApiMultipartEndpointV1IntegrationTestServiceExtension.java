@@ -141,6 +141,11 @@ class IdsApiMultipartEndpointV1IntegrationTestServiceExtension implements Servic
         }
 
         @Override
+        public long countAssets(QuerySpec querySpec) {
+            return 0;
+        }
+
+        @Override
         public void accept(AssetEntry item) {
 
         }

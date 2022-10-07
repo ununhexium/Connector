@@ -26,13 +26,16 @@ import org.eclipse.dataspaceconnector.spi.contract.offer.ContractOfferQuery;
 import org.eclipse.dataspaceconnector.spi.contract.offer.ContractOfferService;
 import org.eclipse.dataspaceconnector.spi.message.Range;
 import org.eclipse.dataspaceconnector.spi.policy.store.PolicyDefinitionStore;
+import org.eclipse.dataspaceconnector.spi.query.QuerySpec;
 import org.eclipse.dataspaceconnector.spi.types.domain.asset.Asset;
 import org.eclipse.dataspaceconnector.spi.types.domain.contract.offer.ContractDefinition;
 import org.eclipse.dataspaceconnector.spi.types.domain.contract.offer.ContractOffer;
 import org.jetbrains.annotations.NotNull;
 
 import java.net.URI;
-import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -55,14 +58,43 @@ public class ContractOfferServiceImpl implements ContractOfferService {
     @NotNull
     public Stream<ContractOffer> queryContractOffers(ContractOfferQuery query, Range range) {
         var agent = agentService.createFor(query.getClaimToken());
+        var numSeenAssets = new AtomicLong(0);
+        var limit = range.getTo() - range.getFrom();
+        var skip = new AtomicInteger(range.getFrom());
 
-        return definitionService.definitionsFor(agent, range)
+        return definitionService.definitionsFor(agent)
+                .takeWhile(d -> numSeenAssets.get() < range.getTo())
                 .flatMap(definition -> {
-                    var assets = assetIndex.queryAssets(definition.getSelectorExpression());
-                    return Optional.of(definition.getContractPolicyId())
-                            .map(policyStore::findById)
-                            .map(policy -> assets.map(asset -> createContractOffer(definition, policy.getPolicy(), asset)))
-                            .orElseGet(Stream::empty);
+                    var criteria = definition.getSelectorExpression().getCriteria();
+
+                    var querySpecBuilder = QuerySpec.Builder.newInstance()
+                            .filter(Stream.concat(criteria.stream(), query.getAssetsCriteria().stream()).collect(Collectors.toList()));
+
+                    var querySpec = querySpecBuilder.build();
+                    var numAssets = assetIndex.countAssets(querySpec);
+
+                    if (skip.get() > 0) {
+                        querySpecBuilder.offset(skip.get());
+                    }
+                    if (numAssets + numSeenAssets.get() > limit) {
+                        querySpecBuilder.limit(limit);
+                    }
+
+                    if (skip.get() < numAssets) {
+                        var byId = policyStore.findById(definition.getContractPolicyId());
+                        if (byId == null) { //policy not found
+                            return Stream.empty();
+                        }
+                        var assets = assetIndex.queryAssets(querySpecBuilder.build());
+                        numSeenAssets.addAndGet(numAssets);
+                        skip.addAndGet(Long.valueOf(-numAssets).intValue());
+                        return assets.map(a -> createContractOffer(definition, byId.getPolicy(), a));
+
+                    } else {
+                        numSeenAssets.addAndGet(numAssets);
+                        skip.addAndGet(Long.valueOf(-numAssets).intValue());
+                        return Stream.empty();
+                    }
                 });
     }
 

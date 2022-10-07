@@ -161,6 +161,11 @@ class IdsApiMultipartDispatcherV1IntegrationTestServiceExtension implements Serv
         }
 
         @Override
+        public long countAssets(QuerySpec querySpec) {
+            return 0;
+        }
+
+        @Override
         public DataAddress resolveForAsset(String assetId) {
             return null;
         }
