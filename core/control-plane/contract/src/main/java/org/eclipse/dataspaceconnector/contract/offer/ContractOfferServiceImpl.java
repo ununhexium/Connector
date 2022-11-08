@@ -33,6 +33,7 @@ import org.eclipse.dataspaceconnector.spi.types.domain.contract.offer.ContractOf
 import org.jetbrains.annotations.NotNull;
 
 import java.net.URI;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
@@ -71,7 +72,9 @@ public class ContractOfferServiceImpl implements ContractOfferService {
                             .filter(Stream.concat(criteria.stream(), query.getAssetsCriteria().stream()).collect(Collectors.toList()));
 
                     var querySpec = querySpecBuilder.build();
-                    var numAssets = assetIndex.countAssets(querySpec);
+                    var numAssets = assetIndex.countAssets(querySpec.getFilterExpression());
+
+                    querySpecBuilder.limit((int) numAssets);
 
                     if (skip.get() > 0) {
                         querySpecBuilder.offset(skip.get());
@@ -80,22 +83,26 @@ public class ContractOfferServiceImpl implements ContractOfferService {
                         querySpecBuilder.limit(limit);
                     }
 
-                    if (skip.get() < numAssets) {
-                        var byId = policyStore.findById(definition.getContractPolicyId());
-                        if (byId == null) { //policy not found
-                            return Stream.empty();
-                        }
-                        var assets = assetIndex.queryAssets(querySpecBuilder.build());
-                        numSeenAssets.addAndGet(numAssets);
-                        skip.addAndGet(Long.valueOf(-numAssets).intValue());
-                        return assets.map(a -> createContractOffer(definition, byId.getPolicy(), a));
-
+                    Stream<ContractOffer> offers;
+                    if (skip.get() >= numAssets) {
+                        offers = Stream.empty();
                     } else {
-                        numSeenAssets.addAndGet(numAssets);
-                        skip.addAndGet(Long.valueOf(-numAssets).intValue());
-                        return Stream.empty();
+                        offers = createContractOffers(definition, querySpecBuilder.build());
                     }
+
+                    numSeenAssets.addAndGet(numAssets);
+                    skip.addAndGet(Long.valueOf(-numAssets).intValue());
+                    return offers;
                 });
+    }
+
+    @NotNull
+    private Stream<@NotNull ContractOffer> createContractOffers(ContractDefinition definition, QuerySpec assetQuerySpec) {
+        return Optional.of(definition.getContractPolicyId())
+                .map(policyStore::findById)
+                .map(policyDefinition -> assetIndex.queryAssets(assetQuerySpec)
+                        .map(asset -> createContractOffer(definition, policyDefinition.getPolicy(), asset)))
+                .orElse(Stream.empty());
     }
 
     @NotNull

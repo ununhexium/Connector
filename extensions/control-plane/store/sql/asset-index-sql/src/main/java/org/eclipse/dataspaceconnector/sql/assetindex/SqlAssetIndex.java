@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.eclipse.dataspaceconnector.spi.asset.AssetIndex;
 import org.eclipse.dataspaceconnector.spi.asset.AssetSelectorExpression;
 import org.eclipse.dataspaceconnector.spi.persistence.EdcPersistenceException;
+import org.eclipse.dataspaceconnector.spi.query.Criterion;
 import org.eclipse.dataspaceconnector.spi.query.QuerySpec;
 import org.eclipse.dataspaceconnector.spi.transaction.TransactionContext;
 import org.eclipse.dataspaceconnector.spi.transaction.datasource.DataSourceRegistry;
@@ -177,9 +178,9 @@ public class SqlAssetIndex implements AssetIndex {
     }
 
     @Override
-    public long countAssets(QuerySpec querySpec) {
+    public long countAssets(List<Criterion> criteria) {
         try (var connection = getConnection()) {
-            var statement = assetStatements.createQuery(querySpec);
+            var statement = assetStatements.createQuery(criteria);
 
             var queryAsString = statement.getQueryAsString().replace("SELECT * ", "SELECT COUNT (*) ");
 

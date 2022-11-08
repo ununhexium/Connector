@@ -31,6 +31,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import static java.util.Collections.emptyList;
 import static java.util.stream.IntStream.range;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchException;
@@ -142,14 +143,19 @@ public abstract class AssetIndexTestBase {
     void count_withResults() {
         var assets = range(0, 5).mapToObj(i -> getAsset("id" + i));
         assets.forEach(a -> getAssetIndex().accept(a, getDataAddress()));
+        var criteria = Collections.<Criterion>emptyList();
 
-        var count = getAssetIndex().countAssets(QuerySpec.none());
+        var count = getAssetIndex().countAssets(criteria);
+
         assertThat(count).isEqualTo(5);
     }
 
     @Test
     void count_withNoResults() {
-        var count = getAssetIndex().countAssets(QuerySpec.none());
+        var criteria = Collections.<Criterion>emptyList();
+
+        var count = getAssetIndex().countAssets(criteria);
+
         assertThat(count).isEqualTo(0);
     }
 
@@ -347,7 +353,7 @@ public abstract class AssetIndexTestBase {
      * lowercase!
      */
     protected Collection<String> getSupportedOperators() {
-        return Collections.emptyList();
+        return emptyList();
     }
 
     /**

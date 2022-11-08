@@ -15,12 +15,14 @@
 package org.eclipse.dataspaceconnector.spi.asset;
 
 import org.eclipse.dataspaceconnector.spi.persistence.EdcPersistenceException;
+import org.eclipse.dataspaceconnector.spi.query.Criterion;
 import org.eclipse.dataspaceconnector.spi.query.QuerySpec;
 import org.eclipse.dataspaceconnector.spi.types.domain.DataAddress;
 import org.eclipse.dataspaceconnector.spi.types.domain.asset.Asset;
 import org.eclipse.dataspaceconnector.spi.types.domain.asset.AssetEntry;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.List;
 import java.util.stream.Stream;
 
 /**
@@ -84,10 +86,10 @@ public interface AssetIndex extends DataAddressResolver {
     Asset deleteById(String assetId);
 
     /**
-     * Counts all assets that are selected by the given query
+     * Counts all assets that are selected by the given criteria
      *
-     * @param querySpec the query
+     * @param criteria the criterion list
      * @return the number of assets (potentially 0)
      */
-    long countAssets(QuerySpec querySpec);
+    long countAssets(List<Criterion> criteria);
 }

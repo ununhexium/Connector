@@ -22,6 +22,7 @@ import org.eclipse.dataspaceconnector.azure.cosmos.CosmosDbApi;
 import org.eclipse.dataspaceconnector.spi.asset.AssetIndex;
 import org.eclipse.dataspaceconnector.spi.asset.AssetSelectorExpression;
 import org.eclipse.dataspaceconnector.spi.monitor.Monitor;
+import org.eclipse.dataspaceconnector.spi.query.Criterion;
 import org.eclipse.dataspaceconnector.spi.query.QuerySpec;
 import org.eclipse.dataspaceconnector.spi.query.SortOrder;
 import org.eclipse.dataspaceconnector.spi.types.TypeManager;
@@ -29,6 +30,7 @@ import org.eclipse.dataspaceconnector.spi.types.domain.DataAddress;
 import org.eclipse.dataspaceconnector.spi.types.domain.asset.Asset;
 import org.eclipse.dataspaceconnector.spi.types.domain.asset.AssetEntry;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -115,18 +117,13 @@ public class CosmosAssetIndex implements AssetIndex {
     }
 
     @Override
-    public long countAssets(QuerySpec querySpec) {
-        var expr = querySpec.getFilterExpression();
+    public long countAssets(List<Criterion> criteria) {
+        var sqlQuery = queryBuilder.from(criteria);
 
-        var sortField = querySpec.getSortField();
-        var limit = querySpec.getLimit();
-        var sortAsc = querySpec.getSortOrder() == SortOrder.ASC;
-
-        var sqlQuery = queryBuilder.from(expr, sortField, sortAsc, limit, querySpec.getOffset());
         var stmt = sqlQuery.getQueryText().replace("SELECT * ", "SELECT COUNT(1) ");
         sqlQuery.setQueryText(stmt);
-        var response = with(retryPolicy).get(() -> assetDb.queryItems(sqlQuery));
-        return response.findFirst().map(o -> extractCount(o)).orElse(0L);
+        return with(retryPolicy).get(() -> assetDb.queryItems(sqlQuery))
+                .findFirst().map(this::extractCount).orElse(0L);
     }
 
     @Override

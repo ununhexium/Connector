@@ -34,6 +34,7 @@ import org.eclipse.dataspaceconnector.spi.message.MessageContext;
 import org.eclipse.dataspaceconnector.spi.message.RemoteMessageDispatcher;
 import org.eclipse.dataspaceconnector.spi.message.RemoteMessageDispatcherRegistry;
 import org.eclipse.dataspaceconnector.spi.policy.store.PolicyArchive;
+import org.eclipse.dataspaceconnector.spi.query.Criterion;
 import org.eclipse.dataspaceconnector.spi.query.QuerySpec;
 import org.eclipse.dataspaceconnector.spi.result.Result;
 import org.eclipse.dataspaceconnector.spi.system.Provides;
@@ -141,7 +142,7 @@ class IdsApiMultipartEndpointV1IntegrationTestServiceExtension implements Servic
         }
 
         @Override
-        public long countAssets(QuerySpec querySpec) {
+        public long countAssets(List<Criterion> criteria) {
             return 0;
         }
 
