@@ -22,10 +22,12 @@ plugins {
 }
 
 dependencies {
+    api(project(":spi:common:auth-spi"))
+    api(project(":spi:common:aggregate-service-spi"))
+    api(project(":spi:common:transform-spi"))
     api(project(":spi:common:web-spi"))
-    api(project(":spi:common:transport-spi"))
 
-    implementation(project(":common:util"))
+    implementation(project(":core:common:util"))
     implementation("jakarta.ws.rs:jakarta.ws.rs-api:${rsApi}")
     implementation("jakarta.validation:jakarta.validation-api:${jakartaValidationApi}")
     implementation("org.glassfish.jersey.ext:jersey-bean-validation:${jerseyVersion}") //for validation
@@ -33,7 +35,7 @@ dependencies {
     testImplementation("org.glassfish.jersey.core:jersey-common:${jerseyVersion}")
     testImplementation("org.glassfish.jersey.core:jersey-server:${jerseyVersion}")
 
-    testImplementation(project(":extensions:common:junit"))
+    testImplementation(project(":core:common:junit"))
 }
 
 publishing {

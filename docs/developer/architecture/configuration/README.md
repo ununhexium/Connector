@@ -16,7 +16,7 @@ Settings are retrieved from the ServiceExtensionContext interface.
 
 - setting keys start with _edc_
 - setting keys are defined in _private static final_ fields
-- setting fields are annotated with the _@EdcSetting_ marker interface
+- setting fields are annotated with the _@Setting_ marker interface
 - settings have a valid default value
 
 **Example Setting**
@@ -24,7 +24,7 @@ Settings are retrieved from the ServiceExtensionContext interface.
 ```java
 class ExampleSetting {
 
-    @EdcSetting
+    @Setting
     private final static String EDC_IDS_TITLE = "edc.ids.title";
 
     private final static String DEFAULT_TITLE = "Default Title";
@@ -42,4 +42,4 @@ The integration of each configuration extension may vary. Please have a look at 
 
 The following extensions implement the ConfigurationExtension interface.
 
-- [File System Configuration](../../../../extensions/common/configuration/filesystem-configuration/README.md)
+- [File System Configuration](../../../../extensions/common/configuration/configuration-filesystem/README.md)

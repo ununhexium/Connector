@@ -20,15 +20,15 @@ plugins {
 }
 
 dependencies {
-    implementation(project(":extensions:common:azure:blob-core"))
-    implementation(project(":common:util"))
+    implementation(project(":extensions:common:azure:azure-blob-core"))
+    implementation(project(":core:common:util"))
     implementation("com.azure:azure-identity:${azureIdentityVersion}")
     implementation("com.azure.resourcemanager:azure-resourcemanager:${azureResourceManagerVersion}")
     implementation("com.azure.resourcemanager:azure-resourcemanager-authorization:${azureResourceManagerVersion}")
 
     testImplementation(testFixtures(project(":extensions:common:azure:azure-test")))
 
-    testImplementation(project(":extensions:common:junit"))
+    testImplementation(project(":core:common:junit"))
 }
 
 publishing {

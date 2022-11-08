@@ -27,14 +27,14 @@ plugins {
 
 dependencies {
     api(project(":spi:common:web-spi"))
-    implementation(project(":spi:data-plane:data-plane-spi"))
+    api(project(":spi:data-plane:data-plane-spi"))
+    implementation(project(":core:data-plane:data-plane-util"))
 
     implementation("com.squareup.okhttp3:okhttp:${okHttpVersion}")
     implementation("jakarta.ws.rs:jakarta.ws.rs-api:${rsApi}")
 
     testImplementation(project(":extensions:common:http"))
-    testImplementation(project(":extensions:common:junit"))
-    
+    testImplementation(project(":core:common:junit"))
     testImplementation("org.glassfish.jersey.media:jersey-media-multipart:${jerseyVersion}")
     testImplementation("io.rest-assured:rest-assured:${restAssured}")
     testImplementation("org.mock-server:mockserver-netty:${httpMockServer}:shaded")

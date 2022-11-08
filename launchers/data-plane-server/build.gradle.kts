@@ -23,17 +23,17 @@ plugins {
 
 dependencies {
     api(project(":spi:common:web-spi"))
-    implementation(project(":extensions:common:micrometer"))
+    implementation(project(":extensions:common:metrics:micrometer-core"))
     implementation(project(":core:data-plane:data-plane-core"))
     implementation(project(":extensions:common:http"))
-    implementation(project(":extensions:common:configuration:filesystem-configuration"))
+    implementation(project(":extensions:common:configuration:configuration-filesystem"))
     implementation(project(":extensions:data-plane:data-plane-http"))
     implementation(project(":extensions:data-plane:data-plane-azure-storage"))
     implementation(project(":extensions:data-plane:data-plane-api"))
 }
 
 application {
-    mainClass.set("org.eclipse.dataspaceconnector.boot.system.runtime.BaseRuntime")
+    mainClass.set("org.eclipse.edc.boot.system.runtime.BaseRuntime")
 }
 
 tasks.withType<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar> {
@@ -51,5 +51,3 @@ publishing {
         }
     }
 }
-
-

@@ -12,6 +12,7 @@ paths:
         required: true
         schema:
           type: string
+          example: null
       responses:
         "200":
           description: Token is valid
@@ -25,8 +26,11 @@ components:
   schemas:
     DataAddress:
       type: object
+      example: null
       properties:
         properties:
           type: object
           additionalProperties:
             type: string
+            example: null
+          example: null

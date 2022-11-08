@@ -21,7 +21,7 @@ plugins {
     jacoco
     signing
     id("com.rameshkp.openapi-merger-gradle-plugin") version "1.0.4"
-    id("org.eclipse.dataspaceconnector.module-names")
+    id("org.eclipse.edc.module-names") version "0.0.1-SNAPSHOT"
     id("com.autonomousapps.dependency-analysis") version "1.13.1" apply (false)
     id("org.gradle.crypto.checksum") version "1.4.0"
     id("io.github.gradle-nexus.publish-plugin") version "1.1.0"
@@ -33,8 +33,8 @@ repositories {
 }
 
 dependencies {
-    "swaggerCodegen"("org.openapitools:openapi-generator-cli:6.0.1")
-    "swaggerUI"("org.webjars:swagger-ui:4.14.0")
+    "swaggerCodegen"("org.openapitools:openapi-generator-cli:6.2.1")
+    "swaggerUI"("org.webjars:swagger-ui:4.14.2")
 }
 
 val jetBrainsAnnotationsVersion: String by project
@@ -54,31 +54,24 @@ val edcWebsiteUrl: String by project
 val edcScmUrl: String by project
 val groupId: String by project
 val defaultVersion: String by project
+val metaModelVersion: String by project
+val annotationProcessorVersion: String by project
+// where our SNAPSHOT versions are published to and resolved from
+val snapshotUrl = "https://oss.sonatype.org/content/repositories/snapshots/"
+// where our release versions are published to (staging)
+val releaseUrl = "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
 
 // required by the nexus publishing plugin
+
 val projectVersion: String = (project.findProperty("edcVersion") ?: defaultVersion) as String
-
-var deployUrl = "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
-
+var deployUrl = releaseUrl
 if (projectVersion.contains("SNAPSHOT")) {
-    deployUrl = "https://oss.sonatype.org/content/repositories/snapshots/"
+    deployUrl = snapshotUrl
 }
 
 subprojects {
-
-    repositories {
-        mavenCentral()
-        maven {
-            url = uri("https://maven.iais.fraunhofer.de/artifactory/eis-ids-public/")
-        }
-    }
     tasks.register<DependencyReportTask>("allDependencies") {}
 
-    // (re-)create a file that contains all maven publications
-    val f = File("${project.rootDir.absolutePath}/docs/developer/modules.md")
-    if (f.exists()) {
-        f.delete()
-    }
     afterEvaluate {
         publishing {
             publications.forEach { i ->
@@ -106,25 +99,52 @@ subprojects {
                         }
                     }
                 }
-                f.appendText("\n${mp.groupId}:${mp.artifactId}:${mp.version}")
             }
         }
     }
 }
 
 buildscript {
+    repositories {
+        maven {
+            // can't use the snapshotUrl variable here, because buildscript has a different scope
+            url = uri("https://oss.sonatype.org/content/repositories/snapshots/")
+        }
+        mavenLocal()
+    }
     dependencies {
-        classpath("io.swagger.core.v3:swagger-gradle-plugin:2.1.13")
+        val swagger: String by project
+        val edcGradlePluginsVersion: String by project
+
+        classpath("io.swagger.core.v3:swagger-gradle-plugin:${swagger}")
+        classpath("org.eclipse.edc.autodoc:org.eclipse.edc.autodoc.gradle.plugin:${edcGradlePluginsVersion}")
+        classpath("org.eclipse.edc.test-summary:org.eclipse.edc.test-summary.gradle.plugin:${edcGradlePluginsVersion}")
     }
 }
 
 allprojects {
+    repositories {
+        mavenLocal()
+        maven {
+            url = uri(snapshotUrl)
+        }
+        mavenCentral()
+        maven {
+            url = uri("https://maven.iais.fraunhofer.de/artifactory/eis-ids-public/")
+        }
+    }
     apply(plugin = "maven-publish")
     apply(plugin = "checkstyle")
     apply(plugin = "java")
+    apply(plugin = "${groupId}.test-summary")
+    apply(plugin = "${groupId}.autodoc")
 
+    // configure which version of the annotation processor to use. defaults to the same version as the plugin
+    configure<org.eclipse.edc.plugins.autodoc.AutodocExtension> {
+        processorVersion.set(annotationProcessorVersion)
+        outputDirectory.set(project.buildDir)
+    }
 
-    apply(plugin = "org.eclipse.dataspaceconnector.test-summary")
 
     if (System.getenv("JACOCO") == "true") {
         apply(plugin = "jacoco")
@@ -158,6 +178,26 @@ allprojects {
         }
     }
 
+    pluginManager.withPlugin("maven-publish") {
+        publishing {
+            // this block enables publishing the autodoc manifest to MavenCentral
+            val manifestFile = layout.buildDirectory.file(project.buildDir.absolutePath + File.separator + "edc.json")
+            if (manifestFile.get().asFile.exists()) {
+                val jsonArtifact = artifacts.add("archives", manifestFile.get().asFile) {
+                    type = "json"
+                    builtBy("autodoc")
+                    classifier = "manifest"
+                }
+                publications {
+                    create<MavenPublication>("maven") {
+                        artifact(jsonArtifact)
+                    }
+                }
+
+            }
+        }
+    }
+
     pluginManager.withPlugin("java-library") {
         group = groupId
         version = projectVersion
@@ -168,6 +208,8 @@ allprojects {
             api("com.fasterxml.jackson.core:jackson-annotations:${jacksonVersion}")
             api("com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}")
             api("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:${jacksonVersion}")
+            api("${groupId}:runtime-metamodel:${metaModelVersion}")
+
 
             testImplementation("org.junit.jupiter:junit-jupiter-api:${jupiterVersion}")
             testImplementation("org.junit.jupiter:junit-jupiter-params:${jupiterVersion}")
@@ -215,7 +257,7 @@ allprojects {
             prettyPrint = true
             classpath = java.sourceSets["main"].runtimeClasspath
             buildClasspath = classpath
-            resourcePackages = setOf("org.eclipse.dataspaceconnector")
+            resourcePackages = setOf("org.eclipse.edc")
             outputDir = file("${rootProject.projectDir.path}/resources/openapi/yaml")
         }
         configurations {
@@ -306,8 +348,8 @@ openApiMerger {
 
 // Dependency analysis active if property "dependency.analysis" is set. Possible values are <'fail'|'warn'|'ignore'>.
 if (project.hasProperty("dependency.analysis")) {
-    apply(plugin = "org.eclipse.dataspaceconnector.dependency-rules")
-    configure<org.eclipse.dataspaceconnector.gradle.DependencyRulesPluginExtension> {
+    apply(plugin = "org.eclipse.edc.dependency-rules")
+    configure<org.eclipse.edc.gradle.DependencyRulesPluginExtension> {
         severity.set(project.property("dependency.analysis").toString())
     }
     apply(plugin = "com.autonomousapps.dependency-analysis")
@@ -337,7 +379,7 @@ if (project.hasProperty("dependency.analysis")) {
                 }
                 onIncorrectConfiguration {
                     exclude(
-                        // some common dependencies are intentionally exported by core:base for simplicity
+                        // some common dependencies are intentionally exported by core:common:connector-core for simplicity
                         "com.squareup.okhttp3:okhttp",
                         "dev.failsafe:failsafe",
                     )
@@ -361,7 +403,7 @@ nexusPublishing {
     repositories {
         sonatype {
             nexusUrl.set(uri("https://oss.sonatype.org/service/local/"))
-            snapshotRepositoryUrl.set(uri("https://oss.sonatype.org/content/repositories/snapshots/"))
+            snapshotRepositoryUrl.set(uri(snapshotUrl))
             username.set(System.getenv("OSSRH_USER") ?: return@sonatype)
             password.set(System.getenv("OSSRH_PASSWORD") ?: return@sonatype)
         }

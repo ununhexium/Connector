@@ -20,9 +20,12 @@ plugins {
 
 dependencies {
     api(project(":spi:data-plane-selector:data-plane-selector-spi"))
-    api(project(":core:common:base"))
+    api(project(":core:common:connector-core"))
     api(project(":core:common:boot"))
-    implementation(project(":common:util"))
+    implementation(project(":core:common:util"))
+
+    testImplementation(testFixtures(project(":spi:data-plane-selector:data-plane-selector-spi")))
+
 }
 
 publishing {

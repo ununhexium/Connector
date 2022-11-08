@@ -36,9 +36,9 @@ dependencies {
         exclude(group = "io.gatling", module = "gatling-graphite")
     }
 
-    testImplementation(project(":extensions:common:azure:blob-core"))
-    testImplementation(project(":extensions:common:vault:azure-vault"))
-    testImplementation(project(":extensions:common:junit"))
+    testImplementation(project(":extensions:common:azure:azure-blob-core"))
+    testImplementation(project(":extensions:common:vault:vault-azure"))
+    testImplementation(project(":core:common:junit"))
     testImplementation(testFixtures(project(":system-tests:tests")))
     testImplementation(testFixtures(project(":system-tests:azure-tests")))
     testImplementation(testFixtures(project(":extensions:common:azure:azure-test")))
@@ -50,4 +50,3 @@ dependencies {
     testRuntimeOnly(project(":system-tests:runtimes:azure-data-factory-transfer-provider"))
     testRuntimeOnly(project(":system-tests:runtimes:azure-data-factory-transfer-consumer"))
 }
-

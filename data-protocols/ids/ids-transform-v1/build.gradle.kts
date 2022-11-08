@@ -23,20 +23,20 @@ plugins {
 dependencies {
     api(project(":spi:control-plane:control-plane-spi"))
     api(project(":data-protocols:ids:ids-spi"))
-    implementation(project(":common:util"))
+    implementation(project(":core:common:util"))
     api(project(":data-protocols:ids:ids-core"))
 
     api("de.fraunhofer.iais.eis.ids.infomodel:java:${infoModelVersion}")
 
     implementation("jakarta.ws.rs:jakarta.ws.rs-api:${rsApi}")
-    testImplementation(project(":extensions:common:junit"))
+    testImplementation(project(":core:common:junit"))
 
 }
 
 publishing {
     publications {
-        create<MavenPublication>("ids-api-transform-v1") {
-            artifactId = "ids-api-transform-v1"
+        create<MavenPublication>("ids-transform-v1") {
+            artifactId = "ids-transform-v1"
             from(components["java"])
         }
     }

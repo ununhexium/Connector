@@ -13,6 +13,8 @@
  */
 
 val openTelemetryVersion: String by project
+val awaitility: String by project
+
 
 plugins {
     `java-library`
@@ -21,9 +23,15 @@ plugins {
 dependencies {
     api(project(":spi:common:core-spi"))
     api(project(":spi:data-plane:data-plane-spi"))
-    implementation(project(":common:util"))
+    api(project(":spi:control-plane:control-plane-api-client-spi"))
+
+    implementation(project(":core:data-plane:data-plane-util"))
+    implementation(project(":core:common:util"))
+
     implementation("io.opentelemetry:opentelemetry-extension-annotations:${openTelemetryVersion}")
-    testImplementation(project(":extensions:common:junit"))
+
+    testImplementation(project(":core:common:junit"))
+    testImplementation("org.awaitility:awaitility:${awaitility}")
 }
 
 

@@ -26,20 +26,20 @@ dependencies {
 
     implementation(project(":data-protocols:ids"))
 
-    implementation(project(":extensions:common:configuration:filesystem-configuration"))
-    implementation(project(":extensions:common:vault:filesystem-vault"))
+    implementation(project(":extensions:common:configuration:configuration-filesystem"))
+    implementation(project(":extensions:common:vault:vault-filesystem"))
 
     implementation(project(":extensions:common:iam:oauth2:oauth2-core"))
-    implementation(project(":extensions:common:iam:oauth2:daps"))
+    implementation(project(":extensions:common:iam:oauth2:oauth2-daps"))
 
-    implementation(project(":extensions:control-plane:api:data-management"))
+    implementation(project(":extensions:control-plane:api:data-management-api"))
 
     testImplementation("org.junit.jupiter:junit-jupiter-api:${jupiterVersion}")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:${jupiterVersion}")
 }
 
 application {
-    mainClass.set("org.eclipse.dataspaceconnector.boot.system.runtime.BaseRuntime")
+    mainClass.set("org.eclipse.edc.boot.system.runtime.BaseRuntime")
 }
 
 tasks.withType<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar> {

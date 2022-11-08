@@ -25,22 +25,22 @@ dependencies {
     api(project(":spi:control-plane:contract-spi"))
     api(project(":spi:common:transaction-spi"))
     implementation(project(":spi:common:transaction-datasource-spi"))
-    implementation(project(":extensions:common:sql:common-sql"))
-    implementation(project(":extensions:common:sql:lease-sql"))
+    implementation(project(":extensions:common:sql:sql-core"))
+    implementation(project(":extensions:common:sql:sql-lease"))
 
 
-    testImplementation(project(":extensions:common:junit"))
-    testImplementation(testFixtures(project(":extensions:common:sql:lease-sql")))
+    testImplementation(project(":core:common:junit"))
+    testImplementation(testFixtures(project(":extensions:common:sql:sql-lease")))
     testImplementation("org.assertj:assertj-core:${assertj}")
-    testImplementation(testFixtures(project(":common:util")))
-
+    testImplementation(testFixtures(project(":spi:control-plane:contract-spi")))
+    testImplementation(testFixtures(project(":extensions:common:sql:sql-core")))
     testImplementation("org.postgresql:postgresql:${postgresVersion}")
 }
 
 publishing {
     publications {
-        create<MavenPublication>("contractnegotiation-store-sql") {
-            artifactId = "contractnegotiation-store-sql"
+        create<MavenPublication>("contract-negotiation-store-sql") {
+            artifactId = "contract-negotiation-store-sql"
             from(components["java"])
         }
     }

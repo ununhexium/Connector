@@ -130,17 +130,17 @@ Execute the gradle task *publish* on the level of an individual module to publis
 
 Artifact names must adhere to the following naming convention:
 
-- Group name: org.eclipse.dataspaceconnector
+- Group name: org.eclipse.edc
 - Artifact id describing the module name (disregarding the directory structure) separating terms by a dash
 
 Examples:
 
 ```
-org.eclipse.dataspaceconnector:spi
-org.eclipse.dataspaceconnector:common-util
+org.eclipse.edc:spi
+org.eclipse.edc:util
 ```
 
-A comprehensive list can be found [here](modules.md)
+A comprehensive list can be found [here](https://search.maven.org/search?q=org.eclipse.edc).
 
 #### Release guide
 
@@ -174,3 +174,6 @@ The GitHub workflow then performs these steps
     - the release notes are auto-generated based on the last available tag and the `.github/releases.yaml` file
     - no pre-releases are supported
     - no discussions are created
+
+**Important: The first commit after a release has to change the `defaultVersion` in `gradle.properties` to `-SNAPSHOT`
+again. Otherwise, the upload of the automated nightly builds to OSSRH Snapshots will fail.** 

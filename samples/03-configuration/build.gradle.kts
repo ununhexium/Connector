@@ -26,15 +26,15 @@ dependencies {
     implementation(project(":core:control-plane:control-plane-core"))
     implementation(project(":extensions:common:http"))
 
-    implementation(project(":extensions:control-plane:api:data-management"))
+    implementation(project(":extensions:control-plane:api:data-management-api"))
 
-    implementation(project(":extensions:common:configuration:filesystem-configuration"))
+    implementation(project(":extensions:common:configuration:configuration-filesystem"))
 
     implementation("jakarta.ws.rs:jakarta.ws.rs-api:${rsApi}")
 }
 
 application {
-    mainClass.set("org.eclipse.dataspaceconnector.boot.system.runtime.BaseRuntime")
+    mainClass.set("org.eclipse.edc.boot.system.runtime.BaseRuntime")
 }
 
 tasks.withType<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar> {

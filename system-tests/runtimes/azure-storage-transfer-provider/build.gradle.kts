@@ -22,23 +22,23 @@ plugins {
 val rsApi: String by project
 
 dependencies {
-    implementation(project(":common:util"))
+    implementation(project(":core:common:util"))
 
     implementation(project(":core:control-plane:control-plane-core"))
     implementation(project(":core:data-plane:data-plane-core"))
 
     implementation(project(":extensions:control-plane:data-plane-transfer:data-plane-transfer-client"))
-    implementation(project(":extensions:data-plane-selector:selector-client"))
+    implementation(project(":extensions:data-plane-selector:data-plane-selector-client"))
     implementation(project(":core:data-plane-selector:data-plane-selector-core"))
     implementation(project(":extensions:data-plane:data-plane-azure-storage"))
 
     implementation(project(":spi:data-plane:data-plane-spi"))
 
-    implementation(project(":extensions:common:api:observability"))
+    implementation(project(":extensions:common:api:api-observability"))
 
-    implementation(project(":extensions:common:configuration:filesystem-configuration"))
+    implementation(project(":extensions:common:configuration:configuration-filesystem"))
     implementation(project(":extensions:common:iam:iam-mock"))
-    implementation(project(":extensions:control-plane:api:data-management"))
+    implementation(project(":extensions:control-plane:api:data-management-api"))
 
     implementation(project(":data-protocols:ids"))
 
@@ -46,7 +46,7 @@ dependencies {
 }
 
 application {
-    mainClass.set("org.eclipse.dataspaceconnector.boot.system.runtime.BaseRuntime")
+    mainClass.set("org.eclipse.edc.boot.system.runtime.BaseRuntime")
 }
 
 tasks.withType<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar> {

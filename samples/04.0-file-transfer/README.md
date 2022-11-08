@@ -75,8 +75,8 @@ private void registerContractDefinition(String uid) {
 }
 ```
 
-This adds an `Asset` to the `AssetIndex` and the relative `DataAddress` to the `DataAddressResolver` through the
-`AssetLoader`. Or, in other words, your provider now "hosts" one file named `test-document.txt` located in the path
+This adds an `Asset` to the `AssetIndex` and the relative `DataAddress` to the `DataAddressResolver`.
+Or, in other words, your provider now "hosts" one file named `test-document.txt` located in the path
 configured by the setting `edc.samples.04.asset.path` on your development machine. It makes it available for transfer
 under its `id` `"test-document"`. While it makes sense to have some sort of similarity between file name and id, it
 is by no means mandatory.
@@ -87,10 +87,10 @@ valid for all assets with the `id` `test-document`. Thus, it is valid for the cr
 
 Next to offering the file, the provider also needs to be able to transfer the file. Therefore, the `transfer-file`
 module also provides the code for copying the file to a specified location (code omitted here for brevity). It contains
-the [FileTransferDataSource](transfer-file/src/main/java/org/eclipse/dataspaceconnector/extensions/api/FileTransferDataSource.java)
-and the [FileTransferDataSink](transfer-file/src/main/java/org/eclipse/dataspaceconnector/extensions/api/FileTransferDataSink.java)
+the [FileTransferDataSource](transfer-file/src/main/java/org/eclipse/edc/sample/extension/api/FileTransferDataSource.java)
+and the [FileTransferDataSink](transfer-file/src/main/java/org/eclipse/edc/sample/extension/api/FileTransferDataSink.java)
 as well as respective factories for both. The factories are registered with the `PipelineService` in the
-[FileTransferExtension](transfer-file/src/main/java/org/eclipse/dataspaceconnector/extensions/api/FileTransferExtension.java),
+[FileTransferExtension](transfer-file/src/main/java/org/eclipse/edc/sample/extension/api/FileTransferExtension.java),
 thus making them available when a data request is processed.
 
 ## Create the connectors
@@ -100,12 +100,12 @@ build file and a config file. Common dependencies we need to add to the build fi
 
 ```kotlin
 // in consumer/build.gradle.kts and provider/build.gradle.kts:
-implementation(project(":extensions:common:configuration:filesystem-configuration"))
+implementation(project(":extensions:common:configuration:configuration-filesystem"))
 
 implementation(project(":data-protocols:ids"))
 implementation(project(":extensions:common:iam:iam-mock"))
 
-implementation(project(":extensions:control-plane:api:data-management"))
+implementation(project(":extensions:control-plane:api:data-management-api"))
 implementation(project(":extensions:common:auth:auth-tokenbased"))
 ```
 
@@ -284,3 +284,7 @@ DEBUG 2022-05-03T10:38:06.246755642 Process f925131b-d61e-48b9-aa15-0f5e2e749064
 
 After the file transfer is completed, we can check the destination path specified in the request for the file. Here,
 we'll now find a file with the same content as the original file offered by the provider.
+
+---
+
+[Previous Chapter](../03-configuration/README.md) | [Next Chapter](../04.1-file-transfer-listener/README.md)
