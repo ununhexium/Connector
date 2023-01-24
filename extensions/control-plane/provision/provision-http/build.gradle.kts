@@ -17,36 +17,34 @@ plugins {
     id("io.swagger.core.v3.swagger-gradle-plugin")
 }
 
-val awaitility: String by project
-val failsafeVersion: String by project
-val jerseyVersion: String by project
-val okHttpVersion: String by project
-val restAssured: String by project
-val rsApi: String by project
-
-
 dependencies {
     api(project(":spi:control-plane:transfer-spi"))
+    api(project(":spi:control-plane:control-plane-spi"))
+    api(project(":spi:common:http-spi"))
     api(project(":spi:common:web-spi"))
     implementation(project(":extensions:common:api:api-core"))
+    implementation(project(":extensions:common:api:management-api-configuration"))
 
-    implementation("com.squareup.okhttp3:okhttp:${okHttpVersion}")
-    implementation("dev.failsafe:failsafe:${failsafeVersion}")
-    implementation("jakarta.ws.rs:jakarta.ws.rs-api:${rsApi}")
+    implementation(libs.jakarta.rsApi)
 
     testImplementation(project(":core:control-plane:control-plane-core"))
     testImplementation(project(":extensions:common:http"))
     testImplementation(project(":core:common:junit"))
-    testImplementation("io.rest-assured:rest-assured:${restAssured}")
+    testImplementation(libs.restAssured)
 
-    testImplementation("org.awaitility:awaitility:${awaitility}")
+    testImplementation(libs.awaitility)
+}
+
+edcBuild {
+    swagger {
+        apiGroup.set("management-api")
+    }
 }
 
 
 publishing {
     publications {
-        create<MavenPublication>("provision-http") {
-            artifactId = "provision-http"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

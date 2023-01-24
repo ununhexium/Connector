@@ -11,29 +11,22 @@
  *       Mercedes-Benz Tech Innovation GmbH - Initial API and Implementation
  *
  */
-
-val failsafeVersion: String by project
-val okHttpVersion: String by project
-
 plugins {
     `java-library`
 }
 
 dependencies {
     api(project(":spi:common:core-spi"))
+    api(project(":spi:common:http-spi"))
 
     implementation(project(":core:common:util"))
-
-    implementation("com.squareup.okhttp3:okhttp:${okHttpVersion}")
-    api("dev.failsafe:failsafe:${failsafeVersion}")
 
     testImplementation(project(":core:common:junit"))
 }
 
 publishing {
     publications {
-        create<MavenPublication>("vault-hashicorp") {
-            artifactId = "vault-hashicorp"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

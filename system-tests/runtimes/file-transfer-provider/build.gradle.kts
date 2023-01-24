@@ -13,15 +13,11 @@
  *
  */
 
-val openTelemetryVersion: String by project
-
 plugins {
     `java-library`
     id("application")
     id("com.github.johnrengelman.shadow") version "7.1.2"
 }
-
-val rsApi: String by project
 
 dependencies {
     implementation(project(":core:common:util"))
@@ -29,12 +25,13 @@ dependencies {
     implementation(project(":core:control-plane:control-plane-core"))
     implementation(project(":core:data-plane:data-plane-core"))
     implementation(project(":core:data-plane:data-plane-util"))
-    implementation(project(":extensions:control-plane:data-plane-transfer:data-plane-transfer-client"))
+    implementation(project(":extensions:control-plane:transfer:transfer-data-plane"))
+    implementation(project(":extensions:data-plane:data-plane-client"))
     implementation(project(":extensions:data-plane-selector:data-plane-selector-client"))
     implementation(project(":core:data-plane-selector:data-plane-selector-core"))
 
-    implementation("jakarta.ws.rs:jakarta.ws.rs-api:${rsApi}")
-    implementation("io.opentelemetry:opentelemetry-extension-annotations:${openTelemetryVersion}")
+    implementation(libs.jakarta.rsApi)
+    implementation(libs.opentelemetry.annotations)
 
     implementation(project(":extensions:common:api:api-observability"))
 

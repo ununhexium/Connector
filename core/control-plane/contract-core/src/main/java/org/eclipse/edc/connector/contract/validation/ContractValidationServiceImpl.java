@@ -31,6 +31,7 @@ import org.eclipse.edc.spi.result.Result;
 import org.jetbrains.annotations.NotNull;
 
 import java.time.Clock;
+import java.time.temporal.ChronoUnit;
 
 import static java.lang.String.format;
 
@@ -47,7 +48,8 @@ public class ContractValidationServiceImpl implements ContractValidationService 
     private final PolicyEngine policyEngine;
     private final PolicyEquality policyEquality;
 
-    public ContractValidationServiceImpl(ParticipantAgentService agentService, ContractDefinitionService contractDefinitionService,
+    public ContractValidationServiceImpl(ParticipantAgentService agentService,
+                                         ContractDefinitionService contractDefinitionService,
                                          AssetIndex assetIndex, PolicyDefinitionStore policyStore, Clock clock,
                                          PolicyEngine policyEngine, PolicyEquality policyEquality) {
         this.agentService = agentService;
@@ -74,7 +76,8 @@ public class ContractValidationServiceImpl implements ContractValidationService 
         var agent = agentService.createFor(token);
         var contractDefinition = contractDefinitionService.definitionFor(agent, contractId.definitionPart());
         if (contractDefinition == null) {
-            return Result.failure("The ContractDefinition with id %s either does not exist or the access to it is not granted.");
+            return Result.failure(
+                    "The ContractDefinition with id %s either does not exist or the access to it is not granted.");
         }
 
         var targetAsset = assetIndex.findById(offer.getAsset().getId());
@@ -85,6 +88,11 @@ public class ContractValidationServiceImpl implements ContractValidationService 
         var contractPolicyDef = policyStore.findById(contractDefinition.getContractPolicyId());
         if (contractPolicyDef == null) {
             return Result.failure(format("Policy %s not found", contractDefinition.getContractPolicyId()));
+        }
+
+        var offerValidity = ChronoUnit.SECONDS.between(offer.getContractStart(), offer.getContractEnd());
+        if (offerValidity != contractDefinition.getValidity()) {
+            return Result.failure(format("Offer validity %ss does not match contract definition validity %ss", offerValidity, contractDefinition.getValidity()));
         }
 
         if (!policyEquality.test(contractPolicyDef.getPolicy().withTarget(targetAsset.getId()), offer.getPolicy())) {
@@ -99,54 +107,40 @@ public class ContractValidationServiceImpl implements ContractValidationService 
         var validatedOffer = ContractOffer.Builder.newInstance()
                 .id(offer.getId())
                 .asset(targetAsset)
+                .consumer(offer.getConsumer())
+                .provider(offer.getProvider())
                 .policy(contractPolicyDef.getPolicy())
+                .contractStart(offer.getContractStart())
+                .contractEnd(offer.getContractStart().plusSeconds(contractDefinition.getValidity()))
                 .build();
 
         return Result.success(validatedOffer);
     }
 
     @Override
-    public @NotNull Result<ContractOffer> validate(ClaimToken token, ContractOffer offer, ContractOffer latestOffer) {
-        if (isMandatoryAttributeMissing(offer)) {
-            return Result.failure("Mandatory attributes are missing.");
-        }
-
-        var contractId = ContractId.parse(offer.getId());
-        if (!contractId.isValid()) {
-            return Result.failure("Invalid id: " + offer.getId());
-        }
-
-        // TODO implement validation against latest offer within the negotiation
-
-        var agent = agentService.createFor(token);
-        var policyResult = policyEngine.evaluate(NEGOTIATION_SCOPE, offer.getPolicy(), agent);
-        if (policyResult.failed()) {
-            return Result.failure(format("Policy not fulfilled for ContractOffer %s", offer.getId()));
-        }
-
-        return Result.success(null);
-    }
-
-    @Override
-    public boolean validateAgreement(ClaimToken token, ContractAgreement agreement) {
+    public Result<ContractAgreement> validateAgreement(ClaimToken token, ContractAgreement agreement) {
         var contractId = ContractId.parse(agreement.getId());
         if (!contractId.isValid()) {
-            return false;
+            return Result.failure(format("The contract id %s does not follow the expected scheme", agreement.getId()));
         }
 
         if (!isStarted(agreement) || isExpired(agreement)) {
-            return false;
+            return Result.failure("The agreement has not started yet or it has expired");
         }
 
         var agent = agentService.createFor(token);
         var contractDefinition = contractDefinitionService.definitionFor(agent, contractId.definitionPart());
         if (contractDefinition == null) {
-            return false;
+            return Result.failure(format("The ContractDefinition with id %s either does not exist or the access to it is not granted.", agreement.getId()));
         }
-
-        return policyEngine.evaluate(NEGOTIATION_SCOPE, agreement.getPolicy(), agent).succeeded();
+        var policyResult = policyEngine.evaluate(NEGOTIATION_SCOPE, agreement.getPolicy(), agent);
+        if (!policyResult.succeeded()) {
+            return Result.failure(format("Policy does not fulfill the agreement %s, policy evaluation %s", agreement.getId(), policyResult.getFailureDetail()));
+        }
+        return Result.success(agreement);
         // TODO validate counter-party
     }
+
 
     @Override
     public Result<Void> validateConfirmed(ContractAgreement agreement, ContractOffer latestOffer) {
@@ -155,7 +149,7 @@ public class ContractValidationServiceImpl implements ContractValidationService 
             return Result.failure(format("ContractId %s does not follow the expected schema.", agreement.getId()));
         }
 
-        if (!policyEquality.test(agreement.getPolicy(), latestOffer.getPolicy())) {
+        if (!policyEquality.test(agreement.getPolicy().withTarget(latestOffer.getAsset().getId()), latestOffer.getPolicy())) {
             return Result.failure("Policy in the contract agreement is not equal to the one in the contract offer");
         }
 

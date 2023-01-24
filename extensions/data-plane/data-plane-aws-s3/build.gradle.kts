@@ -12,9 +12,6 @@
  *
  */
 
-val okHttpVersion: String by project
-val storageBlobVersion: String by project;
-val failsafeVersion: String by project
 
 plugins {
     `java-library`
@@ -26,7 +23,7 @@ dependencies {
     implementation(project(":core:data-plane:data-plane-util"))
     implementation(project(":extensions:common:aws:aws-s3-core"))
 
-    implementation("dev.failsafe:failsafe:${failsafeVersion}")
+    implementation(libs.failsafe.core)
 
     testImplementation(project(":core:data-plane:data-plane-core"))
     testImplementation(testFixtures(project(":extensions:common:aws:aws-s3-test")))
@@ -35,8 +32,7 @@ dependencies {
 
 publishing {
     publications {
-        create<MavenPublication>("data-plane-aws-s3") {
-            artifactId = "data-plane-aws-s3"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

@@ -16,20 +16,17 @@ plugins {
     `java-library`
 }
 
-val openTelemetryVersion: String by project
-
 dependencies {
     api(project(":spi:data-plane:data-plane-spi"))
 
     implementation(project(":core:common:util"))
 
-    implementation("io.opentelemetry:opentelemetry-extension-annotations:${openTelemetryVersion}")
+    implementation(libs.opentelemetry.annotations)
 }
 
 publishing {
     publications {
-        create<MavenPublication>("data-plane-util") {
-            artifactId = "data-plane-util"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

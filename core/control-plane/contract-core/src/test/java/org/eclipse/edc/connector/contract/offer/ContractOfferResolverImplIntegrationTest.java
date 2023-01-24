@@ -29,6 +29,7 @@ import org.eclipse.edc.spi.asset.AssetIndex;
 import org.eclipse.edc.spi.asset.AssetSelectorExpression;
 import org.eclipse.edc.spi.iam.ClaimToken;
 import org.eclipse.edc.spi.message.Range;
+import org.eclipse.edc.spi.monitor.Monitor;
 import org.eclipse.edc.spi.query.Criterion;
 import org.eclipse.edc.spi.types.domain.DataAddress;
 import org.eclipse.edc.spi.types.domain.asset.Asset;
@@ -36,11 +37,14 @@ import org.eclipse.edc.spi.types.domain.asset.AssetEntry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static java.time.ZoneOffset.UTC;
 import static java.util.Collections.emptyMap;
 import static java.util.stream.IntStream.range;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -58,16 +62,19 @@ import static org.mockito.Mockito.when;
  */
 class ContractOfferResolverImplIntegrationTest {
 
+    private final Instant now = Instant.now();
+    private final Clock clock = Clock.fixed(now, UTC);
     private final ContractDefinitionService contractDefinitionService = mock(ContractDefinitionService.class);
     private final ParticipantAgentService agentService = mock(ParticipantAgentService.class);
     private final PolicyDefinitionStore policyStore = mock(PolicyDefinitionStore.class);
+    private final Monitor monitor = mock(Monitor.class);
     private AssetIndex assetIndex;
     private ContractOfferResolver contractOfferResolver;
 
     @BeforeEach
     void setUp() {
         assetIndex = new InMemoryAssetIndex();
-        contractOfferResolver = new ContractOfferResolverImpl(agentService, contractDefinitionService, assetIndex, policyStore);
+        contractOfferResolver = new ContractOfferResolverImpl(agentService, contractDefinitionService, assetIndex, policyStore, clock, monitor);
     }
 
     @Test
@@ -154,7 +161,7 @@ class ContractOfferResolverImplIntegrationTest {
 
     private AssetSelectorExpression selectorFrom(Collection<Asset> assets1) {
         var builder = AssetSelectorExpression.Builder.newInstance();
-        var ids = assets1.stream().map(a -> a.getId()).collect(Collectors.toList());
+        var ids = assets1.stream().map(Asset::getId).collect(Collectors.toList());
         return builder.criteria(List.of(new Criterion(Asset.PROPERTY_ID, "in", ids))).build();
     }
 
@@ -163,7 +170,8 @@ class ContractOfferResolverImplIntegrationTest {
                 .id(id)
                 .accessPolicyId("access")
                 .contractPolicyId("contract")
-                .selectorExpression(AssetSelectorExpression.SELECT_ALL);
+                .selectorExpression(AssetSelectorExpression.SELECT_ALL)
+                .validity(100);
     }
 
     private Asset.Builder createAsset(String id) {

@@ -16,13 +16,10 @@ plugins {
     `java-library`
 }
 
-val jettyVersion: String by project
-val micrometerVersion: String by project
-
 dependencies {
-    implementation("org.eclipse.jetty.websocket:websocket-jakarta-server:${jettyVersion}")
+    implementation(libs.jetty.websocket)
     implementation(project(":extensions:common:http:jetty-core"))
-    api("io.micrometer:micrometer-core:${micrometerVersion}")
+    api(libs.micrometer)
 
     api(project(":spi:common:core-spi"))
 
@@ -30,8 +27,7 @@ dependencies {
 
 publishing {
     publications {
-        create<MavenPublication>("jetty-micrometer") {
-            artifactId = "jetty-micrometer"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

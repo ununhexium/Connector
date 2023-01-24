@@ -28,11 +28,14 @@ import org.eclipse.edc.connector.policy.spi.store.PolicyDefinitionStore;
 import org.eclipse.edc.policy.model.Policy;
 import org.eclipse.edc.spi.agent.ParticipantAgentService;
 import org.eclipse.edc.spi.asset.AssetIndex;
+import org.eclipse.edc.spi.monitor.Monitor;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.eclipse.edc.spi.types.domain.asset.Asset;
 import org.jetbrains.annotations.NotNull;
 
-import java.net.URI;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -49,12 +52,16 @@ public class ContractOfferResolverImpl implements ContractOfferResolver {
     private final ContractDefinitionService definitionService;
     private final AssetIndex assetIndex;
     private final PolicyDefinitionStore policyStore;
+    private final Clock clock;
+    private final Monitor monitor;
 
-    public ContractOfferResolverImpl(ParticipantAgentService agentService, ContractDefinitionService definitionService, AssetIndex assetIndex, PolicyDefinitionStore policyStore) {
+    public ContractOfferResolverImpl(ParticipantAgentService agentService, ContractDefinitionService definitionService, AssetIndex assetIndex, PolicyDefinitionStore policyStore, Clock clock, Monitor monitor) {
         this.agentService = agentService;
         this.definitionService = definitionService;
         this.assetIndex = assetIndex;
         this.policyStore = policyStore;
+        this.clock = clock;
+        this.monitor = monitor;
     }
 
     @Override
@@ -90,7 +97,11 @@ public class ContractOfferResolverImpl implements ContractOfferResolver {
                     if (skip.get() >= numAssets) {
                         offers = Stream.empty();
                     } else {
-                        offers = createContractOffers(definition, querySpecBuilder.build());
+                        offers = createContractOffers(definition, querySpecBuilder.build())
+                                .map(offerBuilder -> offerBuilder
+                                        .provider(query.getProvider())
+                                        .consumer(query.getConsumer())
+                                        .build());
                     }
 
                     numSeenAssets.addAndGet(numAssets);
@@ -100,7 +111,7 @@ public class ContractOfferResolverImpl implements ContractOfferResolver {
     }
 
     @NotNull
-    private Stream<@NotNull ContractOffer> createContractOffers(ContractDefinition definition, QuerySpec assetQuerySpec) {
+    private Stream<ContractOffer.Builder> createContractOffers(ContractDefinition definition, QuerySpec assetQuerySpec) {
         return Optional.of(definition.getContractPolicyId())
                 .map(policyStore::findById)
                 .map(policyDefinition -> assetIndex.queryAssets(assetQuerySpec)
@@ -109,14 +120,29 @@ public class ContractOfferResolverImpl implements ContractOfferResolver {
     }
 
     @NotNull
-    private ContractOffer createContractOffer(ContractDefinition definition, Policy policy, Asset asset) {
+    private ContractOffer.Builder createContractOffer(ContractDefinition definition, Policy policy, Asset asset) {
+
+        var contractEndTime = calculateContractEnd(definition);
+
         return ContractOffer.Builder.newInstance()
                 .id(ContractId.createContractId(definition.getId()))
                 .policy(policy.withTarget(asset.getId()))
                 .asset(asset)
-                // TODO: this is a workaround for the bug described in https://github.com/eclipse-dataspaceconnector/DataSpaceConnector/issues/753
-                .provider(URI.create("urn:connector:provider"))
-                .consumer(URI.create("urn:connector:consumer"))
-                .build();
+                .contractStart(ZonedDateTime.now())
+                .contractEnd(contractEndTime);
     }
+
+    @NotNull
+    private ZonedDateTime calculateContractEnd(ContractDefinition definition) {
+
+        var contractEndTime = Instant.ofEpochMilli(Long.MAX_VALUE).atZone(clock.getZone());
+        try {
+            contractEndTime = ZonedDateTime.ofInstant(clock.instant().plusSeconds(definition.getValidity()), clock.getZone());
+        } catch (ArithmeticException exception) {
+            monitor.warning("The added ContractEnd value is bigger than the maximum number allowed by a long value. " +
+                    "Changing contractEndTime to Maximum value possible in the ContractOffer");
+        }
+        return contractEndTime;
+    }
+
 }

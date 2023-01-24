@@ -18,7 +18,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import java.util.List;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
+import java.util.function.Function;
 
 /**
  * Base result type used by services to indicate success or failure.
@@ -68,7 +68,7 @@ public abstract class AbstractResult<T, F extends Failure> {
      */
     @JsonIgnore // will cause problems during JSON serialization if failure is null TODO: is this comment still valid?
     public String getFailureDetail() {
-        return failure == null ? null : String.join(", ", getFailureMessages());
+        return failure == null ? null : failure.getFailureDetail();
     }
 
     /**
@@ -99,17 +99,31 @@ public abstract class AbstractResult<T, F extends Failure> {
     }
 
     /**
-     * Throws an exception supplied by the {@link Supplier} if this {@link Result} is not successful.
+     * Execute an action if this {@link Result} is not successful.
      *
-     * @param exceptionSupplier provides an instance of the exception to throw
+     * @param failureAction The function that maps a {@link Failure} into the content.
+     * @return T the success value if successful, otherwise the object returned by the failureAction
      */
-    public <X extends Throwable> AbstractResult<T, F> orElseThrow(Supplier<? extends X> exceptionSupplier) throws X {
+    public T orElse(Function<F, T> failureAction) {
         if (failed()) {
-            throw exceptionSupplier.get();
+            return failureAction.apply(getFailure());
         } else {
-            return this;
+            return getContent();
         }
     }
 
+    /**
+     * Throws an exception returned by the mapper {@link Function} if this {@link Result} is not successful.
+     *
+     * @param exceptionMapper The function that maps a {@link Failure} into an exception.
+     * @return T the success value
+     */
+    public <X extends Throwable> T orElseThrow(Function<F, X> exceptionMapper) throws X {
+        if (failed()) {
+            throw exceptionMapper.apply(getFailure());
+        } else {
+            return getContent();
+        }
+    }
 
 }

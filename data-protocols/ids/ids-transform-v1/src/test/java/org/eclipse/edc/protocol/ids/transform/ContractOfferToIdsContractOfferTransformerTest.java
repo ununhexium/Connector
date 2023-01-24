@@ -24,11 +24,11 @@ import org.eclipse.edc.protocol.ids.transform.type.contract.ContractOfferToIdsCo
 import org.eclipse.edc.spi.types.domain.asset.Asset;
 import org.eclipse.edc.transform.spi.TransformerContext;
 import org.jetbrains.annotations.NotNull;
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
+import java.time.ZonedDateTime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -38,7 +38,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-public class ContractOfferToIdsContractOfferTransformerTest {
+class ContractOfferToIdsContractOfferTransformerTest {
     private static final String CONTRACT_OFFER_ID = "456uz984390236s";
     private static final URI OFFER_ID = URI.create("urn:contractoffer:" + CONTRACT_OFFER_ID);
     private static final URI PROVIDER_URI = URI.create("https://provider.com/");
@@ -51,27 +51,6 @@ public class ContractOfferToIdsContractOfferTransformerTest {
     void setUp() {
         transformer = new ContractOfferToIdsContractOfferTransformer();
         context = mock(TransformerContext.class);
-    }
-
-    @Test
-    void testThrowsNullPointerExceptionForAll() {
-        Assertions.assertThrows(NullPointerException.class, () -> {
-            transformer.transform(null, null);
-        });
-    }
-
-    @Test
-    void testThrowsNullPointerExceptionForContext() {
-        Assertions.assertThrows(NullPointerException.class, () -> {
-            transformer.transform(contractOffer(Policy.Builder.newInstance().build()), null);
-        });
-    }
-
-    @Test
-    void testReturnsNull() {
-        var result = transformer.transform(null, context);
-
-        Assertions.assertNull(result);
     }
 
     @Test
@@ -118,6 +97,8 @@ public class ContractOfferToIdsContractOfferTransformerTest {
                 .policy(policy)
                 .asset(Asset.Builder.newInstance().id("test-asset").build())
                 .provider(PROVIDER_URI)
+                .contractStart(ZonedDateTime.now())
+                .contractEnd(ZonedDateTime.now().plusMonths(1))
                 .build();
     }
 }

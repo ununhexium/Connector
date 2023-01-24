@@ -17,18 +17,13 @@ plugins {
     `maven-publish`
 }
 
-val jupiterVersion: String by project
-val mockitoVersion: String by project
-val okHttpVersion: String by project
-
 dependencies {
-    testImplementation("org.junit-pioneer:junit-pioneer:1.7.1")
+    testImplementation("org.junit-pioneer:junit-pioneer:1.9.1")
 }
 
 publishing {
     publications {
-        create<MavenPublication>("util") {
-            artifactId = "util"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

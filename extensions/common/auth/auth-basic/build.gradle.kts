@@ -12,10 +12,6 @@
  *
  */
 
-val infoModelVersion: String by project
-val rsApi: String by project
-val jerseyVersion: String by project
-val restAssured: String by project
 
 plugins {
     `java-library`
@@ -24,13 +20,12 @@ plugins {
 dependencies {
     api(project(":spi:common:auth-spi"))
     api(project(":spi:common:core-spi"))
-    implementation("jakarta.ws.rs:jakarta.ws.rs-api:${rsApi}")
+    implementation(libs.jakarta.rsApi)
 }
 
 publishing {
     publications {
-        create<MavenPublication>("auth-basic") {
-            artifactId = "auth-basic"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

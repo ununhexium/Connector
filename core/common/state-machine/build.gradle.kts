@@ -12,8 +12,6 @@
  *
  */
 
-val awaitility: String by project
-
 plugins {
     `java-library`
     `java-test-fixtures`
@@ -22,14 +20,13 @@ plugins {
 
 dependencies {
     api(project(":spi:common:core-spi"))
-    testImplementation("org.awaitility:awaitility:${awaitility}")
+    testImplementation(libs.awaitility)
 
 }
 
 publishing {
     publications {
-        create<MavenPublication>("state-machine") {
-            artifactId = "state-machine"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

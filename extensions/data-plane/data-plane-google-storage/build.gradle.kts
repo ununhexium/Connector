@@ -11,9 +11,7 @@
  *       T-Systems International GmbH
  *
  */
-
-val googleCloudStorageVersion: String by project
-
+ 
 plugins {
     `java-library`
 }
@@ -24,7 +22,7 @@ dependencies {
     implementation(project(":extensions:common:gcp:gcp-core"))
     implementation(project(":core:data-plane:data-plane-util"))
 
-    implementation("com.google.cloud:google-cloud-storage:${googleCloudStorageVersion}")
+    implementation(libs.googlecloud.storage)
 
     testImplementation(project(":core:data-plane:data-plane-core"))
     testImplementation(project(":core:common:junit"))
@@ -32,8 +30,7 @@ dependencies {
 
 publishing {
     publications {
-        create<MavenPublication>("data-plane-google-storage") {
-            artifactId = "data-plane-google-storage"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

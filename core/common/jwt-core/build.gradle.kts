@@ -17,18 +17,15 @@ plugins {
     `maven-publish`
 }
 
-val nimbusVersion: String by project
-
 dependencies {
     api(project(":spi:common:jwt-spi"))
 
-    implementation("com.nimbusds:nimbus-jose-jwt:${nimbusVersion}")
+    implementation(libs.nimbus.jwt)
 }
 
 publishing {
     publications {
-        create<MavenPublication>("jwt-core") {
-            artifactId = "jwt-core"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

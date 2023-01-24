@@ -11,10 +11,6 @@
  *       Microsoft Corporation - initial API and implementation
  *
  */
-
-val infoModelVersion: String by project
-val rsApi: String by project
-
 plugins {
     `java-library`
 }
@@ -26,17 +22,16 @@ dependencies {
     implementation(project(":core:common:util"))
     api(project(":data-protocols:ids:ids-core"))
 
-    api("de.fraunhofer.iais.eis.ids.infomodel:java:${infoModelVersion}")
+    api(libs.fraunhofer.infomodel)
 
-    implementation("jakarta.ws.rs:jakarta.ws.rs-api:${rsApi}")
+    implementation(libs.jakarta.rsApi)
     testImplementation(project(":core:common:junit"))
 
 }
 
 publishing {
     publications {
-        create<MavenPublication>("ids-transform-v1") {
-            artifactId = "ids-transform-v1"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

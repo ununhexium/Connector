@@ -16,26 +16,21 @@ plugins {
     `java-library`
 }
 
-val cosmosSdkVersion: String by project
-val failsafeVersion: String by project
-
 dependencies {
     api(project(":spi:control-plane:contract-spi"))
     api(project(":core:common:util"))
     api(project(":extensions:common:azure:azure-cosmos-core"))
 
-    implementation("com.azure:azure-cosmos:${cosmosSdkVersion}")
-    implementation("dev.failsafe:failsafe:${failsafeVersion}")
+    implementation(libs.azure.cosmos)
+    implementation(libs.failsafe.core)
 
     testImplementation(testFixtures(project(":spi:control-plane:contract-spi")))
     testImplementation(testFixtures(project(":extensions:common:azure:azure-test")))
 }
 
-
 publishing {
     publications {
-        create<MavenPublication>("contract-definition-store-cosmos") {
-            artifactId = "contract-definition-store-cosmos"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

@@ -16,14 +16,14 @@ package org.eclipse.edc.connector.dataplane.selector.spi.testfixtures.store;
 
 import org.assertj.core.api.Assertions;
 import org.eclipse.edc.connector.dataplane.selector.spi.instance.DataPlaneInstance;
-import org.eclipse.edc.connector.dataplane.selector.spi.instance.DataPlaneInstanceImpl;
 import org.eclipse.edc.connector.dataplane.selector.spi.store.DataPlaneInstanceStore;
-import org.eclipse.edc.connector.dataplane.selector.spi.testfixtures.TestDataPlaneInstance;
 import org.eclipse.edc.connector.dataplane.selector.spi.testfixtures.TestFunctions;
 import org.junit.jupiter.api.Test;
 
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 
 public abstract class DataPlaneInstanceStoreTestBase {
@@ -41,7 +41,7 @@ public abstract class DataPlaneInstanceStoreTestBase {
         var inst = TestFunctions.createInstance("test-id");
         getStore().save(inst);
 
-        var inst2 = DataPlaneInstanceImpl.Builder.newInstance()
+        var inst2 = DataPlaneInstance.Builder.newInstance()
                 .id("test-id")
                 .url("http://somewhere.other:9876/api/v2") //different URL
                 .build();
@@ -70,7 +70,7 @@ public abstract class DataPlaneInstanceStoreTestBase {
 
 
         Assertions.assertThat(customInstance)
-                .isInstanceOf(TestDataPlaneInstance.class)
+                .isInstanceOf(DataPlaneInstance.class)
                 .usingRecursiveComparison()
                 .isEqualTo(custom);
     }
@@ -86,6 +86,21 @@ public abstract class DataPlaneInstanceStoreTestBase {
     @Test
     void findById_notExists() {
         Assertions.assertThat(getStore().findById("not-exist")).isNull();
+    }
+
+    @Test
+    void getAll() {
+        var doc1 = TestFunctions.createCustomInstance("test-id", "name");
+        var doc2 = TestFunctions.createCustomInstance("test-id-2", "name");
+
+        var store = getStore();
+
+        store.save(doc1);
+        store.save(doc2);
+
+        var foundItems = store.getAll();
+
+        assertThat(foundItems).isNotNull().hasSize(2);
     }
 
 

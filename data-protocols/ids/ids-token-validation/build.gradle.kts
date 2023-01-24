@@ -12,8 +12,6 @@
  *
  */
 
-val infoModelVersion: String by project
-
 plugins {
     `java-library`
 }
@@ -25,13 +23,12 @@ dependencies {
     api(project(":spi:common:oauth2-spi"))
     api(project(":spi:common:jwt-spi"))
 
-    api("de.fraunhofer.iais.eis.ids.infomodel:java:${infoModelVersion}")
+    api(libs.fraunhofer.infomodel)
 }
 
 publishing {
     publications {
-        create<MavenPublication>("ids-token-validation") {
-            artifactId = "ids-token-validation"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

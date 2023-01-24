@@ -17,13 +17,10 @@ plugins {
     `maven-publish`
 }
 
-val okHttpVersion: String by project
-val micrometerVersion: String by project
-
 dependencies {
     api(project(":spi:common:core-spi"))
-    api("com.squareup.okhttp3:okhttp:${okHttpVersion}")
-    api("io.micrometer:micrometer-core:${micrometerVersion}")
+    api(libs.micrometer)
+    api(libs.okhttp)
 
     testImplementation(project(":extensions:common:api:api-observability"))
     testImplementation(testFixtures(project(":extensions:common:azure:azure-test")))
@@ -40,14 +37,13 @@ tasks.withType<Test> {
             "-javaagent:${agent.absolutePath}",
             // Exposes metrics at http://localhost:9464/metrics
             "-Dotel.metrics.exporter=prometheus"
-        );
+        )
     }
 }
 
 publishing {
     publications {
-        create<MavenPublication>("micrometer-core") {
-            artifactId = "micrometer-core"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

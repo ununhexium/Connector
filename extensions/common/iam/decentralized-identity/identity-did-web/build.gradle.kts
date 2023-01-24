@@ -3,20 +3,17 @@ plugins {
     `java-test-fixtures`
 }
 
-val okHttpVersion: String by project
-
 dependencies {
     api(project(":spi:common:identity-did-spi"))
+    api(project(":spi:common:http-spi"))
     api(project(":core:common:util"))
 
-    implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:${okHttpVersion}")
     testImplementation(project(":core:common:junit"))
 }
 
 publishing {
     publications {
-        create<MavenPublication>("identity-did-web") {
-            artifactId = "identity-did-web"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

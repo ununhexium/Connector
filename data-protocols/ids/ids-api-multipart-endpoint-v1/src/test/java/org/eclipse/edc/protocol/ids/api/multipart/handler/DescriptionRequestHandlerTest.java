@@ -52,6 +52,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -80,7 +81,6 @@ class DescriptionRequestHandlerTest {
     private static final String LIMIT = "limit";
     private final int rangeFrom = 0;
     private final int rangeTo = 10;
-    private IdsId connectorId;
     private DescriptionRequestHandler handler;
 
     private IdsTransformerRegistry transformerRegistry;
@@ -91,7 +91,7 @@ class DescriptionRequestHandlerTest {
 
     @BeforeEach
     void init() {
-        connectorId = IdsId.from("urn:connector:edc").getContent();
+        var connectorId = IdsId.from("urn:connector:edc").getContent();
 
         transformerRegistry = mock(IdsTransformerRegistry.class);
         assetIndex = mock(AssetIndex.class);
@@ -132,7 +132,7 @@ class DescriptionRequestHandlerTest {
                 .claimToken(ClaimToken.Builder.newInstance().build())
                 .build();
 
-        when(connectorService.getConnector(any(), any())).thenReturn(connector);
+        when(connectorService.getConnector(any())).thenReturn(connector);
         when(transformerRegistry.transform(connector, de.fraunhofer.iais.eis.Connector.class)).thenReturn(Result.success(idsConnector));
 
         var response = handler.handleRequest(request);
@@ -141,7 +141,10 @@ class DescriptionRequestHandlerTest {
         assertThat(response.getPayload()).isNotNull().isEqualTo(idsConnector);
 
         verify(connectorService, times(1))
-                .getConnector(any(), argThat(query -> query.getRange().getFrom() == rangeFrom && query.getRange().getTo() == rangeTo));
+                .getConnector(argThat(descriptionRequest -> {
+                    var querySpec = descriptionRequest.getQuerySpec();
+                    return querySpec.getRange().getFrom() == rangeFrom && querySpec.getRange().getTo() == rangeTo;
+                }));
         verifyNoMoreInteractions(connectorService);
         verifyNoInteractions(catalogService, contractOfferResolver, assetIndex);
     }
@@ -155,7 +158,7 @@ class DescriptionRequestHandlerTest {
                 .claimToken(ClaimToken.Builder.newInstance().build())
                 .build();
 
-        when(catalogService.getDataCatalog(any(), any())).thenReturn(catalog);
+        when(catalogService.getDataCatalog(any())).thenReturn(catalog);
         when(transformerRegistry.transform(catalog, ResourceCatalog.class)).thenReturn(Result.success(idsCatalog));
 
         var response = handler.handleRequest(request);
@@ -164,11 +167,13 @@ class DescriptionRequestHandlerTest {
         assertThat(response.getPayload()).isNotNull().isEqualTo(idsCatalog);
 
         verify(catalogService, times(1))
-                .getDataCatalog(any(),
-                        argThat(query -> query.getRange().getFrom() == rangeFrom && query.getRange().getTo() == rangeTo &&
-                                query.getFilterExpression().get(0).getOperandLeft().equals(PROPERTY) &&
-                                query.getFilterExpression().get(0).getOperandRight().equals(VALUE) &&
-                                query.getFilterExpression().get(0).getOperator().equals(EQUALS_SIGN)));
+                .getDataCatalog(argThat(descriptionRequest -> {
+                    var query = descriptionRequest.getQuerySpec();
+                    return query.getRange().getFrom() == rangeFrom && query.getRange().getTo() == rangeTo &&
+                            query.getFilterExpression().get(0).getOperandLeft().equals(PROPERTY) &&
+                            query.getFilterExpression().get(0).getOperandRight().equals(VALUE) &&
+                            query.getFilterExpression().get(0).getOperator().equals(EQUALS_SIGN);
+                }));
         verifyNoMoreInteractions(catalogService);
         verifyNoInteractions(connectorService, contractOfferResolver, assetIndex);
     }
@@ -183,6 +188,8 @@ class DescriptionRequestHandlerTest {
                 .id("id")
                 .policy(Policy.Builder.newInstance().build())
                 .asset(Asset.Builder.newInstance().id("test-asset").build())
+                .contractStart(ZonedDateTime.now())
+                .contractEnd(ZonedDateTime.now().plusMonths(1))
                 .build();
         var request = MultipartRequest.Builder.newInstance()
                 .header(descriptionRequestMessage(URI.create("urn:resource:" + assetId)))
@@ -198,9 +205,9 @@ class DescriptionRequestHandlerTest {
         assertThat(response.getHeader()).isNotNull().isInstanceOf(DescriptionResponseMessage.class);
         assertThat(response.getPayload()).isNotNull().isEqualTo(idsResource);
 
-        verify(assetIndex, times(1)).findById(assetId);
+        verify(assetIndex).findById(assetId);
         verifyNoMoreInteractions(assetIndex);
-        verify(contractOfferResolver, times(1)).queryContractOffers(any());
+        verify(contractOfferResolver).queryContractOffers(any());
         verifyNoMoreInteractions(contractOfferResolver);
         verifyNoMoreInteractions(connectorService, catalogService);
     }
@@ -229,7 +236,7 @@ class DescriptionRequestHandlerTest {
         assertThat(response.getHeader()).isNotNull().isInstanceOf(DescriptionResponseMessage.class);
         assertThat(response.getPayload()).isNotNull().isEqualTo(idsRepresentation);
 
-        verify(assetIndex, times(1)).findById(assetId);
+        verify(assetIndex).findById(assetId);
         verifyNoMoreInteractions(assetIndex);
         verifyNoInteractions(connectorService, catalogService, contractOfferResolver);
     }
@@ -258,7 +265,7 @@ class DescriptionRequestHandlerTest {
         assertThat(response.getHeader()).isNotNull().isInstanceOf(DescriptionResponseMessage.class);
         assertThat(response.getPayload()).isNotNull().isEqualTo(idsArtifact);
 
-        verify(assetIndex, times(1)).findById(assetId);
+        verify(assetIndex).findById(assetId);
         verifyNoMoreInteractions(assetIndex);
         verifyNoInteractions(connectorService, catalogService, contractOfferResolver);
     }

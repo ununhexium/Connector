@@ -12,8 +12,6 @@
  *
  */
 
-val mockitoVersion: String by project
-
 plugins {
     `java-library`
 }
@@ -30,8 +28,7 @@ dependencies {
 
 publishing {
     publications {
-        create<MavenPublication>("data-plane-selector-core") {
-            artifactId = "data-plane-selector-core"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

@@ -64,7 +64,7 @@ import static org.eclipse.edc.test.system.utils.GatlingUtils.runGatling;
 import static org.eclipse.edc.test.system.utils.TransferSimulationUtils.PROVIDER_ASSET_FILE;
 
 @AzureDataFactoryIntegrationTest
-public class AzureDataFactoryTransferIntegrationTest {
+class AzureDataFactoryTransferIntegrationTest {
 
     private static final List<Runnable> CONTAINER_CLEANUP = new ArrayList<>();
     private static final String EDC_FS_CONFIG = "edc.fs.config";
@@ -88,8 +88,8 @@ public class AzureDataFactoryTransferIntegrationTest {
             Map.ofEntries(
                     Map.entry("web.http.port", valueOf(CONSUMER_CONNECTOR_PORT)),
                     Map.entry("web.http.path", CONSUMER_CONNECTOR_PATH),
-                    Map.entry("web.http.data.port", valueOf(CONSUMER_MANAGEMENT_PORT)),
-                    Map.entry("web.http.data.path", CONSUMER_MANAGEMENT_PATH),
+                    Map.entry("web.http.management.port", valueOf(CONSUMER_MANAGEMENT_PORT)),
+                    Map.entry("web.http.management.path", CONSUMER_MANAGEMENT_PATH),
                     Map.entry("web.http.ids.port", valueOf(CONSUMER_IDS_API_PORT)),
                     Map.entry("web.http.ids.path", IDS_PATH),
                     Map.entry("ids.webhook.address", CONSUMER_IDS_API),
@@ -108,8 +108,8 @@ public class AzureDataFactoryTransferIntegrationTest {
             Map.ofEntries(
                     Map.entry("web.http.port", valueOf(PROVIDER_CONNECTOR_PORT)),
                     Map.entry("web.http.path", PROVIDER_CONNECTOR_PATH),
-                    Map.entry("web.http.data.port", valueOf(PROVIDER_MANAGEMENT_PORT)),
-                    Map.entry("web.http.data.path", PROVIDER_MANAGEMENT_PATH),
+                    Map.entry("web.http.management.port", valueOf(PROVIDER_MANAGEMENT_PORT)),
+                    Map.entry("web.http.management.path", PROVIDER_MANAGEMENT_PATH),
                     Map.entry("web.http.ids.port", valueOf(PROVIDER_IDS_API_PORT)),
                     Map.entry("web.http.ids.path", IDS_PATH),
                     Map.entry("ids.webhook.address", PROVIDER_IDS_API),
@@ -152,7 +152,7 @@ public class AzureDataFactoryTransferIntegrationTest {
     }
 
     @Test
-    public void transferBlob_success() {
+    void transferBlob_success() {
         // Arrange
         var vault = AzureVault.authenticateWithSecret(new ConsoleMonitor(), AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_CLIENT_SECRET, KEY_VAULT_NAME);
         var account2Key = Objects.requireNonNull(vault.resolveSecret(format("%s-key1", CONSUMER_STORAGE_ACCOUNT_NAME)));

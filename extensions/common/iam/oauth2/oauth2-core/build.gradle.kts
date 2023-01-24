@@ -16,27 +16,23 @@ plugins {
     `java-library`
 }
 
-val httpMockServer: String by project
-val nimbusVersion: String by project
-val okHttpVersion: String by project
-
 dependencies {
+    api(project(":spi:common:http-spi"))
     api(project(":spi:common:oauth2-spi"))
+    implementation(project(":extensions:common:iam:oauth2:oauth2-client"))
     implementation(project(":core:common:jwt-core"))
 
-    implementation("com.nimbusds:nimbus-jose-jwt:${nimbusVersion}")
-    implementation("com.squareup.okhttp3:okhttp:${okHttpVersion}")
+    implementation(libs.nimbus.jwt)
 
     testImplementation(project(":core:common:junit"))
 
-    testImplementation("org.mock-server:mockserver-netty:${httpMockServer}:shaded")
-    testImplementation("org.mock-server:mockserver-client-java:${httpMockServer}:shaded")
+    testImplementation(libs.mockserver.netty)
+    testImplementation(libs.mockserver.client)
 }
 
 publishing {
     publications {
-        create<MavenPublication>("oauth2-core") {
-            artifactId = "oauth2-core"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

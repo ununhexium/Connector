@@ -27,10 +27,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
+import java.time.ZonedDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.Mockito.mock;
@@ -53,33 +53,12 @@ class CatalogToIdsResourceCatalogTransformerTest {
     }
 
     @Test
-    void testThrowsNullPointerExceptionForAll() {
-        assertThrows(NullPointerException.class, () -> {
-            transformer.transform(null, null);
-        });
-    }
-
-    @Test
-    void testThrowsNullPointerExceptionForContext() {
-        assertThrows(NullPointerException.class, () -> {
-            transformer.transform(Catalog.Builder.newInstance().build(), null);
-        });
-    }
-
-    @Test
-    void testReturnsNull() {
-        var result = transformer.transform(null, context);
-
-        assertThat(result).isNull();
-    }
-
-    @Test
     void testSuccessfulSimple() {
         var a1 = Asset.Builder.newInstance().id("a1").build();
         var a2 = Asset.Builder.newInstance().id("a2").build();
-        ContractOffer o1 = ContractOffer.Builder.newInstance().id("o1").asset(a1).policy(Policy.Builder.newInstance().build()).build();
-        ContractOffer o2 = ContractOffer.Builder.newInstance().id("o2").asset(a2).policy(Policy.Builder.newInstance().build()).build();
-        Resource resource = new ResourceBuilder().build();
+        var o1 = createContractOffer("o1", a1);
+        var o2 = createContractOffer("o2", a2);
+        var resource = new ResourceBuilder().build();
         var catalog = Catalog.Builder.newInstance()
                 .id(CATALOG_ID)
                 .contractOffers(List.of(o1, o2))
@@ -94,4 +73,13 @@ class CatalogToIdsResourceCatalogTransformerTest {
         verify(context, times(2)).transform(isA(OfferedAsset.class), eq(Resource.class));
     }
 
+    private static ContractOffer createContractOffer(String id, Asset asset) {
+        return ContractOffer.Builder.newInstance()
+                .id(id)
+                .asset(asset)
+                .policy(Policy.Builder.newInstance().build())
+                .contractStart(ZonedDateTime.now())
+                .contractEnd(ZonedDateTime.now())
+                .build();
+    }
 }

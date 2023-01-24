@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2020-2022 Microsoft Corporation
+ *  Copyright (c) 2022 Microsoft Corporation
  *
  *  This program and the accompanying materials are made available under the
  *  terms of the Apache License, Version 2.0 which is available at
@@ -14,9 +14,10 @@
 
 package org.eclipse.edc.connector.api;
 
+import org.eclipse.edc.connector.api.control.configuration.ControlApiConfiguration;
 import org.eclipse.edc.connector.api.transferprocess.TransferProcessControlApiController;
 import org.eclipse.edc.connector.api.transferprocess.model.TransferProcessFailStateDto;
-import org.eclipse.edc.connector.transfer.spi.TransferProcessManager;
+import org.eclipse.edc.connector.spi.transferprocess.TransferProcessService;
 import org.eclipse.edc.connector.transfer.spi.callback.ControlPlaneApiUrl;
 import org.eclipse.edc.runtime.metamodel.annotation.Extension;
 import org.eclipse.edc.runtime.metamodel.annotation.Inject;
@@ -27,6 +28,9 @@ import org.eclipse.edc.spi.system.ServiceExtension;
 import org.eclipse.edc.spi.system.ServiceExtensionContext;
 import org.eclipse.edc.web.spi.WebServer;
 import org.eclipse.edc.web.spi.WebService;
+import org.eclipse.edc.web.spi.configuration.WebServiceConfiguration;
+import org.eclipse.edc.web.spi.configuration.WebServiceConfigurer;
+import org.eclipse.edc.web.spi.configuration.WebServiceSettings;
 import org.jetbrains.annotations.NotNull;
 
 import java.net.MalformedURLException;
@@ -42,23 +46,45 @@ public class ControlPlaneApiExtension implements ServiceExtension {
 
     public static final String NAME = "Control Plane API";
 
-    public static final String CONTROL_PLANE_API_CONFIG = "web.http.controlplane";
-    public static final String CONTROL_PLANE_CONTEXT_ALIAS = "controlplane";
+    private static final String DEPRECATED_CONTROLPANE_CONFIG_GROUP = "web.http.controlplane";
+    private static final String CONTROL_PLANE_CONTEXT_ALIAS = "controlplane";
+    private static final int DEFAULT_CONTROL_PLANE_API_PORT = 8384;
+    private static final String DEFAULT_CONTROL_PLANE_API_CONTEXT_PATH = "/api/v1/controlplane";
 
-    public static final int DEFAULT_CONTROL_PLANE_API_PORT = 8384;
-    public static final String DEFAULT_CONTROL_PLANE_API_CONTEXT_PATH = "/api/v1/controlplane";
-
-    private int port = DEFAULT_CONTROL_PLANE_API_PORT;
-    private String path = DEFAULT_CONTROL_PLANE_API_CONTEXT_PATH;
+    /**
+     * This deprecation is used to permit a softer transition from the deprecated `web.http.controlpane` config group to
+     * the current `web.http.control`
+     *
+     * @deprecated "web.http.control" config should be used instead of "web.http.controlplane"
+     */
+    @Deprecated(since = "milestone8")
+    public static final WebServiceSettings DEPRECATED_SETTINGS = WebServiceSettings.Builder.newInstance()
+            .apiConfigKey(DEPRECATED_CONTROLPANE_CONFIG_GROUP)
+            .contextAlias(CONTROL_PLANE_CONTEXT_ALIAS)
+            .defaultPath(DEFAULT_CONTROL_PLANE_API_CONTEXT_PATH)
+            .defaultPort(DEFAULT_CONTROL_PLANE_API_PORT)
+            .name(NAME)
+            .build();
 
     @Inject
     private WebServer webServer;
+
     @Inject
     private WebService webService;
-    @Inject
-    private TransferProcessManager transferProcessManager;
+
     @Inject
     private Hostname hostname;
+
+    @Inject
+    private WebServiceConfigurer configurator;
+
+    @Inject
+    private TransferProcessService transferProcessService;
+
+    @Inject
+    private ControlApiConfiguration controlApiConfiguration;
+
+    private WebServiceConfiguration webServiceConfiguration;
 
     @Override
     public String name() {
@@ -67,26 +93,19 @@ public class ControlPlaneApiExtension implements ServiceExtension {
 
     @Override
     public void initialize(ServiceExtensionContext context) {
-        var monitor = context.getMonitor();
-        var alias = CONTROL_PLANE_CONTEXT_ALIAS;
-
-        var config = context.getConfig(CONTROL_PLANE_API_CONFIG);
-        if (config.getEntries().isEmpty()) {
-            monitor.warning(format("Settings for [%s] and/or [%s] were not provided. Using default" +
-                    " value(s) instead.", CONTROL_PLANE_API_CONFIG + ".path", CONTROL_PLANE_API_CONFIG + ".path"));
-            webServer.addPortMapping(alias, port, path);
+        if (context.getConfig().hasPath(DEPRECATED_CONTROLPANE_CONFIG_GROUP)) {
+            webServiceConfiguration = configurator.configure(context, webServer, DEPRECATED_SETTINGS);
+            context.getMonitor().warning(
+                    format("Deprecated settings group %s is being used for Control API configuration, please switch to the new group %s",
+                            DEPRECATED_SETTINGS.apiConfigKey(), "web.http." + controlApiConfiguration.getContextAlias()));
         } else {
-            path = config.getString("path", path);
-            port = config.getInteger("port", port);
+            webServiceConfiguration = controlApiConfiguration;
         }
 
         context.getTypeManager().registerTypes(TransferProcessFailStateDto.class);
 
-        monitor.info(format("Control Plane API will be available at [path=%s], [port=%s].", path, port));
-
-        webService.registerResource(alias, new TransferProcessControlApiController(transferProcessManager));
+        webService.registerResource(webServiceConfiguration.getContextAlias(), new TransferProcessControlApiController(transferProcessService));
     }
-
 
     @Provider
     public ControlPlaneApiUrl controlPlaneApiUrl(ServiceExtensionContext context) {
@@ -102,8 +121,7 @@ public class ControlPlaneApiExtension implements ServiceExtension {
 
     @NotNull
     private String getApiUrl() {
-        return String.format("http://%s:%s%s", hostname.get(), port, path);
+        return String.format("http://%s:%s%s", hostname.get(), webServiceConfiguration.getPort(), webServiceConfiguration.getPath());
     }
-
 
 }

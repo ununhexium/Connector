@@ -16,14 +16,9 @@ plugins {
     `java-library`
 }
 
-
-dependencies {
-}
-
 publishing {
     publications {
-        create<MavenPublication>("transaction-spi") {
-            artifactId = "transaction-spi"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

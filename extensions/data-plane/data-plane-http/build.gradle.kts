@@ -11,13 +11,6 @@
  *       Microsoft Corporation - initial API and implementation
  *
  */
-
-val failsafeVersion: String by project
-val httpMockServer: String by project
-val okHttpVersion: String by project
-val restAssured: String by project
-val rsApi: String by project
-
 plugins {
     `java-library`
     `java-test-fixtures`
@@ -25,22 +18,18 @@ plugins {
 
 dependencies {
     api(project(":spi:data-plane:data-plane-spi"))
+    api(project(":spi:common:http-spi"))
     implementation(project(":core:common:util"))
     implementation(project(":core:data-plane:data-plane-util"))
 
-    implementation("com.squareup.okhttp3:okhttp:${okHttpVersion}")
-    implementation("dev.failsafe:failsafe:${failsafeVersion}")
-
     testImplementation(project(":core:common:junit"))
-    testImplementation("io.rest-assured:rest-assured:${restAssured}")
-    testImplementation("org.mock-server:mockserver-netty:${httpMockServer}:shaded")
-    testFixturesImplementation("com.squareup.okhttp3:okhttp:${okHttpVersion}")
+    testImplementation(libs.restAssured)
+    testImplementation(libs.mockserver.netty)
 }
 
 publishing {
     publications {
-        create<MavenPublication>("data-plane-http") {
-            artifactId = "data-plane-http"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

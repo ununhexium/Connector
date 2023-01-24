@@ -19,15 +19,14 @@ plugins {
     id("com.github.johnrengelman.shadow") version "7.1.2"
 }
 
-val rsApi: String by project
-
 dependencies {
     implementation(project(":core:common:util"))
 
     implementation(project(":core:control-plane:control-plane-core"))
     implementation(project(":core:data-plane:data-plane-core"))
 
-    implementation(project(":extensions:control-plane:data-plane-transfer:data-plane-transfer-client"))
+    implementation(project(":extensions:control-plane:transfer:transfer-data-plane"))
+    implementation(project(":extensions:data-plane:data-plane-client"))
     implementation(project(":extensions:data-plane-selector:data-plane-selector-client"))
     implementation(project(":core:data-plane-selector:data-plane-selector-core"))
     implementation(project(":extensions:data-plane:data-plane-azure-storage"))
@@ -38,11 +37,11 @@ dependencies {
 
     implementation(project(":extensions:common:configuration:configuration-filesystem"))
     implementation(project(":extensions:common:iam:iam-mock"))
-    implementation(project(":extensions:control-plane:api:data-management-api"))
+    implementation(project(":extensions:control-plane:api:management-api"))
 
     implementation(project(":data-protocols:ids"))
 
-    implementation("jakarta.ws.rs:jakarta.ws.rs-api:${rsApi}")
+    implementation(libs.jakarta.rsApi)
 }
 
 application {

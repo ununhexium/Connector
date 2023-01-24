@@ -12,25 +12,20 @@
  *
  */
 
-val infoModelVersion: String by project
-val rsApi: String by project
-val jerseyVersion: String by project
-
 plugins {
     `java-library`
 }
 
 dependencies {
     api(project(":spi:common:auth-spi"))
-    implementation("jakarta.ws.rs:jakarta.ws.rs-api:${rsApi}")
+    implementation(libs.jakarta.rsApi)
 
     testImplementation(project(":core:common:junit"))
 }
 
 publishing {
     publications {
-        create<MavenPublication>("auth-tokenbased") {
-            artifactId = "auth-tokenbased"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

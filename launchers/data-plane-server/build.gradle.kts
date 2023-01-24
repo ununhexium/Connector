@@ -12,8 +12,6 @@
  *
  */
 
-val okHttpVersion: String by project
-val failsafeVersion: String by project
 
 plugins {
     `java-library`
@@ -42,11 +40,9 @@ tasks.withType<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar> {
     archiveFileName.set("data-plane-server.jar")
 }
 
-
 publishing {
     publications {
-        create<MavenPublication>("data-plane-server") {
-            artifactId = "data-plane-server"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

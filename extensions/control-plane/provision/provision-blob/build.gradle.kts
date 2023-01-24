@@ -16,24 +16,19 @@ plugins {
     `java-library`
 }
 
-val storageBlobVersion: String by project
-val failsafeVersion: String by project
-
-
 dependencies {
     api(project(":spi:common:core-spi"))
     api(project(":extensions:common:azure:azure-blob-core"))
 
-    implementation("com.azure:azure-storage-blob:${storageBlobVersion}")
-    implementation("dev.failsafe:failsafe:${failsafeVersion}")
+    implementation(libs.azure.storageblob)
+    implementation(libs.failsafe.core)
 
     testImplementation(testFixtures(project(":extensions:common:azure:azure-test")))
 }
 
 publishing {
     publications {
-        create<MavenPublication>("provision-blob") {
-            artifactId = "provision-blob"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

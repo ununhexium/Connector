@@ -12,10 +12,6 @@
  *
  */
 
-val jupiterVersion: String by project
-val assertj: String by project
-val awaitility: String by project
-
 
 plugins {
     `java-library`
@@ -28,16 +24,14 @@ dependencies {
     api(project(":spi:common:policy-model"))
     api(project(":spi:common:policy-engine-spi"))
 
-    testFixturesImplementation("org.junit.jupiter:junit-jupiter-api:${jupiterVersion}")
-    testFixturesImplementation("org.junit.jupiter:junit-jupiter-params:${jupiterVersion}")
-    testFixturesImplementation("org.assertj:assertj-core:${assertj}")
-    testFixturesImplementation("org.awaitility:awaitility:${awaitility}")
+    testFixturesImplementation(libs.bundles.jupiter)
+    testFixturesImplementation(libs.assertj)
+    testFixturesImplementation(libs.awaitility)
 }
 
 publishing {
     publications {
-        create<MavenPublication>("transfer-spi") {
-            artifactId = "transfer-spi"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

@@ -16,21 +16,18 @@ plugins {
     `java-library`
 }
 
-val awaitility: String by project
-
 dependencies {
     implementation(project(":spi:control-plane:control-plane-spi"))
     implementation(project(":core:common:util"))
 
     testImplementation(project(":core:control-plane:control-plane-core"))
     testImplementation(project(":core:common:junit"))
-    testImplementation("org.awaitility:awaitility:${awaitility}")
+    testImplementation(libs.awaitility)
 }
 
 publishing {
     publications {
-        create<MavenPublication>("control-plane-aggregate-services") {
-            artifactId = "control-plane-aggregate-services"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

@@ -18,7 +18,6 @@
 rootProject.name = "connector"
 
 // this is needed to have access to snapshot builds of plugins
-// that are used at the root project level, such as "module-names"
 pluginManagement {
     repositories {
         maven {
@@ -26,6 +25,23 @@ pluginManagement {
         }
         mavenCentral()
         gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositories {
+        maven {
+            url = uri("https://oss.sonatype.org/content/repositories/snapshots/")
+        }
+        mavenCentral()
+        mavenLocal()
+    }
+    versionCatalogs {
+        create("libs") {
+            from("org.eclipse.edc:edc-versions:0.0.1-SNAPSHOT")
+            // this is not part of the published EDC Version Catalog, so we'll just "amend" it
+            library("dnsOverHttps", "com.squareup.okhttp3", "okhttp-dnsoverhttps").versionRef("okhttp")
+        }
     }
 }
 
@@ -53,8 +69,6 @@ include(":core:data-plane:data-plane-core")
 include(":core:data-plane:data-plane-framework")
 
 include(":core:data-plane-selector:data-plane-selector-core")
-
-include(":core:federated-catalog:federated-catalog-core")
 
 // modules that provide implementations for data ingress/egress ------------------------------------
 include(":data-protocols:ids:ids-api-configuration")
@@ -95,6 +109,8 @@ include(":extensions:common:iam:decentralized-identity:identity-did-web")
 include(":extensions:common:iam:iam-mock")
 include(":extensions:common:iam:oauth2:oauth2-daps")
 include(":extensions:common:iam:oauth2:oauth2-core")
+include(":extensions:common:iam:oauth2:oauth2-client")
+include(":extensions:common:iam:oauth2:oauth2-service")
 include(":extensions:common:metrics:micrometer-core")
 include(":extensions:common:monitor:monitor-jdk-logger")
 include(":extensions:common:sql:sql-core")
@@ -107,23 +123,26 @@ include(":extensions:common:vault:vault-azure")
 include(":extensions:common:vault:vault-filesystem")
 include(":extensions:common:vault:vault-hashicorp")
 
-include(":extensions:control-plane:api:data-management-api")
-include(":extensions:control-plane:api:data-management-api:data-management-api-configuration")
-include(":extensions:control-plane:api:data-management-api:asset-api")
-include(":extensions:control-plane:api:data-management-api:catalog-api")
-include(":extensions:control-plane:api:data-management-api:contract-agreement-api")
-include(":extensions:control-plane:api:data-management-api:contract-definition-api")
-include(":extensions:control-plane:api:data-management-api:contract-negotiation-api")
-include(":extensions:control-plane:api:data-management-api:policy-definition-api")
-include(":extensions:control-plane:api:data-management-api:transfer-process-api")
-include(":extensions:control-plane:data-plane-transfer:data-plane-transfer-client")
-include(":extensions:control-plane:data-plane-transfer:data-plane-transfer-sync")
-include(":extensions:control-plane:http-receiver")
+include(":extensions:common:api:control-api-configuration")
+include(":extensions:common:api:management-api-configuration")
+
+include(":extensions:control-plane:api:management-api")
+include(":extensions:control-plane:api:management-api:asset-api")
+include(":extensions:control-plane:api:management-api:catalog-api")
+include(":extensions:control-plane:api:management-api:contract-agreement-api")
+include(":extensions:control-plane:api:management-api:contract-definition-api")
+include(":extensions:control-plane:api:management-api:contract-negotiation-api")
+include(":extensions:control-plane:api:management-api:policy-definition-api")
+include(":extensions:control-plane:api:management-api:transfer-process-api")
+include(":extensions:control-plane:transfer:transfer-data-plane")
+include(":extensions:control-plane:transfer:transfer-pull-http-receiver")
+include(":extensions:control-plane:transfer:transfer-pull-http-dynamic-receiver")
 include(":extensions:control-plane:provision:provision-blob")
 include(":extensions:control-plane:provision:provision-gcs")
 include(":extensions:control-plane:provision:provision-http")
 include(":extensions:control-plane:provision:provision-aws-s3")
-include(":extensions:control-plane:provision:provision-oauth2")
+include(":extensions:control-plane:provision:provision-oauth2:provision-oauth2-core")
+include(":extensions:control-plane:provision:provision-oauth2:provision-oauth2")
 include(":extensions:control-plane:store:cosmos:asset-index-cosmos")
 include(":extensions:control-plane:store:cosmos:contract-definition-store-cosmos")
 include(":extensions:control-plane:store:cosmos:contract-negotiation-store-cosmos")
@@ -138,59 +157,34 @@ include(":extensions:control-plane:store:sql:policy-definition-store-sql")
 include(":extensions:control-plane:store:sql:transfer-process-store-sql")
 
 include(":extensions:data-plane:data-plane-api")
+include(":extensions:data-plane:data-plane-client")
 include(":extensions:data-plane:data-plane-azure-storage")
 include(":extensions:data-plane:data-plane-azure-data-factory")
 include(":extensions:data-plane:data-plane-http")
 include(":extensions:data-plane:data-plane-aws-s3")
 include(":extensions:data-plane:data-plane-google-storage")
 include(":extensions:data-plane:data-plane-integration-tests")
+include(":extensions:data-plane:store:sql:data-plane-store-sql")
+include(":extensions:data-plane:store:cosmos:data-plane-store-cosmos")
+
+
 
 include(":extensions:data-plane-selector:data-plane-selector-api")
 include(":extensions:data-plane-selector:data-plane-selector-client")
 include(":extensions:data-plane-selector:store:sql:data-plane-instance-store-sql")
-
-include(":extensions:federated-catalog:store:fcc-node-directory-cosmos")
+include(":extensions:data-plane-selector:store:cosmos:data-plane-instance-store-cosmos")
 
 // modules for launchers, i.e. runnable compositions of the app ------------------------------------
 include(":launchers:data-plane-server")
 include(":launchers:dpf-selector")
 include(":launchers:ids-connector")
 
-// numbered samples for the onboarding experience --------------------------------------------------
-include(":samples:01-basic-connector")
-include(":samples:02-health-endpoint")
-include(":samples:03-configuration")
-
-include(":samples:04.0-file-transfer:consumer")
-include(":samples:04.0-file-transfer:provider")
-include(":samples:04.0-file-transfer:integration-tests")
-include(":samples:04.0-file-transfer:transfer-file")
-
-include(":samples:04.1-file-transfer-listener:consumer")
-include(":samples:04.1-file-transfer-listener:file-transfer-listener-integration-tests")
-include(":samples:04.1-file-transfer-listener:listener")
-
-include(":samples:04.2-modify-transferprocess:api")
-include(":samples:04.2-modify-transferprocess:consumer")
-include(":samples:04.2-modify-transferprocess:modify-transferprocess-sample-integration-tests")
-include(":samples:04.2-modify-transferprocess:simulator")
-include(":samples:04.2-modify-transferprocess:watchdog")
-
-include(":samples:04.3-open-telemetry:consumer")
-include(":samples:04.3-open-telemetry:provider")
-
-include(":samples:05-file-transfer-cloud:consumer")
-include(":samples:05-file-transfer-cloud:provider")
-include(":samples:05-file-transfer-cloud:transfer-file")
-
-// modules for code samples ------------------------------------------------------------------------
-include(":samples:other:custom-runtime")
-
 // extension points for a connector ----------------------------------------------------------------
 include(":spi:common:auth-spi")
 include(":spi:common:catalog-spi")
 include(":spi:common:core-spi")
 include(":spi:common:identity-did-spi")
+include(":spi:common:http-spi")
 include(":spi:common:jwt-spi")
 include(":spi:common:oauth2-spi")
 include(":spi:common:policy-engine-spi")
@@ -203,7 +197,7 @@ include(":spi:common:web-spi")
 
 include(":spi:control-plane:contract-spi")
 include(":spi:control-plane:control-plane-spi")
-include(":spi:control-plane:data-plane-transfer-spi")
+include(":spi:control-plane:transfer-data-plane-spi")
 include(":spi:control-plane:policy-spi")
 include(":spi:control-plane:transfer-spi")
 include(":spi:control-plane:control-plane-api-client-spi")
@@ -212,8 +206,6 @@ include(":spi:control-plane:control-plane-api-client-spi")
 include(":spi:data-plane:data-plane-spi")
 
 include(":spi:data-plane-selector:data-plane-selector-spi")
-
-include(":spi:federated-catalog:federated-catalog-spi")
 
 // modules for system tests ------------------------------------------------------------------------
 include(":system-tests:azure-data-factory-tests")

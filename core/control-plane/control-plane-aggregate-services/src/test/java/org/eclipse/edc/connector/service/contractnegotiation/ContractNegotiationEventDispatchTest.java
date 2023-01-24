@@ -15,7 +15,6 @@
 package org.eclipse.edc.connector.service.contractnegotiation;
 
 import org.eclipse.edc.connector.contract.spi.ContractId;
-import org.eclipse.edc.connector.contract.spi.negotiation.ConsumerContractNegotiationManager;
 import org.eclipse.edc.connector.contract.spi.negotiation.NegotiationWaitStrategy;
 import org.eclipse.edc.connector.contract.spi.negotiation.ProviderContractNegotiationManager;
 import org.eclipse.edc.connector.contract.spi.offer.store.ContractDefinitionStore;
@@ -32,10 +31,8 @@ import org.eclipse.edc.spi.asset.AssetIndex;
 import org.eclipse.edc.spi.asset.AssetSelectorExpression;
 import org.eclipse.edc.spi.event.EventRouter;
 import org.eclipse.edc.spi.event.EventSubscriber;
-import org.eclipse.edc.spi.event.contractnegotiation.ContractNegotiationApproved;
 import org.eclipse.edc.spi.event.contractnegotiation.ContractNegotiationConfirmed;
 import org.eclipse.edc.spi.event.contractnegotiation.ContractNegotiationFailed;
-import org.eclipse.edc.spi.event.contractnegotiation.ContractNegotiationInitiated;
 import org.eclipse.edc.spi.event.contractnegotiation.ContractNegotiationRequested;
 import org.eclipse.edc.spi.iam.ClaimToken;
 import org.eclipse.edc.spi.message.RemoteMessageDispatcher;
@@ -48,9 +45,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.net.URI;
+import java.time.ZonedDateTime;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 import static org.awaitility.Awaitility.await;
 import static org.eclipse.edc.junit.testfixtures.TestUtils.getFreePort;
@@ -61,8 +60,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(EdcExtension.class)
-public class ContractNegotiationEventDispatchTest {
+class ContractNegotiationEventDispatchTest {
 
+    private static final long CONTRACT_VALIDITY = TimeUnit.HOURS.toSeconds(1);
     private final EventSubscriber eventSubscriber = mock(EventSubscriber.class);
     private final ClaimToken token = ClaimToken.Builder.newInstance().build();
 
@@ -78,41 +78,20 @@ public class ContractNegotiationEventDispatchTest {
     }
 
     @Test
-    void shouldDispatchEventsOnConsumerContractNegotiationStateChanges(ContractNegotiationService service, EventRouter eventRouter,
-                                                                       RemoteMessageDispatcherRegistry dispatcherRegistry, ConsumerContractNegotiationManager manager) {
-        dispatcherRegistry.register(succeedingDispatcher());
-        eventRouter.register(eventSubscriber);
-        var policy = Policy.Builder.newInstance().build();
-        var contractOfferRequest = createContractOfferRequest(policy);
-
-        var initiateResult = service.initiateNegotiation(contractOfferRequest);
-
-        await().untilAsserted(() -> {
-            verify(eventSubscriber).on(isA(ContractNegotiationInitiated.class));
-            verify(eventSubscriber).on(isA(ContractNegotiationRequested.class));
-        });
-
-        manager.offerReceived(token, initiateResult.getId(), contractOfferRequest.getContractOffer(), "any");
-
-        await().untilAsserted(() -> {
-            verify(eventSubscriber).on(isA(ContractNegotiationApproved.class));
-        });
-
-        manager.confirmed(token, initiateResult.getId(), createContractAgreement(policy), policy);
-
-        await().untilAsserted(() -> {
-            verify(eventSubscriber).on(isA(ContractNegotiationConfirmed.class));
-        });
-    }
-
-    @Test
     void shouldDispatchEventsOnProviderContractNegotiationStateChanges(EventRouter eventRouter, RemoteMessageDispatcherRegistry dispatcherRegistry,
                                                                        ProviderContractNegotiationManager manager, ContractDefinitionStore contractDefinitionStore,
                                                                        PolicyDefinitionStore policyDefinitionStore, AssetIndex assetIndex) {
         dispatcherRegistry.register(succeedingDispatcher());
         eventRouter.register(eventSubscriber);
         var policy = Policy.Builder.newInstance().build();
-        contractDefinitionStore.save(ContractDefinition.Builder.newInstance().id("contractDefinitionId").contractPolicyId("policyId").accessPolicyId("policyId").selectorExpression(AssetSelectorExpression.SELECT_ALL).build());
+        var contractDefinition = ContractDefinition.Builder.newInstance()
+                .id("contractDefinitionId")
+                .contractPolicyId("policyId")
+                .accessPolicyId("policyId")
+                .selectorExpression(AssetSelectorExpression.SELECT_ALL)
+                .validity(CONTRACT_VALIDITY)
+                .build();
+        contractDefinitionStore.save(contractDefinition);
         policyDefinitionStore.save(PolicyDefinition.Builder.newInstance().id("policyId").policy(policy).build());
         assetIndex.accept(Asset.Builder.newInstance().id("assetId").build(), DataAddress.Builder.newInstance().type("any").build());
 
@@ -149,12 +128,15 @@ public class ContractNegotiationEventDispatchTest {
     }
 
     private ContractOfferRequest createContractOfferRequest(Policy policy) {
+        var now = ZonedDateTime.now();
         var contractOffer = ContractOffer.Builder.newInstance()
                 .id("contractDefinitionId:" + UUID.randomUUID())
                 .asset(Asset.Builder.newInstance().id("assetId").build())
                 .policy(policy)
                 .consumer(URI.create("http://any"))
                 .provider(URI.create("http://any"))
+                .contractStart(now)
+                .contractEnd(now.plusSeconds(CONTRACT_VALIDITY))
                 .build();
 
         return ContractOfferRequest.Builder.newInstance()
@@ -181,5 +163,4 @@ public class ContractNegotiationEventDispatchTest {
         when(testDispatcher.send(any(), any(), any())).thenReturn(CompletableFuture.failedFuture(new RuntimeException("any")));
         return testDispatcher;
     }
-
 }

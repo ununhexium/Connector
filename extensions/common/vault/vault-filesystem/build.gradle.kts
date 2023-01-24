@@ -16,23 +16,19 @@ plugins {
     `java-library`
 }
 
-val nimbusVersion: String by project
-val bouncycastleVersion: String by project
-
 dependencies {
     api(project(":spi:common:core-spi"))
     implementation(project(":core:common:util"))
-    implementation("org.bouncycastle:bcpkix-jdk15on:${bouncycastleVersion}")
+    implementation(libs.bouncyCastle.bcpkixJdk18on)
 
     testImplementation(project(":extensions:common:iam:decentralized-identity:identity-did-crypto"))
-    testImplementation("com.nimbusds:nimbus-jose-jwt:${nimbusVersion}")
-    testImplementation("org.bouncycastle:bcprov-jdk15on:${bouncycastleVersion}")
+    testImplementation(libs.nimbus.jwt)
+    testImplementation(libs.bouncyCastle.bcprovJdk18on)
 }
 
 publishing {
     publications {
-        create<MavenPublication>("vault-filesystem") {
-            artifactId = "vault-filesystem"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

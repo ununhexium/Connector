@@ -25,6 +25,7 @@ import org.eclipse.edc.spi.asset.AssetSelectorExpression;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import static io.restassured.RestAssured.given;
 import static io.restassured.http.ContentType.JSON;
@@ -39,6 +40,9 @@ public class BlobTransferUtils {
     private static final String ASSETS_PATH = "/assets";
     private static final String POLICIES_PATH = "/policydefinitions";
     private static final String CONTRACT_DEFINITIONS_PATH = "/contractdefinitions";
+
+    private BlobTransferUtils() {
+    }
 
     public static void createAsset(String accountName, String containerName) {
         var asset = Map.of(
@@ -95,7 +99,8 @@ public class BlobTransferUtils {
                 "id", "1",
                 "accessPolicyId", policyId,
                 "contractPolicyId", policyId,
-                "criteria", criteria.getCriteria()
+                "criteria", criteria.getCriteria(),
+                "validity", TimeUnit.HOURS.toSeconds(1)
         );
 
         seedProviderData(CONTRACT_DEFINITIONS_PATH, contractDefinition);

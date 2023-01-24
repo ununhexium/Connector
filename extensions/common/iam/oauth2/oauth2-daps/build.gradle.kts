@@ -16,8 +16,6 @@ plugins {
     `java-library`
 }
 
-val okHttpVersion: String by project
-
 dependencies {
     api(project(":spi:common:core-spi"))
     api(project(":spi:common:oauth2-spi"))
@@ -25,14 +23,11 @@ dependencies {
     testImplementation(project(":extensions:common:vault:vault-filesystem"))
     testImplementation(project(":extensions:common:iam:oauth2:oauth2-core"))
     testImplementation(project(":core:common:junit"))
-
-    testImplementation("com.squareup.okhttp3:okhttp:${okHttpVersion}")
 }
 
 publishing {
     publications {
-        create<MavenPublication>("oauth2-daps") {
-            artifactId = "oauth2-daps"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

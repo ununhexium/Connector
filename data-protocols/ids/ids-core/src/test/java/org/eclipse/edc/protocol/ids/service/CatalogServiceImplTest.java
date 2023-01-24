@@ -18,12 +18,14 @@ import org.eclipse.edc.connector.contract.spi.offer.ContractOfferQuery;
 import org.eclipse.edc.connector.contract.spi.offer.ContractOfferResolver;
 import org.eclipse.edc.connector.contract.spi.types.offer.ContractOffer;
 import org.eclipse.edc.policy.model.Policy;
+import org.eclipse.edc.protocol.ids.spi.types.container.DescriptionRequest;
 import org.eclipse.edc.spi.iam.ClaimToken;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.eclipse.edc.spi.types.domain.asset.Asset;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.ZonedDateTime;
 import java.util.Arrays;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -47,20 +49,14 @@ class CatalogServiceImplTest {
     void getDataCatalog() {
         var claimToken = ClaimToken.Builder.newInstance().build();
 
-        var offers = Arrays.asList(
-                ContractOffer.Builder.newInstance()
-                        .policy(Policy.Builder.newInstance().build())
-                        .asset(Asset.Builder.newInstance().id("test-asset").build())
-                        .id("1")
-                        .build(),
-                ContractOffer.Builder.newInstance()
-                        .policy(Policy.Builder.newInstance().build())
-                        .asset(Asset.Builder.newInstance().id("test-asset").build())
-                        .id("1")
-                        .build());
+        var offers = Arrays.asList(createContractOffer("1"), createContractOffer("2"));
         when(contractOfferResolver.queryContractOffers(any(ContractOfferQuery.class))).thenReturn(offers.stream());
+        var descriptionRequest = DescriptionRequest.Builder.newInstance()
+                .claimToken(claimToken)
+                .querySpec(QuerySpec.none())
+                .build();
 
-        var result = dataCatalogService.getDataCatalog(claimToken, QuerySpec.none());
+        var result = dataCatalogService.getDataCatalog(descriptionRequest);
 
         assertThat(result).isNotNull();
         assertThat(result.getId()).isEqualTo(CATALOG_ID);
@@ -68,4 +64,13 @@ class CatalogServiceImplTest {
         verify(contractOfferResolver).queryContractOffers(any(ContractOfferQuery.class));
     }
 
+    private static ContractOffer createContractOffer(String id) {
+        return ContractOffer.Builder.newInstance()
+                .policy(Policy.Builder.newInstance().build())
+                .asset(Asset.Builder.newInstance().id("test-asset").build())
+                .id(id)
+                .contractStart(ZonedDateTime.now())
+                .contractEnd(ZonedDateTime.now().plusMonths(1))
+                .build();
+    }
 }

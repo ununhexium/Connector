@@ -16,7 +16,6 @@ plugins {
     `java-library`
 }
 
-
 dependencies {
     api(project(":spi:common:web-spi"))
     api(project(":core:common:connector-core"))
@@ -27,8 +26,7 @@ dependencies {
 
 publishing {
     publications {
-        create<MavenPublication>("data-plane-core") {
-            artifactId = "data-plane-core"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

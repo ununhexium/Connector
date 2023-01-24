@@ -16,17 +16,14 @@ plugins {
     `java-library`
 }
 
-val micrometerVersion: String by project
-
 dependencies {
     implementation(project(":extensions:common:http:jersey-core"))
-    implementation("io.micrometer:micrometer-core:${micrometerVersion}")
+    implementation(libs.micrometer)
 }
 
 publishing {
     publications {
-        create<MavenPublication>("jersey-micrometer") {
-            artifactId = "jersey-micrometer"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

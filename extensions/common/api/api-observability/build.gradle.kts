@@ -12,11 +12,6 @@
  *
  */
 
-
-val infoModelVersion: String by project
-val rsApi: String by project
-val jerseyVersion: String by project
-
 plugins {
     `java-library`
     id("io.swagger.core.v3.swagger-gradle-plugin")
@@ -26,16 +21,22 @@ dependencies {
     api(project(":spi:common:core-spi"))
     api(project(":spi:common:web-spi"))
     implementation(project(":core:common:util"))
+    implementation(project(":extensions:common:api:management-api-configuration"))
     testImplementation(project(":data-protocols:ids"))
 
-    implementation("jakarta.ws.rs:jakarta.ws.rs-api:${rsApi}")
+    implementation(libs.jakarta.rsApi)
     testImplementation(project(":core:common:junit"))
+}
+
+edcBuild {
+    swagger {
+        apiGroup.set("management-api")
+    }
 }
 
 publishing {
     publications {
-        create<MavenPublication>("api-observability") {
-            artifactId = "api-observability"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

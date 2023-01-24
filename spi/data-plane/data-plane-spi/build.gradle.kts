@@ -14,17 +14,19 @@
 
 plugins {
     `java-library`
+    `java-test-fixtures`
 }
 
 dependencies {
     api(project(":spi:common:core-spi"))
-}
 
+    testFixturesImplementation(libs.bundles.jupiter)
+    testFixturesImplementation(libs.assertj)
+}
 
 publishing {
     publications {
-        create<MavenPublication>("data-plane-spi") {
-            artifactId = "data-plane-spi"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

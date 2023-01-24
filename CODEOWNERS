@@ -52,22 +52,11 @@ styleguide.md @paullatzelsperger
 /extensions/control-plane/ @paullatzelsperger
 /extensions/data-plane/ @bscholtes1A @jimmarino
 /extensions/data-plane-selector/ @paullatzelsperger
-/extensions/federated-catalog/ @paullatzelsperger
 
 /launchers/data-plane-server/ @bscholtes1A
 /launchers/dpf-selector/ @paullatzelsperger
 /launchers/ids-connector/ @ronjaquensel
 
 /resources/ @paullatzelsperger
-
-/samples/01-basic-connector/ @paullatzelsperger
-/samples/02-health-endpoint/ @paullatzelsperger
-/samples/03-configuration/ @paullatzelsperger
-/samples/04.0-file-transfer/ @ronjaquensel
-/samples/04.1-file-transfer-listener/ @paullatzelsperger
-/samples/04.2-modify-transferprocess/ @paullatzelsperger
-/samples/04.3-open-telemetry/ @jimmarino
-/samples/05-file-transfer-cloud/ @paullatzelsperger
-/samples/other/ @paullatzelsperger
 
 /system-tests/ @ndr-brt

@@ -22,6 +22,8 @@ import org.eclipse.edc.runtime.metamodel.annotation.Setting;
 import org.eclipse.edc.spi.system.ServiceExtension;
 import org.eclipse.edc.spi.system.ServiceExtensionContext;
 import org.eclipse.edc.web.spi.WebServer;
+import org.eclipse.edc.web.spi.configuration.WebServiceConfigurer;
+import org.eclipse.edc.web.spi.configuration.WebServiceSettings;
 
 import static java.lang.String.format;
 
@@ -31,19 +33,45 @@ import static java.lang.String.format;
 @Provides(IdsApiConfiguration.class)
 @Extension(value = IdsApiConfigurationExtension.NAME)
 public class IdsApiConfigurationExtension implements ServiceExtension {
-    @Setting
-    public static final String IDS_WEBHOOK_ADDRESS = "ids.webhook.address";
-    public static final String DEFAULT_IDS_WEBHOOK_ADDRESS = "http://localhost";
 
-    public static final String IDS_API_CONFIG = "web.http.ids";
-    public static final String IDS_API_CONTEXT_ALIAS = "ids";
-
-    public static final int DEFAULT_IDS_PORT = 8282;
-    public static final String DEFAULT_IDS_API_PATH = "/api/v1/ids";
     public static final String NAME = "IDS API Configuration";
+
+    private static final String DEFAULT_IDS_WEBHOOK_ADDRESS = "http://localhost";
+
+    @Setting(value = "The address exposed by the connector to receive ids messages", defaultValue = DEFAULT_IDS_WEBHOOK_ADDRESS)
+    public static final String IDS_WEBHOOK_ADDRESS = "ids.webhook.address";
+
+    private static final int DEFAULT_PROTOCOL_PORT = 8282;
+    private static final String DEFAULT_PROTOCOL_API_PATH = "/api/v1/ids";
+
+    /**
+     * This deprecation is used to permit a smoother transition from the deprecated `web.http.ids` config group to the
+     * current `web.http.protocol`
+     *
+     * @deprecated "web.http.protocol" config should be used instead of "web.http.ids"
+     */
+    @Deprecated(since = "milestone8")
+    public static final WebServiceSettings DEPRECATED_SETTINGS = WebServiceSettings.Builder.newInstance()
+            .apiConfigKey("web.http.ids")
+            .contextAlias("ids")
+            .defaultPath(DEFAULT_PROTOCOL_API_PATH)
+            .defaultPort(DEFAULT_PROTOCOL_PORT)
+            .name("IDS API")
+            .build();
+
+    public static final WebServiceSettings SETTINGS = WebServiceSettings.Builder.newInstance()
+            .apiConfigKey("web.http.protocol")
+            .contextAlias("protocol")
+            .defaultPath(DEFAULT_PROTOCOL_API_PATH)
+            .defaultPort(DEFAULT_PROTOCOL_PORT)
+            .name("Protocol API")
+            .build();
 
     @Inject
     private WebServer webServer;
+
+    @Inject
+    private WebServiceConfigurer configurator;
 
     @Override
     public String name() {
@@ -52,28 +80,23 @@ public class IdsApiConfigurationExtension implements ServiceExtension {
 
     @Override
     public void initialize(ServiceExtensionContext context) {
-        var monitor = context.getMonitor();
-
-        var contextAlias = IDS_API_CONTEXT_ALIAS;
-        var path = DEFAULT_IDS_API_PATH;
-        var port = DEFAULT_IDS_PORT;
-
-        var config = context.getConfig(IDS_API_CONFIG);
-        if (config.getEntries().isEmpty()) {
-            monitor.warning(format("Settings for [%s] and/or [%s] were not provided. Using default" +
-                    " value(s) instead.", IDS_API_CONFIG + ".path", IDS_API_CONFIG + ".path"));
-            webServer.addPortMapping(contextAlias, port, path);
+        WebServiceSettings settings;
+        if (context.getConfig().hasPath(DEPRECATED_SETTINGS.apiConfigKey())) {
+            settings = DEPRECATED_SETTINGS;
+            context.getMonitor().warning(
+                    format("Deprecated settings group %s is being used for Protocol API configuration, please switch to the new group %s",
+                            settings.apiConfigKey(), SETTINGS.apiConfigKey()));
         } else {
-            path = config.getString("path", path);
-            port = config.getInteger("port", port);
+            settings = SETTINGS;
         }
 
-        monitor.info(format("IDS API will be available at [path=%s], [port=%s].", path, port));
+        var config = configurator.configure(context, webServer, settings);
 
+        var path = config.getPath();
         var webhookPath = path + (path.endsWith("/") ? "data" : "/data");
         var idsWebhookAddress = context.getSetting(IDS_WEBHOOK_ADDRESS, DEFAULT_IDS_WEBHOOK_ADDRESS) + webhookPath;
 
-        context.registerService(IdsApiConfiguration.class, new IdsApiConfiguration(contextAlias, idsWebhookAddress));
+        context.registerService(IdsApiConfiguration.class, new IdsApiConfiguration(config.getContextAlias(), idsWebhookAddress));
     }
 
 }

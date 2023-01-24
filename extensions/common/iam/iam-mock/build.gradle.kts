@@ -16,18 +16,14 @@ plugins {
     `java-library`
 }
 
-val jwtVersion: String by project
-
 dependencies {
     api(project(":spi:common:core-spi"))
-    implementation("com.auth0:java-jwt:${jwtVersion}")
+    implementation("com.auth0:java-jwt:4.2.2")
 }
-
 
 publishing {
     publications {
-        create<MavenPublication>("iam-mock") {
-            artifactId = "iam-mock"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

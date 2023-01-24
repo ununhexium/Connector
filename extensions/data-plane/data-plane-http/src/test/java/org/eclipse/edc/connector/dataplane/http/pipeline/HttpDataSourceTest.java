@@ -15,13 +15,13 @@
 package org.eclipse.edc.connector.dataplane.http.pipeline;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import dev.failsafe.RetryPolicy;
 import okhttp3.Interceptor;
 import okhttp3.MediaType;
 import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
 import org.eclipse.edc.spi.EdcException;
+import org.eclipse.edc.spi.monitor.Monitor;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,7 +36,7 @@ import java.util.stream.Collectors;
 import static okhttp3.Protocol.HTTP_1_1;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
-import static org.eclipse.edc.junit.testfixtures.TestUtils.testOkHttpClient;
+import static org.eclipse.edc.junit.testfixtures.TestUtils.testHttpClient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -97,13 +97,12 @@ class HttpDataSourceTest {
     }
 
     private HttpDataSource.Builder defaultBuilder(Interceptor interceptor) {
-        var retryPolicy = RetryPolicy.builder().withMaxAttempts(1).build();
-        var httpClient = testOkHttpClient().newBuilder().addInterceptor(interceptor).build();
+        var httpClient = testHttpClient(interceptor);
         return HttpDataSource.Builder.newInstance()
                 .httpClient(httpClient)
                 .name("test-name")
-                .requestId(requestId)
-                .retryPolicy(retryPolicy);
+                .monitor(mock(Monitor.class))
+                .requestId(requestId);
     }
 
     static final class CustomInterceptor implements Interceptor {

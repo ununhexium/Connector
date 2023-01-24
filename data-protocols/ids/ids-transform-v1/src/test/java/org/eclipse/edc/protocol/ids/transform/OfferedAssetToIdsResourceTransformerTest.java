@@ -30,6 +30,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -56,19 +57,14 @@ class OfferedAssetToIdsResourceTransformerTest {
                 .id(UUID.randomUUID().toString())
                 .policy(Policy.Builder.newInstance().build())
                 .asset(Asset.Builder.newInstance().id("test-asset").build())
+                .contractStart(ZonedDateTime.now())
+                .contractEnd(ZonedDateTime.now().plusMonths(1))
                 .build();
     }
 
     @BeforeEach
     void setUp() {
         transformer = new OfferedAssetToIdsResourceTransformer();
-    }
-
-    @Test
-    void transform_nullInputGivesNullResult() {
-        var result = transformer.transform(null, context);
-
-        assertThat(result).isNull();
     }
 
     @Test

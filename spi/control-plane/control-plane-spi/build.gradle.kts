@@ -24,15 +24,14 @@ dependencies {
     api(project(":spi:common:transform-spi"))
     api(project(":spi:common:web-spi"))
     api(project(":spi:control-plane:contract-spi"))
-    api(project(":spi:control-plane:data-plane-transfer-spi"))
+    api(project(":spi:control-plane:transfer-data-plane-spi"))
     api(project(":spi:control-plane:policy-spi"))
     api(project(":spi:control-plane:transfer-spi"))
 }
 
 publishing {
     publications {
-        create<MavenPublication>("control-plane-spi") {
-            artifactId = "control-plane-spi"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

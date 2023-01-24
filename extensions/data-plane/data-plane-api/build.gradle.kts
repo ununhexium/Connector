@@ -13,12 +13,6 @@
  *
  */
 
-val httpMockServer: String by project
-val jerseyVersion: String by project
-val okHttpVersion: String by project
-val restAssured: String by project
-val rsApi: String by project
-val servletApi: String by project
 
 plugins {
     `java-library`
@@ -26,25 +20,30 @@ plugins {
 }
 
 dependencies {
+    api(project(":spi:common:http-spi"))
     api(project(":spi:common:web-spi"))
     api(project(":spi:data-plane:data-plane-spi"))
     implementation(project(":core:data-plane:data-plane-util"))
+    implementation(project(":extensions:common:api:control-api-configuration"))
 
-    implementation("com.squareup.okhttp3:okhttp:${okHttpVersion}")
-    implementation("jakarta.ws.rs:jakarta.ws.rs-api:${rsApi}")
+    implementation(libs.jakarta.rsApi)
 
     testImplementation(project(":extensions:common:http"))
     testImplementation(project(":core:common:junit"))
-    testImplementation("org.glassfish.jersey.media:jersey-media-multipart:${jerseyVersion}")
-    testImplementation("io.rest-assured:rest-assured:${restAssured}")
-    testImplementation("org.mock-server:mockserver-netty:${httpMockServer}:shaded")
-    testImplementation("org.mock-server:mockserver-client-java:${httpMockServer}:shaded")
+    testImplementation(libs.jersey.multipart)
+    testImplementation(libs.restAssured)
+    testImplementation(libs.mockserver.netty)
+    testImplementation(libs.mockserver.client)
+}
+edcBuild {
+    swagger {
+        apiGroup.set("control-api")
+    }
 }
 
 publishing {
     publications {
-        create<MavenPublication>("data-plane-api") {
-            artifactId = "data-plane-api"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }

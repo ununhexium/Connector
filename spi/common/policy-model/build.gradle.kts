@@ -17,12 +17,9 @@ plugins {
     `java-library`
 }
 
-dependencies {
-}
 publishing {
     publications {
-        create<MavenPublication>("policy-model") {
-            artifactId = "policy-model"
+        create<MavenPublication>(project.name) {
             from(components["java"])
         }
     }
