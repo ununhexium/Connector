@@ -60,20 +60,24 @@ public class SqlPolicyDefinitionStore implements PolicyDefinitionStore {
 
     @Override
     public PolicyDefinition findById(String id) {
-        var query = QuerySpec.Builder.newInstance().filter("uid=" + id).build();
-        return single(findAll(query).collect(Collectors.toList()));
+        return transactionContext.execute(() -> {
+            var query = QuerySpec.Builder.newInstance().filter("uid=" + id).build();
+            return single(findAll(query).collect(Collectors.toList()));
+        });
     }
 
     @Override
     public Stream<PolicyDefinition> findAll(QuerySpec querySpec) {
-        Objects.requireNonNull(querySpec);
-        var queryStatement = statements.createQuery(querySpec);
+        return transactionContext.execute(() -> {
+            Objects.requireNonNull(querySpec);
+            var queryStatement = statements.createQuery(querySpec);
 
-        try (var connection = getConnection()) {
-            return executeQuery(connection, this::mapResultSet, queryStatement.getQueryAsString(), queryStatement.getParameters()).stream();
-        } catch (Exception exception) {
-            throw new EdcPersistenceException(exception);
-        }
+            try (var connection = getConnection()) {
+                return executeQuery(connection, this::mapResultSet, queryStatement.getQueryAsString(), queryStatement.getParameters()).stream();
+            } catch (Exception exception) {
+                throw new EdcPersistenceException(exception);
+            }
+        });
     }
 
     @Override
