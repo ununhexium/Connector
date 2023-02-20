@@ -34,10 +34,13 @@ import org.jetbrains.annotations.NotNull;
 
 import java.net.URI;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import static java.lang.Math.max;
+import static java.lang.Math.min;
+import static java.util.stream.Stream.concat;
 
 /**
  * Implementation of the {@link ContractOfferService}.
@@ -59,39 +62,35 @@ public class ContractOfferServiceImpl implements ContractOfferService {
     @NotNull
     public Stream<ContractOffer> queryContractOffers(ContractOfferQuery query, Range range) {
         var agent = agentService.createFor(query.getClaimToken());
+
+        var numFetchedAssets = new AtomicLong(0);
         var numSeenAssets = new AtomicLong(0);
-        var limit = range.getTo() - range.getFrom();
-        var skip = new AtomicInteger(range.getFrom());
+
+        var offset = Long.valueOf(range.getFrom());
+        var limit = Long.valueOf(range.getTo() - range.getFrom());
 
         return definitionService.definitionsFor(agent)
-                .takeWhile(d -> numSeenAssets.get() < range.getTo())
+                .takeWhile(d -> numFetchedAssets.get() < limit)
                 .flatMap(definition -> {
+
                     var criteria = definition.getSelectorExpression().getCriteria();
-
                     var querySpecBuilder = QuerySpec.Builder.newInstance()
-                            .filter(Stream.concat(criteria.stream(), query.getAssetsCriteria().stream()).collect(Collectors.toList()));
-
+                            .filter(concat(criteria.stream(), query.getAssetsCriteria().stream()).collect(Collectors.toList()));
                     var querySpec = querySpecBuilder.build();
                     var numAssets = assetIndex.countAssets(querySpec.getFilterExpression());
 
-                    querySpecBuilder.limit((int) numAssets);
+                    var dynamicOffset = max(0L, offset - numSeenAssets.get());
+                    var dynamicLimit = min(limit - numFetchedAssets.get(), max(0, numAssets - dynamicOffset));
 
-                    if (skip.get() > 0) {
-                        querySpecBuilder.offset(skip.get());
-                    }
-                    if (numAssets + numSeenAssets.get() > limit) {
-                        querySpecBuilder.limit(limit);
-                    }
+                    querySpecBuilder.offset(Long.valueOf(dynamicOffset).intValue());
+                    querySpecBuilder.limit(Long.valueOf(dynamicLimit).intValue());
 
-                    Stream<ContractOffer> offers;
-                    if (skip.get() >= numAssets) {
-                        offers = Stream.empty();
-                    } else {
-                        offers = createContractOffers(definition, querySpecBuilder.build());
-                    }
+                    var offers = dynamicOffset >= numAssets ? Stream.<ContractOffer>empty() :
+                            createContractOffers(definition, querySpecBuilder.build());
 
+                    numFetchedAssets.addAndGet(dynamicLimit);
                     numSeenAssets.addAndGet(numAssets);
-                    skip.addAndGet(Long.valueOf(-numAssets).intValue());
+
                     return offers;
                 });
     }

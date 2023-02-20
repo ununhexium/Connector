@@ -143,7 +143,7 @@ class ContractOfferServiceImplTest {
 
 
     @Test
-    void shouldNotLimitResult_whenAssetsAreLessThanTheRequested() {
+    void shouldLimitResultToTheRemainingAssetsOfTheContractDefinition() {
         var contractDefinition = getContractDefBuilder("1").build();
 
         when(agentService.createFor(isA(ClaimToken.class))).thenReturn(new ParticipantAgent(emptyMap(), emptyMap()));
@@ -159,7 +159,7 @@ class ContractOfferServiceImplTest {
         var result = contractOfferService.queryContractOffers(getQuery(range), range);
 
         assertThat(result).isNotEmpty();
-        verify(assetIndex, times(1)).queryAssets(and(isA(QuerySpec.class), argThat(it -> it.getLimit() == 40)));
+        verify(assetIndex, times(1)).queryAssets(and(isA(QuerySpec.class), argThat(it -> it.getLimit() == 20)));
     }
 
     @Test
