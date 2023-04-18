@@ -38,12 +38,14 @@ import org.eclipse.edc.spi.types.domain.asset.Asset;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -182,11 +184,14 @@ class ContractValidationServiceImplTest {
         var newPolicy = Policy.Builder.newInstance().build();
         var contractDefinition = createContractDefinition();
 
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<Class, Object>> captor = ArgumentCaptor.forClass(Map.class);
+
         when(agentService.createFor(isA(ClaimToken.class))).thenReturn(new ParticipantAgent(emptyMap(), emptyMap()));
         when(definitionService.definitionFor(isA(ParticipantAgent.class), eq("1"))).thenReturn(contractDefinition);
         when(policyStore.findById("access")).thenReturn(PolicyDefinition.Builder.newInstance().policy(Policy.Builder.newInstance().build()).build());
         when(policyStore.findById("contract")).thenReturn(PolicyDefinition.Builder.newInstance().policy(newPolicy).build());
-        when(policyEngine.evaluate(eq(NEGOTIATION_SCOPE), eq(newPolicy), isA(ParticipantAgent.class))).thenReturn(Result.success(newPolicy));
+        when(policyEngine.evaluate(eq(NEGOTIATION_SCOPE), eq(newPolicy), isA(ParticipantAgent.class), any())).thenReturn(Result.success(newPolicy));
 
         var claimToken = ClaimToken.Builder.newInstance().build();
         var agreement = createContractAgreement()
@@ -201,7 +206,10 @@ class ContractValidationServiceImplTest {
         assertThat(isValid.succeeded()).isTrue();
         verify(agentService).createFor(isA(ClaimToken.class));
         verify(definitionService).definitionFor(isA(ParticipantAgent.class), eq("1"));
-        verify(policyEngine).evaluate(eq(NEGOTIATION_SCOPE), eq(newPolicy), isA(ParticipantAgent.class));
+        verify(policyEngine).evaluate(eq(NEGOTIATION_SCOPE), eq(newPolicy), isA(ParticipantAgent.class), captor.capture());
+
+        var context = captor.getValue();
+        assertThat(context.get(ContractAgreement.class)).isNotNull().isInstanceOf(ContractAgreement.class);
     }
 
     @Test

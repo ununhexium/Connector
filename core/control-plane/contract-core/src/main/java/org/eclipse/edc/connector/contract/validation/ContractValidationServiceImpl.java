@@ -32,6 +32,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.time.Clock;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
 
 import static java.lang.String.format;
 
@@ -133,7 +134,11 @@ public class ContractValidationServiceImpl implements ContractValidationService 
         if (contractDefinition == null) {
             return Result.failure(format("The ContractDefinition with id %s either does not exist or the access to it is not granted.", agreement.getId()));
         }
-        var policyResult = policyEngine.evaluate(NEGOTIATION_SCOPE, agreement.getPolicy(), agent);
+        // Create additional context information for policy engine to make agreement available in context
+        var contextInformation = new HashMap<Class, Object>();
+        contextInformation.put(ContractAgreement.class, agreement);
+
+        var policyResult = policyEngine.evaluate(NEGOTIATION_SCOPE, agreement.getPolicy(), agent, contextInformation);
         if (!policyResult.succeeded()) {
             return Result.failure(format("Policy does not fulfill the agreement %s, policy evaluation %s", agreement.getId(), policyResult.getFailureDetail()));
         }
