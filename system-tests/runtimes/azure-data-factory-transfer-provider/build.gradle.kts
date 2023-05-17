@@ -16,13 +16,14 @@
 plugins {
     `java-library`
     id("application")
-    id("com.github.johnrengelman.shadow") version "7.1.2"
+    alias(libs.plugins.shadow)
 }
 
 dependencies {
     implementation(project(":spi:data-plane:data-plane-spi"))
     implementation(project(":core:common:util"))
     implementation(project(":core:control-plane:control-plane-core"))
+    implementation(project(":core:data-plane-selector:data-plane-selector-core"))
     implementation(project(":core:data-plane:data-plane-core"))
     implementation(project(":extensions:control-plane:transfer:transfer-data-plane"))
     implementation(project(":extensions:data-plane:data-plane-client"))
@@ -54,4 +55,8 @@ application {
 tasks.withType<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar> {
     mergeServiceFiles()
     archiveFileName.set("provider.jar")
+}
+
+edcBuild {
+    publish.set(false)
 }

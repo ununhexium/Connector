@@ -23,12 +23,15 @@ import java.util.Objects;
 
 /**
  * A query sent to a remote system.
+ *
+ * @deprecated only used by ids multipart api/dispatcher. Can be removed with IDS modules.
  */
+@Deprecated(forRemoval = true)
 @JsonDeserialize(builder = QueryRequest.Builder.class)
 public class QueryRequest implements RemoteMessage {
     private String protocol;
     private String connectorId;
-    private String connectorAddress;
+    private String counterPartyAddress;
     private String queryLanguage;
     private String query;
 
@@ -53,8 +56,8 @@ public class QueryRequest implements RemoteMessage {
     }
 
     @Override
-    public String getConnectorAddress() {
-        return connectorAddress;
+    public String getCounterPartyAddress() {
+        return counterPartyAddress;
     }
 
     @JsonPOJOBuilder(withPrefix = "")
@@ -80,8 +83,8 @@ public class QueryRequest implements RemoteMessage {
             return this;
         }
 
-        public Builder connectorAddress(String connectorAddress) {
-            queryRequest.connectorAddress = connectorAddress;
+        public Builder counterPartyAddress(String callbackAddress) {
+            queryRequest.counterPartyAddress = callbackAddress;
             return this;
         }
 
@@ -100,7 +103,7 @@ public class QueryRequest implements RemoteMessage {
             Objects.requireNonNull(queryRequest.connectorId, "connectorId");
             Objects.requireNonNull(queryRequest.queryLanguage, "queryLanguage");
             Objects.requireNonNull(queryRequest.query, "query");
-            Objects.requireNonNull(queryRequest.connectorAddress, "connectorAddress");
+            Objects.requireNonNull(queryRequest.counterPartyAddress, "callbackAddress");
             return queryRequest;
         }
     }

@@ -15,11 +15,7 @@
 
 package org.eclipse.edc.connector.contract.spi.negotiation;
 
-import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiation;
-import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractOfferRequest;
 import org.eclipse.edc.runtime.metamodel.annotation.ExtensionPoint;
-import org.eclipse.edc.spi.iam.ClaimToken;
-import org.eclipse.edc.spi.response.StatusResult;
 
 /**
  * Manages contract negotiations on the provider.
@@ -29,10 +25,5 @@ import org.eclipse.edc.spi.response.StatusResult;
 
 @ExtensionPoint
 public interface ProviderContractNegotiationManager extends ContractNegotiationManager {
-
-    /**
-     * A contract negotiation has been requested by the consumer represented with the given claims.
-     */
-    StatusResult<ContractNegotiation> requested(ClaimToken token, ContractOfferRequest request);
 
 }

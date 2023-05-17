@@ -15,22 +15,17 @@
 
 package org.eclipse.edc.connector.service.transferprocess;
 
-import org.eclipse.edc.connector.contract.spi.negotiation.store.ContractNegotiationStore;
-import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreement;
-import org.eclipse.edc.connector.contract.spi.validation.ContractValidationService;
 import org.eclipse.edc.connector.spi.transferprocess.TransferProcessService;
 import org.eclipse.edc.connector.transfer.spi.TransferProcessManager;
 import org.eclipse.edc.connector.transfer.spi.store.TransferProcessStore;
 import org.eclipse.edc.connector.transfer.spi.types.DataRequest;
 import org.eclipse.edc.connector.transfer.spi.types.TransferProcess;
 import org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates;
-import org.eclipse.edc.connector.transfer.spi.types.command.CancelTransferCommand;
+import org.eclipse.edc.connector.transfer.spi.types.TransferRequest;
 import org.eclipse.edc.connector.transfer.spi.types.command.DeprovisionRequest;
 import org.eclipse.edc.connector.transfer.spi.types.command.SingleTransferProcessCommand;
-import org.eclipse.edc.policy.model.Policy;
 import org.eclipse.edc.service.spi.result.ServiceResult;
 import org.eclipse.edc.spi.dataaddress.DataAddressValidator;
-import org.eclipse.edc.spi.iam.ClaimToken;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.eclipse.edc.spi.response.StatusResult;
 import org.eclipse.edc.spi.result.Result;
@@ -68,16 +63,14 @@ class TransferProcessServiceImplTest {
     private final TransferProcessStore store = mock(TransferProcessStore.class);
     private final TransferProcessManager manager = mock(TransferProcessManager.class);
     private final TransactionContext transactionContext = spy(new NoopTransactionContext());
-    private final ContractNegotiationStore negotiationStore = mock(ContractNegotiationStore.class);
-    private final ContractValidationService validationService = mock(ContractValidationService.class);
     private final DataAddressValidator dataAddressValidator = mock(DataAddressValidator.class);
 
     private final TransferProcessService service = new TransferProcessServiceImpl(store, manager, transactionContext,
-            negotiationStore, validationService, dataAddressValidator);
+            dataAddressValidator);
 
     @Test
     void findById_whenFound() {
-        when(store.find(id)).thenReturn(process1);
+        when(store.findById(id)).thenReturn(process1);
         assertThat(service.findById(id)).isSameAs(process1);
         verify(transactionContext).execute(any(TransactionContext.ResultTransactionBlock.class));
     }
@@ -121,7 +114,7 @@ class TransferProcessServiceImplTest {
 
     @Test
     void getState_whenFound() {
-        when(store.find(id)).thenReturn(process1);
+        when(store.findById(id)).thenReturn(process1);
         assertThat(service.getState(id)).isEqualTo(TransferProcessStates.from(process1.getState()).name());
         verify(transactionContext).execute(any(TransactionContext.ResultTransactionBlock.class));
     }
@@ -132,56 +125,17 @@ class TransferProcessServiceImplTest {
         verify(transactionContext).execute(any(TransactionContext.ResultTransactionBlock.class));
     }
 
-    @ParameterizedTest
-    @EnumSource(value = TransferProcessStates.class, mode = EXCLUDE, names = { "COMPLETED", "ERROR", "ENDED" })
-    void cancel(TransferProcessStates state) {
-        var process = transferProcess(state, id);
-        when(store.find(id)).thenReturn(process);
-
-        var result = service.cancel(id);
-
-        assertThat(result.succeeded()).isTrue();
-        verify(manager).enqueueCommand(commandCaptor.capture());
-        assertThat(commandCaptor.getValue()).isInstanceOf(CancelTransferCommand.class);
-        assertThat(commandCaptor.getValue().getTransferProcessId())
-                .isEqualTo(id);
-        verify(transactionContext).execute(any(TransactionContext.ResultTransactionBlock.class));
-    }
-
-    @ParameterizedTest
-    @EnumSource(value = TransferProcessStates.class, mode = INCLUDE, names = { "COMPLETED", "ERROR", "ENDED" })
-    void cancel_whenNonCancellable(TransferProcessStates state) {
-        var process = transferProcess(state, id);
-        when(store.find(id)).thenReturn(process);
-
-        var result = service.cancel(id);
-
-        assertThat(result.failed()).isTrue();
-        assertThat(result.getFailureMessages()).containsExactly("TransferProcess " + process.getId() + " cannot be canceled as it is in state " + state);
-        verifyNoInteractions(manager);
-        verify(transactionContext).execute(any(TransactionContext.ResultTransactionBlock.class));
-    }
-
-    @Test
-    void cancel_whenNotFound() {
-        var result = service.cancel(id);
-
-        assertThat(result.failed()).isTrue();
-        assertThat(result.getFailureMessages()).containsExactly("TransferProcess " + id + " does not exist");
-        verify(transactionContext).execute(any(TransactionContext.ResultTransactionBlock.class));
-    }
-
     @Test
     void initiateTransfer() {
-        var dataRequest = dataRequest();
-        String processId = "processId";
+        var transferRequest = transferRequest();
+        var transferProcess = transferProcess();
         when(dataAddressValidator.validate(any())).thenReturn(Result.success());
-        when(manager.initiateConsumerRequest(dataRequest)).thenReturn(StatusResult.success(processId));
+        when(manager.initiateConsumerRequest(transferRequest)).thenReturn(StatusResult.success(transferProcess));
 
-        var result = service.initiateTransfer(dataRequest);
+        var result = service.initiateTransfer(transferRequest);
 
         assertThat(result.succeeded()).isTrue();
-        assertThat(result.getContent()).isEqualTo(processId);
+        assertThat(result.getContent()).isEqualTo(transferProcess);
         verify(transactionContext).execute(any(TransactionContext.ResultTransactionBlock.class));
     }
 
@@ -189,51 +143,7 @@ class TransferProcessServiceImplTest {
     void initiateTransfer_consumer_invalidDestination_shouldNotInitiateTransfer() {
         when(dataAddressValidator.validate(any())).thenReturn(Result.failure("invalid data address"));
 
-        var result = service.initiateTransfer(dataRequest());
-
-        assertThat(result).satisfies(ServiceResult::failed)
-                        .extracting(ServiceResult::reason)
-                        .isEqualTo(BAD_REQUEST);
-        verifyNoInteractions(manager);
-    }
-
-    @Test
-    void initiateTransfer_provider_validAgreement_shouldInitiateTransfer() {
-        var dataRequest = dataRequest();
-        var claimToken = claimToken();
-        var processId = "processId";
-
-        when(negotiationStore.findContractAgreement(any())).thenReturn(contractAgreement());
-        when(validationService.validateAgreement(any(), any())).thenReturn(Result.success(null));
-        when(manager.initiateProviderRequest(any())).thenReturn(StatusResult.success(processId));
-        when(dataAddressValidator.validate(any())).thenReturn(Result.success());
-
-        var result = service.initiateTransfer(dataRequest, claimToken);
-
-        assertThat(result.succeeded()).isTrue();
-        assertThat(result.getContent()).isEqualTo(processId);
-        verify(manager).initiateProviderRequest(dataRequest);
-    }
-
-    @Test
-    void initiateTransfer_provider_invalidAgreement_shouldNotInitiateTransfer() {
-        var dataRequest = dataRequest();
-        var claimToken = claimToken();
-        when(negotiationStore.findContractAgreement(any())).thenReturn(contractAgreement());
-        when(validationService.validateAgreement(any(), any())).thenReturn(Result.failure("error"));
-        when(dataAddressValidator.validate(any())).thenReturn(Result.success());
-
-        var result = service.initiateTransfer(dataRequest, claimToken);
-
-        assertThat(result.succeeded()).isFalse();
-        verifyNoInteractions(manager);
-    }
-
-    @Test
-    void initiateTransfer_provider_invalidDestination_shouldNotInitiateTransfer() {
-        when(dataAddressValidator.validate(any())).thenReturn(Result.failure("invalid data address"));
-
-        var result = service.initiateTransfer(dataRequest(), claimToken());
+        var result = service.initiateTransfer(transferRequest());
 
         assertThat(result).satisfies(ServiceResult::failed)
                 .extracting(ServiceResult::reason)
@@ -242,10 +152,10 @@ class TransferProcessServiceImplTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = TransferProcessStates.class, mode = INCLUDE, names = { "COMPLETED", "DEPROVISIONING", "DEPROVISIONED", "ENDED", "CANCELLED" })
+    @EnumSource(value = TransferProcessStates.class, mode = INCLUDE, names = { "COMPLETED", "DEPROVISIONING", "TERMINATED" })
     void deprovision(TransferProcessStates state) {
         var process = transferProcess(state, id);
-        when(store.find(id)).thenReturn(process);
+        when(store.findById(id)).thenReturn(process);
 
         var result = service.deprovision(id);
 
@@ -258,15 +168,15 @@ class TransferProcessServiceImplTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = TransferProcessStates.class, mode = EXCLUDE, names = { "COMPLETED", "DEPROVISIONING", "DEPROVISIONED", "DEPROVISIONING_REQUESTED", "ENDED", "CANCELLED" })
+    @EnumSource(value = TransferProcessStates.class, mode = EXCLUDE, names = { "COMPLETED", "DEPROVISIONING", "DEPROVISIONED", "DEPROVISIONING_REQUESTED", "TERMINATED" })
     void deprovision_whenNonDeprovisionable(TransferProcessStates state) {
         var process = transferProcess(state, id);
-        when(store.find(id)).thenReturn(process);
+        when(store.findById(id)).thenReturn(process);
 
         var result = service.deprovision(id);
 
         assertThat(result.failed()).isTrue();
-        assertThat(result.getFailureMessages()).containsExactly("TransferProcess " + process.getId() + " cannot be deprovisioned as it is in state " + state);
+        assertThat(result.getFailureMessages()).containsExactly("Cannot DeprovisionRequest because TransferProcess " + process.getId() + " is in state " + state);
         verifyNoInteractions(manager);
         verify(transactionContext).execute(any(TransactionContext.ResultTransactionBlock.class));
     }
@@ -276,7 +186,7 @@ class TransferProcessServiceImplTest {
         var result = service.deprovision(id);
 
         assertThat(result.failed()).isTrue();
-        assertThat(result.getFailureMessages()).containsExactly("TransferProcess " + id + " does not exist");
+        assertThat(result.getFailureMessages()).containsExactly("TransferProcess with id " + id + " not found");
         verify(transactionContext).execute(any(TransactionContext.ResultTransactionBlock.class));
     }
 
@@ -291,26 +201,17 @@ class TransferProcessServiceImplTest {
                 .id(id)
                 .build();
     }
-    
+
     private DataRequest dataRequest() {
         return DataRequest.Builder.newInstance()
                 .destinationType("type")
                 .build();
     }
-    
-    private ClaimToken claimToken() {
-        return ClaimToken.Builder.newInstance()
-                .claim("key", "value")
+
+    private TransferRequest transferRequest() {
+        return TransferRequest.Builder.newInstance()
+                .dataRequest(dataRequest())
                 .build();
     }
-    
-    private ContractAgreement contractAgreement() {
-        return ContractAgreement.Builder.newInstance()
-                .id("agreementId")
-                .providerAgentId("provider")
-                .consumerAgentId("consumer")
-                .assetId("asset")
-                .policy(Policy.Builder.newInstance().build())
-                .build();
-    }
+
 }

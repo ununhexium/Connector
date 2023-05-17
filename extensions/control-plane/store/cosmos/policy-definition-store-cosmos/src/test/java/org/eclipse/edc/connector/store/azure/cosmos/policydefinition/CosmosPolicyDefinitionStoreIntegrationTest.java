@@ -49,6 +49,7 @@ import java.util.stream.IntStream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.eclipse.edc.connector.store.azure.cosmos.policydefinition.TestFunctions.generateDocument;
 import static org.eclipse.edc.connector.store.azure.cosmos.policydefinition.TestFunctions.generatePolicy;
+import static org.eclipse.edc.spi.result.StoreFailure.Reason.ALREADY_EXISTS;
 import static org.mockito.Mockito.mock;
 
 @AzureCosmosDbIntegrationTest
@@ -142,7 +143,7 @@ public class CosmosPolicyDefinitionStoreIntegrationTest extends PolicyDefinition
     @Test
     void save() {
         var policy = generatePolicy();
-        store.save(policy);
+        store.create(policy);
 
         var actual = container.readAllItems(new PartitionKey(TEST_PARTITION_KEY), Object.class);
         assertThat(actual).hasSize(1);
@@ -151,7 +152,7 @@ public class CosmosPolicyDefinitionStoreIntegrationTest extends PolicyDefinition
     }
 
     @Test
-    void save_exists_shouldUpdate() {
+    void save_exists_shouldFail() {
         var doc1 = generateDocument(TEST_PARTITION_KEY);
         container.createItem(doc1);
 
@@ -159,18 +160,20 @@ public class CosmosPolicyDefinitionStoreIntegrationTest extends PolicyDefinition
 
         //modify a single field
         policyToUpdate.getPolicy().getPermissions().add(Permission.Builder.newInstance().target("test-permission-target").build());
-        policyToUpdate.getPolicy().getObligations().add(Duty.Builder.newInstance().uid("test-obligation-id").build());
+        policyToUpdate.getPolicy().getObligations().add(Duty.Builder.newInstance().build());
 
 
-        store.save(policyToUpdate);
+        var saveResult = store.create(policyToUpdate);
+        assertThat(saveResult.succeeded()).isFalse();
+        assertThat(saveResult.reason()).isEqualTo(ALREADY_EXISTS);
+
         var actual = container.readAllItems(new PartitionKey(doc1.getPartitionKey()), Object.class);
         assertThat(actual).hasSize(1);
 
         var first = convert(actual.stream().findFirst().get());
 
-        assertThat(first.getPolicy().getPermissions()).hasSize(1).extracting(Permission::getTarget).containsOnly("test-permission-target");
-        assertThat(first.getPolicy().getObligations()).hasSize(1).extracting(Duty::getUid).containsOnly("test-obligation-id");
-
+        assertThat(first.getPolicy().getPermissions()).isEmpty();
+        assertThat(first.getPolicy().getObligations()).isEmpty();
     }
 
     @Test
@@ -179,8 +182,9 @@ public class CosmosPolicyDefinitionStoreIntegrationTest extends PolicyDefinition
         container.createItem(document);
 
         var policy = convert(document);
-        var deletedPolicy = store.deleteById(document.getId());
-        assertThat(deletedPolicy).isEqualTo(policy);
+        var deletedPolicy = store.delete(document.getId());
+        assertThat(deletedPolicy.succeeded()).isTrue();
+        assertThat(deletedPolicy.getContent()).isEqualTo(policy);
 
         assertThat(container.readAllItems(new PartitionKey(document.getPartitionKey()), Object.class)).isEmpty();
     }

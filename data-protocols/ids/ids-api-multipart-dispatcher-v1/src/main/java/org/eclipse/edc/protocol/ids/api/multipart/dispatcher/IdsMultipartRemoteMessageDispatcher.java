@@ -14,15 +14,18 @@
 
 package org.eclipse.edc.protocol.ids.api.multipart.dispatcher;
 
+import org.eclipse.edc.connector.transfer.spi.types.protocol.TransferCompletionMessage;
+import org.eclipse.edc.connector.transfer.spi.types.protocol.TransferStartMessage;
+import org.eclipse.edc.connector.transfer.spi.types.protocol.TransferTerminationMessage;
 import org.eclipse.edc.protocol.ids.api.multipart.dispatcher.sender.IdsMultipartSender;
 import org.eclipse.edc.protocol.ids.api.multipart.dispatcher.sender.MultipartSenderDelegate;
 import org.eclipse.edc.protocol.ids.spi.types.MessageProtocol;
 import org.eclipse.edc.spi.EdcException;
-import org.eclipse.edc.spi.message.MessageContext;
 import org.eclipse.edc.spi.message.RemoteMessageDispatcher;
 import org.eclipse.edc.spi.types.domain.message.RemoteMessage;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -34,6 +37,11 @@ public class IdsMultipartRemoteMessageDispatcher implements RemoteMessageDispatc
 
     private final IdsMultipartSender multipartSender;
     private final Map<Class<? extends RemoteMessage>, MultipartSenderDelegate<? extends RemoteMessage, ?>> delegates = new HashMap<>();
+    private final List<Class<? extends RemoteMessage>> unsupportedMessages = List.of(
+            TransferStartMessage.class,
+            TransferCompletionMessage.class,
+            TransferTerminationMessage.class
+    );
 
     public IdsMultipartRemoteMessageDispatcher(IdsMultipartSender idsMultipartSender) {
         this.multipartSender = idsMultipartSender;
@@ -53,13 +61,17 @@ public class IdsMultipartRemoteMessageDispatcher implements RemoteMessageDispatc
      * and passing it to the IdsMultipartSender.
      *
      * @param responseType the expected response type
-     * @param message the message
-     * @param context the message context
+     * @param message      the message
      * @return a future that can be used to retrieve the response when the operation has completed
      */
     @Override
-    public <T, M extends RemoteMessage> CompletableFuture<T> send(Class<T> responseType, M message, MessageContext context) {
+    public <T, M extends RemoteMessage> CompletableFuture<T> send(Class<T> responseType, M message) {
         Objects.requireNonNull(message, "Message was null");
+
+        if (unsupportedMessages.stream().anyMatch(it -> it.isInstance(message))) { // these messages are not supposed to be sent on ids-multipart.
+            return CompletableFuture.completedFuture(null);
+        }
+
         var delegate = (MultipartSenderDelegate<M, T>) delegates.get(message.getClass());
         if (delegate == null) {
             throw new EdcException("Message sender not found for message type: " + message.getClass().getName());

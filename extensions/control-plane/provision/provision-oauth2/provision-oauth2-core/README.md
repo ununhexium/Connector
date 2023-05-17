@@ -1,5 +1,9 @@
 # OAuth2 Provision Core
 
+ATTENTION:
+please prefer the `data-plane-http-oauth2` module to this as it is more flexible.
+This package is now deprecated and it will be removed soon.
+
 This extension can be used when there's a data endpoint that requires OAuth2 authentication through the
 [*client credentials flow*](https://auth0.com/docs/get-started/authentication-and-authorization-flow/client-credentials-flow)
 It can be used both on **source** and **sink** side of the data transfer:
@@ -49,5 +53,6 @@ This type of client credential is used when the `HttpData` address DOES not cont
 The mandatory for working with type of client credentials are:
 
 - `oauth2:clientId`: the client id
-- `oauth2:clientSecret`: shared secret for authenticating to the Oauth2 server
+- `oauth2:clientSecret`: (deprecated) shared secret for authenticating to the Oauth2 server
+- `oauth2:clientSecretKey`: the key with which the shared secret for authenticating to the Oauth2 server is stored into the `Vault`
 

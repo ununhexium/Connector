@@ -10,6 +10,7 @@
  *  Contributors:
  *       Bayerische Motoren Werke Aktiengesellschaft (BMW AG) - initial API and implementation
  *       ZF Friedrichshafen AG - improvements (refactoring of canGenerate method)
+ *       SAP SE - refactoring
  *
  */
 
@@ -18,11 +19,11 @@ package org.eclipse.edc.connector.provision.oauth2;
 import org.eclipse.edc.connector.transfer.spi.provision.ProviderResourceDefinitionGenerator;
 import org.eclipse.edc.connector.transfer.spi.types.DataRequest;
 import org.eclipse.edc.connector.transfer.spi.types.ResourceDefinition;
+import org.eclipse.edc.iam.oauth2.spi.Oauth2DataAddressValidator;
 import org.eclipse.edc.policy.model.Policy;
 import org.eclipse.edc.spi.types.domain.DataAddress;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Predicate;
 
@@ -35,10 +36,6 @@ class Oauth2ProviderResourceDefinitionGenerator implements ProviderResourceDefin
 
     @Override
     public @Nullable ResourceDefinition generate(DataRequest dataRequest, DataAddress assetAddress, Policy policy) {
-        Objects.requireNonNull(dataRequest, "dataRequest must always be provided");
-        Objects.requireNonNull(assetAddress, "assetAddress must always be provided");
-        Objects.requireNonNull(policy, "policy must always be provided");
-
         return Oauth2ResourceDefinition.Builder.newInstance()
                 .id(UUID.randomUUID().toString())
                 .transferProcessId(dataRequest.getProcessId())
@@ -48,10 +45,6 @@ class Oauth2ProviderResourceDefinitionGenerator implements ProviderResourceDefin
 
     @Override
     public boolean canGenerate(DataRequest dataRequest, DataAddress assetAddress, Policy policy) {
-        Objects.requireNonNull(dataRequest, "dataRequest must always be provided");
-        Objects.requireNonNull(assetAddress, "assetAddress must always be provided");
-        Objects.requireNonNull(policy, "policy must always be provided");
-
         return validator.test(assetAddress);
     }
 }

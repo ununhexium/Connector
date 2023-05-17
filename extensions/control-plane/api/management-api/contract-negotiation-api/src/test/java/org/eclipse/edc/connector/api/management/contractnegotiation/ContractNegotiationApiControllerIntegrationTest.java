@@ -16,6 +16,7 @@
 package org.eclipse.edc.connector.api.management.contractnegotiation;
 
 import io.restassured.specification.RequestSpecification;
+import org.eclipse.edc.api.model.CallbackAddressDto;
 import org.eclipse.edc.api.model.CriterionDto;
 import org.eclipse.edc.api.query.QuerySpecDto;
 import org.eclipse.edc.connector.api.management.contractnegotiation.model.NegotiationInitiateRequestDto;
@@ -25,10 +26,12 @@ import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiat
 import org.eclipse.edc.junit.annotations.ApiTest;
 import org.eclipse.edc.junit.extensions.EdcExtension;
 import org.eclipse.edc.policy.model.Policy;
-import org.eclipse.edc.spi.message.MessageContext;
+import org.eclipse.edc.spi.entity.StatefulEntity;
 import org.eclipse.edc.spi.message.RemoteMessageDispatcher;
 import org.eclipse.edc.spi.message.RemoteMessageDispatcherRegistry;
+import org.eclipse.edc.spi.protocol.ProtocolWebhook;
 import org.eclipse.edc.spi.query.SortOrder;
+import org.eclipse.edc.spi.types.domain.callback.CallbackAddress;
 import org.eclipse.edc.spi.types.domain.message.RemoteMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,8 +48,8 @@ import static io.restassured.http.ContentType.JSON;
 import static java.util.concurrent.CompletableFuture.completedFuture;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
-import static org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationStates.DECLINED;
 import static org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationStates.REQUESTED;
+import static org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationStates.TERMINATED;
 import static org.eclipse.edc.junit.testfixtures.TestUtils.getFreePort;
 import static org.hamcrest.Matchers.emptyString;
 import static org.hamcrest.Matchers.is;
@@ -66,6 +69,7 @@ class ContractNegotiationApiControllerIntegrationTest {
 
     @BeforeEach
     void setUp(EdcExtension extension) {
+        extension.registerServiceMock(ProtocolWebhook.class, mock(ProtocolWebhook.class));
         when(dispatcher.protocol()).thenReturn("protocol");
         extension.setConfiguration(Map.of(
                 "web.http.port", String.valueOf(getFreePort()),
@@ -178,9 +182,9 @@ class ContractNegotiationApiControllerIntegrationTest {
                 .then()
                 .statusCode(200)
                 .contentType(JSON)
-                .extract().asString();
+                .extract().as(Map.class);
 
-        assertThat(state).isEqualTo("{\"state\":\"REQUESTED\"}");
+        assertThat(state).containsEntry("state", "REQUESTED");
     }
 
     @Test
@@ -212,8 +216,13 @@ class ContractNegotiationApiControllerIntegrationTest {
         var request = NegotiationInitiateRequestDto.Builder.newInstance()
                 .connectorId("connector")
                 .protocol(TestRemoteMessageDispatcher.TEST_PROTOCOL)
-                .connectorAddress("connectorAddress")
+                .connectorAddress("callbackAddress")
+                .callbackAddresses(List.of(CallbackAddressDto.Builder.newInstance()
+                        .uri("local://test")
+                        .build()))
                 .offer(TestFunctions.createOffer())
+                .consumerId("test-consumer")
+                .providerId("test-provider")
                 .build();
 
         baseRequest()
@@ -262,7 +271,7 @@ class ContractNegotiationApiControllerIntegrationTest {
     @Test
     void decline(ContractNegotiationStore store, RemoteMessageDispatcherRegistry registry) {
         registry.register(dispatcher);
-        when(dispatcher.send(any(), any(), any())).thenReturn(completedFuture(null));
+        when(dispatcher.send(any(), any())).thenReturn(completedFuture(null));
         var negotiation = createContractNegotiationBuilder("negotiationId")
                 .state(REQUESTED.code())
                 .correlationId(UUID.randomUUID().toString())
@@ -276,7 +285,7 @@ class ContractNegotiationApiControllerIntegrationTest {
                 .statusCode(204);
 
         await().untilAsserted(() -> {
-            assertThat(store.find("negotiationId").getState()).isEqualTo(DECLINED.code());
+            assertThat(store.findById("negotiationId")).isNotNull().extracting(StatefulEntity::getState).isEqualTo(TERMINATED.code());
         });
     }
 
@@ -296,8 +305,8 @@ class ContractNegotiationApiControllerIntegrationTest {
     private ContractAgreement createContractAgreement(String negotiationId) {
         return ContractAgreement.Builder.newInstance()
                 .id(negotiationId)
-                .providerAgentId(UUID.randomUUID().toString())
-                .consumerAgentId(UUID.randomUUID().toString())
+                .providerId(UUID.randomUUID().toString())
+                .consumerId(UUID.randomUUID().toString())
                 .assetId(UUID.randomUUID().toString())
                 .policy(Policy.Builder.newInstance().build())
                 .build();
@@ -308,6 +317,9 @@ class ContractNegotiationApiControllerIntegrationTest {
                 .id(negotiationId)
                 .counterPartyId(UUID.randomUUID().toString())
                 .counterPartyAddress("address")
+                .callbackAddresses(List.of(CallbackAddress.Builder.newInstance()
+                        .uri("local://test")
+                        .build()))
                 .protocol(protocol);
     }
 
@@ -320,7 +332,7 @@ class ContractNegotiationApiControllerIntegrationTest {
         }
 
         @Override
-        public <T, M extends RemoteMessage> CompletableFuture<T> send(Class<T> responseType, M message, MessageContext context) {
+        public <T, M extends RemoteMessage> CompletableFuture<T> send(Class<T> responseType, M message) {
             return CompletableFuture.completedFuture(null);
         }
     }

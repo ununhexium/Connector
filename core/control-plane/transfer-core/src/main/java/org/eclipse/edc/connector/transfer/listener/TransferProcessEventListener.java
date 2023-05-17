@@ -14,19 +14,22 @@
 
 package org.eclipse.edc.connector.transfer.listener;
 
+import org.eclipse.edc.connector.transfer.spi.event.TransferProcessCompleted;
+import org.eclipse.edc.connector.transfer.spi.event.TransferProcessDeprovisioned;
+import org.eclipse.edc.connector.transfer.spi.event.TransferProcessDeprovisioningRequested;
+import org.eclipse.edc.connector.transfer.spi.event.TransferProcessEvent;
+import org.eclipse.edc.connector.transfer.spi.event.TransferProcessFailed;
+import org.eclipse.edc.connector.transfer.spi.event.TransferProcessInitiated;
+import org.eclipse.edc.connector.transfer.spi.event.TransferProcessProvisioned;
+import org.eclipse.edc.connector.transfer.spi.event.TransferProcessProvisioningRequested;
+import org.eclipse.edc.connector.transfer.spi.event.TransferProcessRequested;
+import org.eclipse.edc.connector.transfer.spi.event.TransferProcessStarted;
+import org.eclipse.edc.connector.transfer.spi.event.TransferProcessTerminated;
 import org.eclipse.edc.connector.transfer.spi.observe.TransferProcessListener;
+import org.eclipse.edc.connector.transfer.spi.observe.TransferProcessStartedData;
 import org.eclipse.edc.connector.transfer.spi.types.TransferProcess;
+import org.eclipse.edc.spi.event.EventEnvelope;
 import org.eclipse.edc.spi.event.EventRouter;
-import org.eclipse.edc.spi.event.transferprocess.TransferProcessCancelled;
-import org.eclipse.edc.spi.event.transferprocess.TransferProcessCompleted;
-import org.eclipse.edc.spi.event.transferprocess.TransferProcessDeprovisioned;
-import org.eclipse.edc.spi.event.transferprocess.TransferProcessDeprovisioningRequested;
-import org.eclipse.edc.spi.event.transferprocess.TransferProcessEnded;
-import org.eclipse.edc.spi.event.transferprocess.TransferProcessFailed;
-import org.eclipse.edc.spi.event.transferprocess.TransferProcessInitiated;
-import org.eclipse.edc.spi.event.transferprocess.TransferProcessProvisioned;
-import org.eclipse.edc.spi.event.transferprocess.TransferProcessProvisioningRequested;
-import org.eclipse.edc.spi.event.transferprocess.TransferProcessRequested;
 
 import java.time.Clock;
 
@@ -46,99 +49,110 @@ public class TransferProcessEventListener implements TransferProcessListener {
     public void initiated(TransferProcess process) {
         var event = TransferProcessInitiated.Builder.newInstance()
                 .transferProcessId(process.getId())
-                .at(clock.millis())
+                .callbackAddresses(process.getCallbackAddresses())
                 .build();
 
-        eventRouter.publish(event);
+        publish(event);
     }
 
     @Override
     public void provisioningRequested(TransferProcess process) {
         var event = TransferProcessProvisioningRequested.Builder.newInstance()
                 .transferProcessId(process.getId())
-                .at(clock.millis())
+                .callbackAddresses(process.getCallbackAddresses())
                 .build();
 
-        eventRouter.publish(event);
+        publish(event);
     }
 
     @Override
     public void provisioned(TransferProcess process) {
         var event = TransferProcessProvisioned.Builder.newInstance()
                 .transferProcessId(process.getId())
-                .at(clock.millis())
+                .callbackAddresses(process.getCallbackAddresses())
                 .build();
 
-        eventRouter.publish(event);
+        publish(event);
     }
 
     @Override
     public void requested(TransferProcess process) {
         var event = TransferProcessRequested.Builder.newInstance()
                 .transferProcessId(process.getId())
-                .at(clock.millis())
+                .callbackAddresses(process.getCallbackAddresses())
                 .build();
 
-        eventRouter.publish(event);
+        publish(event);
+    }
+
+    @Override
+    public void started(TransferProcess process, TransferProcessStartedData additionalData) {
+        var event = TransferProcessStarted.Builder.newInstance()
+                .transferProcessId(process.getId())
+                .dataAddress(additionalData.getDataAddress())
+                .callbackAddresses(process.getCallbackAddresses())
+                .build();
+
+        publish(event);
     }
 
     @Override
     public void completed(TransferProcess process) {
         var event = TransferProcessCompleted.Builder.newInstance()
                 .transferProcessId(process.getId())
-                .at(clock.millis())
+                .callbackAddresses(process.getCallbackAddresses())
                 .build();
 
-        eventRouter.publish(event);
+        publish(event);
+    }
+
+    @Override
+    public void terminated(TransferProcess process) {
+        var event = TransferProcessTerminated.Builder.newInstance()
+                .reason(process.getErrorDetail())
+                .transferProcessId(process.getId())
+                .callbackAddresses(process.getCallbackAddresses())
+                .build();
+
+        publish(event);
     }
 
     @Override
     public void deprovisioningRequested(TransferProcess process) {
         var event = TransferProcessDeprovisioningRequested.Builder.newInstance()
                 .transferProcessId(process.getId())
-                .at(clock.millis())
+                .callbackAddresses(process.getCallbackAddresses())
                 .build();
 
-        eventRouter.publish(event);
+        publish(event);
     }
 
     @Override
     public void deprovisioned(TransferProcess process) {
         var event = TransferProcessDeprovisioned.Builder.newInstance()
                 .transferProcessId(process.getId())
-                .at(clock.millis())
+                .callbackAddresses(process.getCallbackAddresses())
                 .build();
 
-        eventRouter.publish(event);
-    }
-
-    @Override
-    public void ended(TransferProcess process) {
-        var event = TransferProcessEnded.Builder.newInstance()
-                .transferProcessId(process.getId())
-                .at(clock.millis())
-                .build();
-
-        eventRouter.publish(event);
-    }
-
-    @Override
-    public void cancelled(TransferProcess process) {
-        var event = TransferProcessCancelled.Builder.newInstance()
-                .transferProcessId(process.getId())
-                .at(clock.millis())
-                .build();
-
-        eventRouter.publish(event);
+        publish(event);
     }
 
     @Override
     public void failed(TransferProcess process) {
         var event = TransferProcessFailed.Builder.newInstance()
                 .transferProcessId(process.getId())
+                .callbackAddresses(process.getCallbackAddresses())
+                .build();
+
+        publish(event);
+    }
+
+    private void publish(TransferProcessEvent event) {
+        var envelope = EventEnvelope.Builder.newInstance()
+                .payload(event)
                 .at(clock.millis())
                 .build();
 
-        eventRouter.publish(event);
+        eventRouter.publish(envelope);
     }
 }

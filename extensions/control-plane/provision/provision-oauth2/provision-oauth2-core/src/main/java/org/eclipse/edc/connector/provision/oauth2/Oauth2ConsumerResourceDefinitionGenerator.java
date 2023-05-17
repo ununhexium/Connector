@@ -10,6 +10,7 @@
  *  Contributors:
  *       Bayerische Motoren Werke Aktiengesellschaft (BMW AG) - initial API and implementation
  *       ZF Friedrichshafen AG - improvements (refactoring of canGenerate method)
+ *       SAP SE - refactoring
  *
  */
 
@@ -18,11 +19,11 @@ package org.eclipse.edc.connector.provision.oauth2;
 import org.eclipse.edc.connector.transfer.spi.provision.ConsumerResourceDefinitionGenerator;
 import org.eclipse.edc.connector.transfer.spi.types.DataRequest;
 import org.eclipse.edc.connector.transfer.spi.types.ResourceDefinition;
+import org.eclipse.edc.iam.oauth2.spi.Oauth2DataAddressValidator;
 import org.eclipse.edc.policy.model.Policy;
 import org.eclipse.edc.spi.types.domain.DataAddress;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Predicate;
 
@@ -35,9 +36,6 @@ public class Oauth2ConsumerResourceDefinitionGenerator implements ConsumerResour
 
     @Override
     public @Nullable ResourceDefinition generate(DataRequest dataRequest, Policy policy) {
-        Objects.requireNonNull(dataRequest, "dataRequest must always be provided");
-        Objects.requireNonNull(policy, "policy must always be provided");
-
         var destination = dataRequest.getDataDestination();
 
         return Oauth2ResourceDefinition.Builder.newInstance()
@@ -49,9 +47,6 @@ public class Oauth2ConsumerResourceDefinitionGenerator implements ConsumerResour
 
     @Override
     public boolean canGenerate(DataRequest dataRequest, Policy policy) {
-        Objects.requireNonNull(dataRequest, "dataRequest must always be provided");
-        Objects.requireNonNull(policy, "policy must always be provided");
-
         return validator.test(dataRequest.getDataDestination());
     }
 }

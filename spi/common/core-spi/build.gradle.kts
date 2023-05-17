@@ -20,6 +20,8 @@ plugins {
 
 dependencies {
     api(libs.bundles.jackson)
+    api(libs.edc.runtime.metamodel)
+    api(libs.failsafe.core)
     api(project(":spi:common:policy-model"))
 
     implementation(libs.opentelemetry.api)
@@ -33,10 +35,4 @@ dependencies {
     testFixturesImplementation(libs.assertj)
 }
 
-publishing {
-    publications {
-        create<MavenPublication>(project.name) {
-            from(components["java"])
-        }
-    }
-}
+

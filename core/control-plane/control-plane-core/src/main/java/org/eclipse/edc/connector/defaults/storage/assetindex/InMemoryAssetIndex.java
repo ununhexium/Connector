@@ -15,19 +15,20 @@
 package org.eclipse.edc.connector.defaults.storage.assetindex;
 
 import org.eclipse.edc.spi.asset.AssetIndex;
-import org.eclipse.edc.spi.asset.AssetSelectorExpression;
+import org.eclipse.edc.spi.asset.AssetPredicateConverter;
 import org.eclipse.edc.spi.query.Criterion;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.eclipse.edc.spi.query.SortOrder;
+import org.eclipse.edc.spi.result.StoreResult;
 import org.eclipse.edc.spi.types.domain.DataAddress;
 import org.eclipse.edc.spi.types.domain.asset.Asset;
 import org.eclipse.edc.spi.types.domain.asset.AssetEntry;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Predicate;
@@ -41,25 +42,12 @@ import static java.lang.String.format;
 public class InMemoryAssetIndex implements AssetIndex {
     private final Map<String, Asset> cache = new ConcurrentHashMap<>();
     private final Map<String, DataAddress> dataAddresses = new ConcurrentHashMap<>();
-    private final AssetPredicateConverter predicateFactory;
+    private final AssetPredicateConverter predicateConverter = new AssetPredicateConverter();
     private final ReentrantReadWriteLock lock;
 
     public InMemoryAssetIndex() {
-        predicateFactory = new AssetPredicateConverter();
         // fair locks guarantee strong consistency since all waiting threads are processed in order of waiting time
         lock = new ReentrantReadWriteLock(true);
-    }
-
-    @Override
-    public Stream<Asset> queryAssets(AssetSelectorExpression expression) {
-        Objects.requireNonNull(expression, "AssetSelectorExpression can not be null!");
-
-        // select everything ONLY if the special constant is used
-        if (expression == AssetSelectorExpression.SELECT_ALL) {
-            return queryAssets(QuerySpec.none());
-        }
-
-        return queryAssets(QuerySpec.Builder.newInstance().filter(expression.getCriteria()).build());
     }
 
     @Override
@@ -75,6 +63,13 @@ public class InMemoryAssetIndex implements AssetIndex {
                 result = result.sorted((asset1, asset2) -> {
                     var f1 = asComparable(asset1.getProperty(sortField));
                     var f2 = asComparable(asset2.getProperty(sortField));
+
+                    // try for private properties next
+                    if (f1 == null && f2 == null) {
+                        f1 = asComparable(asset1.getPrivateProperty(sortField));
+                        f2 = asComparable(asset2.getPrivateProperty(sortField));
+                    }
+
                     if (f1 == null || f2 == null) {
                         throw new IllegalArgumentException(format("Cannot sort by field %s, it does not exist on one or more Assets", sortField));
                     }
@@ -87,15 +82,6 @@ public class InMemoryAssetIndex implements AssetIndex {
         } finally {
             lock.readLock().unlock();
         }
-    }
-
-    private Stream<Asset> filterBy(List<Criterion> criteria) {
-        var predicate = criteria.stream()
-                .map(predicateFactory::convert)
-                .reduce(x -> true, Predicate::and);
-
-        return cache.values().stream()
-                .filter(predicate);
     }
 
     @Override
@@ -112,20 +98,27 @@ public class InMemoryAssetIndex implements AssetIndex {
     }
 
     @Override
-    public void accept(AssetEntry item) {
+    public StoreResult<Void> create(AssetEntry item) {
         lock.writeLock().lock();
         try {
+            var id = item.getAsset().getId();
+            if (cache.containsKey(id)) {
+                return StoreResult.alreadyExists(format(ASSET_EXISTS_TEMPLATE, id));
+            }
             add(item.getAsset(), item.getDataAddress());
         } finally {
             lock.writeLock().unlock();
         }
+        return StoreResult.success();
     }
 
     @Override
-    public Asset deleteById(String assetId) {
+    public StoreResult<Asset> deleteById(String assetId) {
         lock.writeLock().lock();
         try {
-            return delete(assetId);
+            return Optional.ofNullable(delete(assetId))
+                    .map(StoreResult::success)
+                    .orElse(StoreResult.notFound(format(ASSET_NOT_FOUND_TEMPLATE, assetId)));
         } finally {
             lock.writeLock().unlock();
         }
@@ -134,6 +127,39 @@ public class InMemoryAssetIndex implements AssetIndex {
     @Override
     public long countAssets(List<Criterion> criteria) {
         return filterBy(criteria).count();
+    }
+
+    @Override
+    public StoreResult<Asset> updateAsset(Asset asset) {
+        lock.writeLock().lock();
+        try {
+            String id = asset.getId();
+            Objects.requireNonNull(asset, "asset");
+            Objects.requireNonNull(id, "assetId");
+            if (cache.containsKey(id)) {
+                cache.put(id, asset);
+                return StoreResult.success(asset);
+            }
+            return StoreResult.notFound(format(ASSET_NOT_FOUND_TEMPLATE, id));
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    @Override
+    public StoreResult<DataAddress> updateDataAddress(String assetId, DataAddress dataAddress) {
+        lock.writeLock().lock();
+        try {
+            Objects.requireNonNull(dataAddress, "dataAddress");
+            Objects.requireNonNull(assetId, "asset.getId()");
+            if (dataAddresses.containsKey(assetId)) {
+                dataAddresses.put(assetId, dataAddress);
+                return StoreResult.success(dataAddress);
+            }
+            return StoreResult.notFound(format(DATAADDRESS_NOT_FOUND_TEMPLATE, assetId));
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     @Override
@@ -147,12 +173,13 @@ public class InMemoryAssetIndex implements AssetIndex {
         }
     }
 
-    public Map<String, Asset> getAssets() {
-        return Collections.unmodifiableMap(cache);
-    }
+    private Stream<Asset> filterBy(List<Criterion> criteria) {
+        var predicate = criteria.stream()
+                .map(predicateConverter::convert)
+                .reduce(x -> true, Predicate::and);
 
-    public Map<String, DataAddress> getDataAddresses() {
-        return Collections.unmodifiableMap(dataAddresses);
+        return cache.values().stream()
+                .filter(predicate);
     }
 
     private @Nullable Comparable asComparable(Object property) {

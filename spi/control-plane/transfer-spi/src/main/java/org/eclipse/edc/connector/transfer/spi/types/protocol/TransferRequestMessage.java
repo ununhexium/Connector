@@ -1,0 +1,174 @@
+/*
+ *  Copyright (c) 2022 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)
+ *
+ *  This program and the accompanying materials are made available under the
+ *  terms of the Apache License, Version 2.0 which is available at
+ *  https://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  SPDX-License-Identifier: Apache-2.0
+ *
+ *  Contributors:
+ *       Bayerische Motoren Werke Aktiengesellschaft (BMW AG) - initial API and implementation
+ *
+ */
+
+package org.eclipse.edc.connector.transfer.spi.types.protocol;
+
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.databind.annotation.JsonPOJOBuilder;
+import org.eclipse.edc.spi.types.domain.DataAddress;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
+
+import static java.util.UUID.randomUUID;
+
+/**
+ * The {@link TransferRequestMessage} is sent by a consumer to initiate a transfer process.
+ */
+public class TransferRequestMessage implements TransferRemoteMessage {
+
+    private String id;
+    private String counterPartyAddress;
+    private String protocol = "unknown";
+    private String processId;
+    private String contractId;
+    @Deprecated(forRemoval = true)
+    private String assetId;
+    private DataAddress dataDestination;
+    @Deprecated(forRemoval = true)
+    private String connectorId;
+    private String callbackAddress;
+    private Map<String, String> properties = new HashMap<>();
+
+    @NotNull
+    @Override
+    public String getId() {
+        return id;
+    }
+
+    @Override
+    public String getProtocol() {
+        return protocol;
+    }
+
+    @Override
+    public void setProtocol(String protocol) {
+        Objects.requireNonNull(protocol);
+        this.protocol = protocol;
+    }
+
+    @Override
+    public String getCounterPartyAddress() {
+        return counterPartyAddress;
+    }
+
+    @Override
+    @NotNull
+    public String getProcessId() {
+        return processId;
+    }
+
+    @Deprecated
+    public String getAssetId() {
+        return assetId;
+    }
+
+    public String getContractId() {
+        return contractId;
+    }
+
+    @Deprecated
+    public String getConnectorId() {
+        return connectorId;
+    }
+
+    public Map<String, String> getProperties() {
+        return properties;
+    }
+
+    public DataAddress getDataDestination() {
+        return dataDestination;
+    }
+
+    public String getCallbackAddress() {
+        return callbackAddress;
+    }
+
+    @JsonPOJOBuilder(withPrefix = "")
+    public static class Builder {
+        private final TransferRequestMessage message;
+
+        private Builder() {
+            message = new TransferRequestMessage();
+        }
+
+        @JsonCreator
+        public static Builder newInstance() {
+            return new Builder();
+        }
+
+        public Builder id(String id) {
+            this.message.id = id;
+            return this;
+        }
+
+        public Builder processId(String processId) {
+            message.processId = processId;
+            return this;
+        }
+
+        public Builder counterPartyAddress(String callbackAddress) {
+            message.counterPartyAddress = callbackAddress;
+            return this;
+        }
+
+        public Builder callbackAddress(String callbackAddress) {
+            message.callbackAddress = callbackAddress;
+            return this;
+        }
+
+        public Builder protocol(String protocol) {
+            message.protocol = protocol;
+            return this;
+        }
+
+        public Builder contractId(String contractId) {
+            message.contractId = contractId;
+            return this;
+        }
+
+        @Deprecated
+        public Builder assetId(String assetId) {
+            message.assetId = assetId;
+            return this;
+        }
+
+        public Builder dataDestination(DataAddress dataDestination) {
+            message.dataDestination = dataDestination;
+            return this;
+        }
+
+        @Deprecated
+        public Builder connectorId(String connectorId) {
+            message.connectorId = connectorId;
+            return this;
+        }
+
+        public Builder properties(Map<String, String> properties) {
+            message.properties = properties;
+            return this;
+        }
+
+        public TransferRequestMessage build() {
+            if (message.id == null) {
+                message.id = randomUUID().toString();
+            }
+
+            Objects.requireNonNull(message.callbackAddress, "The callbackAddress must be specified");
+            return message;
+        }
+    }
+}

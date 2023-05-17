@@ -18,18 +18,7 @@ plugins {
 }
 
 dependencies {
-    testImplementation(libs.gatling) {
-        exclude(group = "io.gatling", module = "gatling-jms")
-        exclude(group = "io.gatling", module = "gatling-jms-java")
-        exclude(group = "io.gatling", module = "gatling-mqtt")
-        exclude(group = "io.gatling", module = "gatling-mqtt-java")
-        exclude(group = "io.gatling", module = "gatling-jdbc")
-        exclude(group = "io.gatling", module = "gatling-jdbc-java")
-        exclude(group = "io.gatling", module = "gatling-redis")
-        exclude(group = "io.gatling", module = "gatling-redis-java")
-        exclude(group = "io.gatling", module = "gatling-graphite")
-    }
-
+    
     testImplementation(project(":extensions:common:azure:azure-blob-core"))
     testImplementation(project(":extensions:common:vault:vault-azure"))
     testImplementation(project(":core:common:junit"))
@@ -43,4 +32,8 @@ dependencies {
 
     testRuntimeOnly(project(":system-tests:runtimes:azure-data-factory-transfer-provider"))
     testRuntimeOnly(project(":system-tests:runtimes:azure-data-factory-transfer-consumer"))
+}
+
+edcBuild {
+    publish.set(false)
 }

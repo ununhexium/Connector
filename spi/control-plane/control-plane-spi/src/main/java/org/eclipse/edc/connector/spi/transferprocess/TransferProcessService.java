@@ -15,12 +15,11 @@
 
 package org.eclipse.edc.connector.spi.transferprocess;
 
-import org.eclipse.edc.connector.transfer.spi.types.DataRequest;
 import org.eclipse.edc.connector.transfer.spi.types.DeprovisionedResource;
 import org.eclipse.edc.connector.transfer.spi.types.ProvisionResponse;
 import org.eclipse.edc.connector.transfer.spi.types.TransferProcess;
+import org.eclipse.edc.connector.transfer.spi.types.TransferRequest;
 import org.eclipse.edc.service.spi.result.ServiceResult;
-import org.eclipse.edc.spi.iam.ClaimToken;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -65,10 +64,25 @@ public interface TransferProcessService {
      *
      * @param transferProcessId id of the transferProcess
      * @return a result that is successful if the transfer process was found and is in a state that can be canceled
+     * @deprecated use {@link #terminate} instead
+     */
+    @Deprecated(since = "milestone9")
+    @NotNull
+    default ServiceResult<TransferProcess> cancel(String transferProcessId) {
+        return terminate(transferProcessId, "transfer cancelled");
+    }
+
+    /**
+     * Asynchronously requests termination of the transfer process.
+     * <p>
+     * The return result status only reflects the successful submission of the command.
+     *
+     * @param transferProcessId id of the transferProcess
+     * @param reason reason for the termination
+     * @return a result that is successful if the transfer process was found and is in a state that can be terminated
      */
     @NotNull
-    ServiceResult<TransferProcess> cancel(String transferProcessId);
-
+    ServiceResult<TransferProcess> terminate(String transferProcessId, String reason);
 
     /**
      * Asynchronously requests completion of the transfer process.
@@ -89,9 +103,13 @@ public interface TransferProcessService {
      * @param transferProcessId id of the transferProcess
      * @param errorDetail the reason of the failure
      * @return a result that is successful if the transfer process was found and is in a state that can be failed
+     * @deprecated please use {@link #terminate(String, String)}
      */
     @NotNull
-    ServiceResult<TransferProcess> fail(String transferProcessId, String errorDetail);
+    @Deprecated(since = "milestone9")
+    default ServiceResult<TransferProcess> fail(String transferProcessId, String errorDetail) {
+        return terminate(transferProcessId, errorDetail);
+    }
 
     /**
      * Asynchronously requests deprovisioning of the transfer process.
@@ -109,21 +127,10 @@ public interface TransferProcessService {
      * Initiate transfer request for type consumer.
      *
      * @param request for the transfer.
-     * @return a result that is successful if the transfer process was initiated with id of created transferProcess.
+     * @return a result that is successful if the transfer process was initiated with the created TransferProcess.
      */
     @NotNull
-    ServiceResult<String> initiateTransfer(DataRequest request);
-
-    /**
-     * Initiate transfer request for type provider.
-     *
-     * @param request for the transfer.
-     * @param claimToken of the requesting participant.
-     * @return a result that is successful if the transfer process was initiated with id of created transferProcess.
-     */
-    @NotNull
-    ServiceResult<String> initiateTransfer(DataRequest request, ClaimToken claimToken);
-
+    ServiceResult<TransferProcess> initiateTransfer(TransferRequest request);
 
     /**
      * Asynchronously informs the system that the {@link DeprovisionedResource} has been provisioned

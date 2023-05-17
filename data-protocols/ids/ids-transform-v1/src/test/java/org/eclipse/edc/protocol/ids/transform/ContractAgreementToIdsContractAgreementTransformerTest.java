@@ -16,7 +16,7 @@
 package org.eclipse.edc.protocol.ids.transform;
 
 import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreement;
-import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreementRequest;
+import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreementMessage;
 import org.eclipse.edc.policy.model.Duty;
 import org.eclipse.edc.policy.model.Permission;
 import org.eclipse.edc.policy.model.Policy;
@@ -27,7 +27,6 @@ import org.junit.jupiter.api.Test;
 
 import java.net.URI;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -87,25 +86,23 @@ class ContractAgreementToIdsContractAgreementTransformerTest {
         verify(context).transform(any(Duty.class), eq(de.fraunhofer.iais.eis.Duty.class));
     }
 
-    private ContractAgreementRequest contractAgreementRequest(Policy policy) {
+    private ContractAgreementMessage contractAgreementRequest(Policy policy) {
         var contractAgreement = ContractAgreement.Builder.newInstance()
-                .id(String.valueOf(AGREEMENT_ID))
-                .providerAgentId(PROVIDER_ID)
+                .id(AGREEMENT_ID)
+                .providerId(PROVIDER_ID)
                 .assetId(UUID.randomUUID().toString())
-                .consumerAgentId("id")
-                .contractStartDate(Instant.now().getEpochSecond())
-                .contractEndDate(Instant.now().plus(1, ChronoUnit.DAYS).getEpochSecond())
+                .consumerId("id")
                 .contractSigningDate(Instant.now().getEpochSecond())
                 .policy(policy)
                 .build();
 
-        return ContractAgreementRequest.Builder.newInstance()
+        return ContractAgreementMessage.Builder.newInstance()
                 .contractAgreement(contractAgreement)
                 .policy(policy)
                 .protocol("any")
                 .connectorId("any")
-                .connectorAddress("any")
-                .correlationId("any")
+                .counterPartyAddress("any")
+                .processId("any")
                 .build();
     }
 }

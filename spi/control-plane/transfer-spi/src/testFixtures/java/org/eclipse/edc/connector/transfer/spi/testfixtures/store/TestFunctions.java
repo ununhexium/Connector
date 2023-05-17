@@ -26,9 +26,11 @@ import org.eclipse.edc.connector.transfer.spi.types.TransferProcess;
 import org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates;
 import org.eclipse.edc.spi.types.domain.DataAddress;
 import org.eclipse.edc.spi.types.domain.asset.Asset;
+import org.eclipse.edc.spi.types.domain.callback.CallbackAddress;
 import org.jetbrains.annotations.NotNull;
 
 import java.time.Clock;
+import java.util.List;
 import java.util.UUID;
 
 public class TestFunctions {
@@ -76,7 +78,7 @@ public class TestFunctions {
 
     public static TransferProcess createTransferProcess(String processId) {
         return createTransferProcessBuilder(processId)
-                .state(TransferProcessStates.UNSAVED.code())
+                .state(TransferProcessStates.INITIAL.code())
                 .build();
     }
 
@@ -84,10 +86,11 @@ public class TestFunctions {
         return TransferProcess.Builder.newInstance()
                 .id(processId)
                 .createdAt(Clock.systemUTC().millis())
-                .state(TransferProcessStates.UNSAVED.code())
+                .state(TransferProcessStates.INITIAL.code())
                 .type(TransferProcess.Type.CONSUMER)
                 .dataRequest(createDataRequest())
                 .contentDataAddress(createDataAddressBuilder("any").build())
+                .callbackAddresses(List.of(CallbackAddress.Builder.newInstance().uri("local://test").build()))
                 .resourceManifest(createManifest());
     }
 
@@ -103,9 +106,7 @@ public class TestFunctions {
 
     @NotNull
     public static TransferProcess initialTransferProcess(String processId, String dataRequestId) {
-        var process = createTransferProcess(processId, createDataRequestBuilder().id(dataRequestId).build());
-        process.transitionInitial();
-        return process;
+        return createTransferProcess(processId, createDataRequestBuilder().id(dataRequestId).build());
     }
 
     @JsonTypeName("dataspaceconnector:testresourcedef")

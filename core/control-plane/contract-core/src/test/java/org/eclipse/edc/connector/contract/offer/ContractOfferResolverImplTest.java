@@ -15,7 +15,7 @@
 
 package org.eclipse.edc.connector.contract.offer;
 
-import org.eclipse.edc.connector.contract.spi.offer.ContractDefinitionService;
+import org.eclipse.edc.connector.contract.spi.offer.ContractDefinitionResolver;
 import org.eclipse.edc.connector.contract.spi.offer.ContractOfferQuery;
 import org.eclipse.edc.connector.contract.spi.offer.ContractOfferResolver;
 import org.eclipse.edc.connector.contract.spi.types.offer.ContractDefinition;
@@ -36,12 +36,10 @@ import org.eclipse.edc.spi.types.domain.asset.Asset;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;
-import java.time.ZoneOffset;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -50,6 +48,7 @@ import static java.util.Collections.emptyMap;
 import static java.util.stream.IntStream.range;
 import static java.util.stream.Stream.concat;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.eclipse.edc.spi.agent.ParticipantAgent.PARTICIPANT_IDENTITY;
 import static org.mockito.AdditionalMatchers.and;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -63,11 +62,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ContractOfferResolverImplTest {
-
+    public static final String CONSUMER_ID = "urn:connector:consumer";
+    private static final String PARTICIPANT_ID = "urn:connector:provider";
     private static final Range DEFAULT_RANGE = new Range(0, 10);
     private final Instant now = Instant.now();
     private final Clock clock = Clock.fixed(now, UTC);
-    private final ContractDefinitionService contractDefinitionService = mock(ContractDefinitionService.class);
+    private final ContractDefinitionResolver contractDefinitionResolver = mock(ContractDefinitionResolver.class);
     private final AssetIndex assetIndex = mock(AssetIndex.class);
     private final ParticipantAgentService agentService = mock(ParticipantAgentService.class);
     private final PolicyDefinitionStore policyStore = mock(PolicyDefinitionStore.class);
@@ -77,7 +77,7 @@ class ContractOfferResolverImplTest {
 
     @BeforeEach
     void setUp() {
-        contractOfferResolver = new ContractOfferResolverImpl(agentService, contractDefinitionService, assetIndex, policyStore, clock, monitor);
+        contractOfferResolver = new ContractOfferResolverImpl(PARTICIPANT_ID, agentService, contractDefinitionResolver, assetIndex, policyStore, clock, monitor);
     }
 
     @Test
@@ -85,30 +85,23 @@ class ContractOfferResolverImplTest {
         var contractDefinition = getContractDefBuilder("1")
                 .build();
 
-        when(agentService.createFor(isA(ClaimToken.class))).thenReturn(new ParticipantAgent(emptyMap(), emptyMap()));
-        when(contractDefinitionService.definitionsFor(isA(ParticipantAgent.class))).thenReturn(Stream.of(contractDefinition));
+        when(agentService.createFor(isA(ClaimToken.class))).thenReturn(new ParticipantAgent(emptyMap(), Map.of(PARTICIPANT_IDENTITY, CONSUMER_ID)));
+        when(contractDefinitionResolver.definitionsFor(isA(ParticipantAgent.class))).thenReturn(Stream.of(contractDefinition));
         var assetStream = Stream.of(Asset.Builder.newInstance().build(), Asset.Builder.newInstance().build());
         when(assetIndex.countAssets(anyList())).thenReturn(2L);
         when(assetIndex.queryAssets(isA(QuerySpec.class))).thenReturn(assetStream);
         when(policyStore.findById(any())).thenReturn(PolicyDefinition.Builder.newInstance().policy(Policy.Builder.newInstance().build()).build());
         var query = ContractOfferQuery.builder()
                 .claimToken(ClaimToken.Builder.newInstance().build())
-                .provider(URI.create("urn:connector:edc-provider"))
-                .consumer(URI.create("urn:connector:edc-consumer"))
                 .build();
 
         var offers = contractOfferResolver.queryContractOffers(query);
 
         assertThat(offers)
                 .hasSize(2)
-                .allSatisfy(contractOffer -> {
-                    assertThat(contractOffer.getContractEnd().toInstant())
-                            .isEqualTo(clock.instant().plusSeconds(contractDefinition.getValidity()));
-                    assertThat(contractOffer.getProvider()).isEqualTo(URI.create("urn:connector:edc-provider"));
-                    assertThat(contractOffer.getConsumer()).isEqualTo(URI.create("urn:connector:edc-consumer"));
-                });
+                .allSatisfy(contractOffer -> assertThat(contractOffer.getProviderId()).isEqualTo(PARTICIPANT_ID));
         verify(agentService).createFor(isA(ClaimToken.class));
-        verify(contractDefinitionService).definitionsFor(isA(ParticipantAgent.class));
+        verify(contractDefinitionResolver).definitionsFor(isA(ParticipantAgent.class));
         verify(assetIndex).queryAssets(isA(QuerySpec.class));
         verify(policyStore, atLeastOnce()).findById("contract");
     }
@@ -118,7 +111,7 @@ class ContractOfferResolverImplTest {
         var contractDefinition = getContractDefBuilder("1")
                 .build();
         when(agentService.createFor(isA(ClaimToken.class))).thenReturn(new ParticipantAgent(emptyMap(), emptyMap()));
-        when(contractDefinitionService.definitionsFor(isA(ParticipantAgent.class))).thenReturn(Stream.of(contractDefinition));
+        when(contractDefinitionResolver.definitionsFor(isA(ParticipantAgent.class))).thenReturn(Stream.of(contractDefinition));
         when(assetIndex.queryAssets(isA(QuerySpec.class))).thenReturn(Stream.of(Asset.Builder.newInstance().build()));
         when(policyStore.findById(any())).thenReturn(null);
         var query = ContractOfferQuery.builder().claimToken(ClaimToken.Builder.newInstance().build()).build();
@@ -134,7 +127,7 @@ class ContractOfferResolverImplTest {
                 .build());
 
         when(agentService.createFor(isA(ClaimToken.class))).thenReturn(new ParticipantAgent(emptyMap(), emptyMap()));
-        when(contractDefinitionService.definitionsFor(isA(ParticipantAgent.class))).thenAnswer(i -> contractDefinition);
+        when(contractDefinitionResolver.definitionsFor(isA(ParticipantAgent.class))).thenAnswer(i -> contractDefinition);
         when(assetIndex.countAssets(anyList())).thenReturn(100L);
         when(assetIndex.queryAssets(isA(QuerySpec.class))).thenAnswer(inv -> range(20, 50).mapToObj(i -> createAsset("asset" + i).build()));
         when(policyStore.findById(any())).thenReturn(PolicyDefinition.Builder.newInstance().policy(Policy.Builder.newInstance().build()).build());
@@ -145,25 +138,24 @@ class ContractOfferResolverImplTest {
         var offers = contractOfferResolver.queryContractOffers(getQuery(from, to));
 
         assertThat(offers).hasSize(to - from)
-                .extracting(ContractOffer::getAsset)
-                .extracting(Asset::getId)
+                .extracting(ContractOffer::getAssetId)
                 .allSatisfy(id -> {
                     var idNumber = Integer.valueOf(id.replace("asset", ""));
                     assertThat(idNumber).isStrictlyBetween(from - 1, to);
                 });
         verify(agentService).createFor(isA(ClaimToken.class));
-        verify(contractDefinitionService).definitionsFor(isA(ParticipantAgent.class));
+        verify(contractDefinitionResolver).definitionsFor(isA(ParticipantAgent.class));
         verify(assetIndex).queryAssets(isA(QuerySpec.class));
         verify(policyStore).findById("contract");
     }
 
 
     @Test
-    void shouldNotLimitResult_whenAssetsAreLessThanTheRequested() {
+    void shouldLimitResultToTheRemainingAssetsOfTheContractDefinition() {
         var contractDefinition = getContractDefBuilder("1").build();
 
         when(agentService.createFor(isA(ClaimToken.class))).thenReturn(new ParticipantAgent(emptyMap(), emptyMap()));
-        when(contractDefinitionService.definitionsFor(isA(ParticipantAgent.class))).thenReturn(Stream.of(contractDefinition));
+        when(contractDefinitionResolver.definitionsFor(isA(ParticipantAgent.class))).thenReturn(Stream.of(contractDefinition));
         when(assetIndex.countAssets(anyList())).thenReturn(40L);
         when(assetIndex.queryAssets(isA(QuerySpec.class))).thenAnswer(inv -> range(20, 50).mapToObj(i -> createAsset("asset" + i).build()));
         when(policyStore.findById(any())).thenReturn(PolicyDefinition.Builder.newInstance().policy(Policy.Builder.newInstance().build()).build());
@@ -174,7 +166,7 @@ class ContractOfferResolverImplTest {
         var result = contractOfferResolver.queryContractOffers(getQuery(from, to));
 
         assertThat(result).isNotEmpty();
-        verify(assetIndex, times(1)).queryAssets(and(isA(QuerySpec.class), argThat(it -> it.getLimit() == 40)));
+        verify(assetIndex, times(1)).queryAssets(and(isA(QuerySpec.class), argThat(it -> it.getLimit() == 20)));
     }
 
     @Test
@@ -183,7 +175,7 @@ class ContractOfferResolverImplTest {
                 .build());
 
         when(agentService.createFor(isA(ClaimToken.class))).thenReturn(new ParticipantAgent(emptyMap(), emptyMap()));
-        when(contractDefinitionService.definitionsFor(isA(ParticipantAgent.class))).thenAnswer(i -> contractDefinition);
+        when(contractDefinitionResolver.definitionsFor(isA(ParticipantAgent.class))).thenAnswer(i -> contractDefinition);
         when(assetIndex.queryAssets(isA(QuerySpec.class))).thenAnswer(inv -> range(0, 10).mapToObj(i -> createAsset("asset" + i).build()));
         when(assetIndex.countAssets(anyList())).thenReturn(10L);
         when(policyStore.findById(any())).thenReturn(PolicyDefinition.Builder.newInstance().policy(Policy.Builder.newInstance().build()).build());
@@ -196,7 +188,7 @@ class ContractOfferResolverImplTest {
         // 4 definitions, 10 assets each = 40 offers total -> offset 20 ==> result = 20
         assertThat(offers).hasSize(20);
         verify(agentService).createFor(isA(ClaimToken.class));
-        verify(contractDefinitionService).definitionsFor(isA(ParticipantAgent.class));
+        verify(contractDefinitionResolver).definitionsFor(isA(ParticipantAgent.class));
         verify(assetIndex, atLeastOnce()).queryAssets(isA(QuerySpec.class));
         verify(policyStore, atLeastOnce()).findById("contract");
     }
@@ -207,7 +199,7 @@ class ContractOfferResolverImplTest {
                 .build());
 
         when(agentService.createFor(isA(ClaimToken.class))).thenReturn(new ParticipantAgent(emptyMap(), emptyMap()));
-        when(contractDefinitionService.definitionsFor(isA(ParticipantAgent.class))).thenAnswer(i -> contractDefinition);
+        when(contractDefinitionResolver.definitionsFor(isA(ParticipantAgent.class))).thenAnswer(i -> contractDefinition);
         when(assetIndex.countAssets(anyList())).thenReturn(10L);
         when(assetIndex.queryAssets(isA(QuerySpec.class))).thenAnswer(inv -> range(0, 10).mapToObj(i -> createAsset("asset" + i).build()));
         when(policyStore.findById(any())).thenReturn(PolicyDefinition.Builder.newInstance().policy(Policy.Builder.newInstance().build()).build());
@@ -220,7 +212,7 @@ class ContractOfferResolverImplTest {
         // 2 definitions, 10 assets each = 20 offers total -> offset of 25 is outside
         assertThat(offers).isEmpty();
         verify(agentService).createFor(isA(ClaimToken.class));
-        verify(contractDefinitionService).definitionsFor(isA(ParticipantAgent.class));
+        verify(contractDefinitionResolver).definitionsFor(isA(ParticipantAgent.class));
         verify(assetIndex, never()).queryAssets(isA(QuerySpec.class));
         verify(policyStore, never()).findById("contract");
     }
@@ -231,7 +223,7 @@ class ContractOfferResolverImplTest {
                 .mapToObj(i -> getContractDefBuilder(String.valueOf(i)).build());
 
         when(agentService.createFor(isA(ClaimToken.class))).thenReturn(new ParticipantAgent(emptyMap(), emptyMap()));
-        when(contractDefinitionService.definitionsFor(isA(ParticipantAgent.class))).thenAnswer(i -> contractDefinitions);
+        when(contractDefinitionResolver.definitionsFor(isA(ParticipantAgent.class))).thenAnswer(i -> contractDefinitions);
         when(assetIndex.countAssets(anyList())).thenReturn(1L);
         when(assetIndex.queryAssets(isA(QuerySpec.class))).thenAnswer(inv -> Stream.of(createAsset("asset").build()));
         when(policyStore.findById(any())).thenReturn(PolicyDefinition.Builder.newInstance().policy(Policy.Builder.newInstance().build()).build());
@@ -242,7 +234,7 @@ class ContractOfferResolverImplTest {
         var offers = contractOfferResolver.queryContractOffers(getQuery(from, to));
 
         assertThat(offers).hasSize(to - from);
-        verify(contractDefinitionService).definitionsFor(isA(ParticipantAgent.class));
+        verify(contractDefinitionResolver).definitionsFor(isA(ParticipantAgent.class));
         verify(assetIndex, times(30)).queryAssets(isA(QuerySpec.class));
         verify(policyStore, times(30)).findById("contract");
     }
@@ -254,11 +246,10 @@ class ContractOfferResolverImplTest {
                 .accessPolicyId("access")
                 .contractPolicyId("contract")
                 .selectorExpression(AssetSelectorExpression.Builder.newInstance().whenEquals(Asset.PROPERTY_NAME, "1").build())
-                .validity(10)
                 .build();
 
         when(agentService.createFor(isA(ClaimToken.class))).thenReturn(new ParticipantAgent(emptyMap(), emptyMap()));
-        when(contractDefinitionService.definitionsFor(isA(ParticipantAgent.class))).thenReturn(Stream.of(contractDefinition));
+        when(contractDefinitionResolver.definitionsFor(isA(ParticipantAgent.class))).thenReturn(Stream.of(contractDefinition));
         var assetStream = Stream.of(Asset.Builder.newInstance().build(), Asset.Builder.newInstance().build());
         when(assetIndex.countAssets(anyList())).thenReturn(1000L);
         when(assetIndex.queryAssets(isA(QuerySpec.class))).thenReturn(assetStream);
@@ -274,7 +265,7 @@ class ContractOfferResolverImplTest {
 
         assertThat(offers).hasSize(2);
         verify(agentService).createFor(isA(ClaimToken.class));
-        verify(contractDefinitionService).definitionsFor(isA(ParticipantAgent.class));
+        verify(contractDefinitionResolver).definitionsFor(isA(ParticipantAgent.class));
         verify(policyStore).findById("contract");
         var expectedQuerySpec = QuerySpec.Builder.newInstance()
                 .filter(concat(contractDefinition.getSelectorExpression().getCriteria().stream(), query.getAssetsCriteria().stream()).collect(Collectors.toList()))
@@ -286,26 +277,22 @@ class ContractOfferResolverImplTest {
     @Test
     void shouldReturnMaximumContractEndtime_whenItExceedsMaximimLongValue() {
 
-        var contractDefinition = getContractDefBuilder("ContractForever").validity(Long.MAX_VALUE).build();
+        var contractDefinition = getContractDefBuilder("ContractForever").build();
 
         when(agentService.createFor(isA(ClaimToken.class))).thenReturn(new ParticipantAgent(emptyMap(), emptyMap()));
-        when(contractDefinitionService.definitionsFor(isA(ParticipantAgent.class))).thenReturn(Stream.of(contractDefinition));
+        when(contractDefinitionResolver.definitionsFor(isA(ParticipantAgent.class))).thenReturn(Stream.of(contractDefinition));
         var assetStream = Stream.of(Asset.Builder.newInstance().build());
         when(assetIndex.countAssets(anyList())).thenReturn(1L);
         when(assetIndex.queryAssets(isA(QuerySpec.class))).thenReturn(assetStream);
         when(policyStore.findById(any())).thenReturn(PolicyDefinition.Builder.newInstance().policy(Policy.Builder.newInstance().build()).build());
         var query = ContractOfferQuery.builder()
                 .claimToken(ClaimToken.Builder.newInstance().build())
-                .provider(URI.create("urn:connector:edc-provider"))
-                .consumer(URI.create("urn:connector:edc-consumer"))
                 .build();
 
         var offers = contractOfferResolver.queryContractOffers(query);
 
         assertThat(offers)
-                .hasSize(1)
-                .allSatisfy(contractOffer -> assertThat(contractOffer.getContractEnd()).isEqualTo(Instant.ofEpochMilli(Long.MAX_VALUE).atZone(ZoneOffset.UTC)));
-
+                .hasSize(1);
     }
 
     private ContractOfferQuery getQuery(int from, int to) {
@@ -320,8 +307,7 @@ class ContractOfferResolverImplTest {
                 .id(id)
                 .accessPolicyId("access")
                 .contractPolicyId("contract")
-                .selectorExpression(AssetSelectorExpression.SELECT_ALL)
-                .validity(TimeUnit.MINUTES.toSeconds(10));
+                .selectorExpression(AssetSelectorExpression.SELECT_ALL);
     }
 
     private Asset.Builder createAsset(String id) {

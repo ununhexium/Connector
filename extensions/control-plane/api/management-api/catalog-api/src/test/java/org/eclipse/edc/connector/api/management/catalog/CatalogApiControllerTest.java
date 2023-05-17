@@ -16,7 +16,6 @@ package org.eclipse.edc.connector.api.management.catalog;
 
 import jakarta.ws.rs.container.AsyncResponse;
 import org.eclipse.edc.api.query.QuerySpecDto;
-import org.eclipse.edc.api.transformer.DtoTransformerRegistry;
 import org.eclipse.edc.catalog.spi.Catalog;
 import org.eclipse.edc.connector.api.management.catalog.model.CatalogRequestDto;
 import org.eclipse.edc.connector.contract.spi.types.offer.ContractOffer;
@@ -27,15 +26,14 @@ import org.eclipse.edc.spi.monitor.Monitor;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.eclipse.edc.spi.query.SortOrder;
 import org.eclipse.edc.spi.result.Result;
-import org.eclipse.edc.spi.types.domain.asset.Asset;
+import org.eclipse.edc.transform.spi.TypeTransformerRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
-import java.time.ZonedDateTime;
 import java.util.List;
-import java.util.UUID;
 
+import static java.util.UUID.randomUUID;
 import static java.util.concurrent.CompletableFuture.completedFuture;
 import static java.util.concurrent.CompletableFuture.failedFuture;
 import static org.mockito.ArgumentMatchers.any;
@@ -49,11 +47,19 @@ class CatalogApiControllerTest {
 
     private final CatalogService service = mock(CatalogService.class);
     private final Monitor monitor = mock(Monitor.class);
-    private DtoTransformerRegistry transformerRegistry;
+    private TypeTransformerRegistry transformerRegistry;
+
+    private static ContractOffer createContractOffer() {
+        return ContractOffer.Builder.newInstance()
+                .id(randomUUID().toString())
+                .policy(Policy.Builder.newInstance().build())
+                .assetId(randomUUID().toString())
+                .build();
+    }
 
     @BeforeEach
     void setup() {
-        transformerRegistry = mock(DtoTransformerRegistry.class);
+        transformerRegistry = mock(TypeTransformerRegistry.class);
         when(transformerRegistry.transform(any(), any())).thenReturn(Result.success(new QuerySpec()));
     }
 
@@ -105,15 +111,5 @@ class CatalogApiControllerTest {
         controller.requestCatalog(request, response);
 
         verify(response).resume(Mockito.<Catalog>argThat(c -> c.getContractOffers().equals(List.of(offer))));
-    }
-
-    private static ContractOffer createContractOffer() {
-        return ContractOffer.Builder.newInstance()
-                .id(UUID.randomUUID().toString())
-                .policy(Policy.Builder.newInstance().build())
-                .asset(Asset.Builder.newInstance().id(UUID.randomUUID().toString()).build())
-                .contractStart(ZonedDateTime.now())
-                .contractEnd(ZonedDateTime.now().plusMonths(1))
-                .build();
     }
 }

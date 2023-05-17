@@ -10,6 +10,7 @@
  *  Contributors:
  *       Bayerische Motoren Werke Aktiengesellschaft (BMW AG) - initial API and implementation
  *       ZF Friedrichshafen AG - unit tests for canGenerate
+ *       SAP SE - refactoring
  *
  */
 
@@ -17,6 +18,7 @@ package org.eclipse.edc.connector.provision.oauth2;
 
 import org.eclipse.edc.connector.transfer.spi.provision.ProviderResourceDefinitionGenerator;
 import org.eclipse.edc.connector.transfer.spi.types.DataRequest;
+import org.eclipse.edc.iam.oauth2.spi.Oauth2DataAddressSchema;
 import org.eclipse.edc.policy.model.Policy;
 import org.eclipse.edc.spi.types.domain.DataAddress;
 import org.eclipse.edc.spi.types.domain.HttpDataAddress;
@@ -36,7 +38,7 @@ class Oauth2ProviderResourceDefinitionGeneratorTest extends AbstractOauth2DataAd
     void returnDefinitionIfTypeIsHttpDataAndOauth2ParametersArePresent() {
         var dataAddress = HttpDataAddress.Builder.newInstance()
                 .property(Oauth2DataAddressSchema.CLIENT_ID, "aClientId")
-                .property(Oauth2DataAddressSchema.CLIENT_SECRET, "aSecret")
+                .property(Oauth2DataAddressSchema.CLIENT_SECRET_KEY, "aSecretKey")
                 .property(Oauth2DataAddressSchema.TOKEN_URL, "aTokenUrl")
                 .build();
         var dataRequest = DataRequest.Builder.newInstance()
@@ -49,7 +51,7 @@ class Oauth2ProviderResourceDefinitionGeneratorTest extends AbstractOauth2DataAd
         assertThat(definition).isNotNull().asInstanceOf(type(Oauth2ResourceDefinition.class))
                 .satisfies(d -> {
                     assertThat(d.getClientId()).isEqualTo("aClientId");
-                    assertThat(d.getClientSecret()).isEqualTo("aSecret");
+                    assertThat(d.getClientSecretKey()).isEqualTo("aSecretKey");
                     assertThat(d.getTokenUrl()).isEqualTo("aTokenUrl");
                 });
     }
@@ -58,35 +60,10 @@ class Oauth2ProviderResourceDefinitionGeneratorTest extends AbstractOauth2DataAd
     void generate_noDataRequestAsParameter() {
         var dataAddress = HttpDataAddress.Builder.newInstance()
                 .property(Oauth2DataAddressSchema.CLIENT_ID, "aClientId")
-                .property(Oauth2DataAddressSchema.CLIENT_SECRET, "aSecret")
+                .property(Oauth2DataAddressSchema.CLIENT_SECRET_KEY, "aSecretKey")
                 .property(Oauth2DataAddressSchema.TOKEN_URL, "aTokenUrl")
                 .build();
         assertThatNullPointerException().isThrownBy(() -> generator.generate(null, dataAddress, simplePolicy()));
-    }
-
-    @Test
-    void generate_noDataAddressAsParameter() {
-        var dataRequest = DataRequest.Builder.newInstance()
-                .id(UUID.randomUUID().toString())
-                .destinationType("any")
-                .build();
-
-        assertThatNullPointerException().isThrownBy(() -> generator.generate(dataRequest, null, simplePolicy()));
-    }
-
-    @Test
-    void generate_noPolicyAsParameter() {
-        var dataAddress = HttpDataAddress.Builder.newInstance()
-                .property(Oauth2DataAddressSchema.CLIENT_ID, "aClientId")
-                .property(Oauth2DataAddressSchema.CLIENT_SECRET, "aSecret")
-                .property(Oauth2DataAddressSchema.TOKEN_URL, "aTokenUrl")
-                .build();
-        var dataRequest = DataRequest.Builder.newInstance()
-                .id(UUID.randomUUID().toString())
-                .destinationType("any")
-                .build();
-
-        assertThatNullPointerException().isThrownBy(() -> generator.generate(dataRequest, dataAddress, null));
     }
 
     @Override

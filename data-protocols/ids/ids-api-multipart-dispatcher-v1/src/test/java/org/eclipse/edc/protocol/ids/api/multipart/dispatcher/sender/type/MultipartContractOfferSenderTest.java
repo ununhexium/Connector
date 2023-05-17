@@ -16,24 +16,21 @@ package org.eclipse.edc.protocol.ids.api.multipart.dispatcher.sender.type;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.fraunhofer.iais.eis.ContractRequest;
-import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractOfferRequest;
+import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractRequestMessage;
 import org.eclipse.edc.connector.contract.spi.types.offer.ContractOffer;
+import org.eclipse.edc.connector.core.transform.TypeTransformerRegistryImpl;
 import org.eclipse.edc.policy.model.Action;
 import org.eclipse.edc.policy.model.Permission;
 import org.eclipse.edc.policy.model.Policy;
 import org.eclipse.edc.protocol.ids.api.multipart.dispatcher.sender.SenderDelegateContext;
 import org.eclipse.edc.protocol.ids.serialization.IdsTypeManagerUtil;
 import org.eclipse.edc.protocol.ids.spi.types.IdsId;
-import org.eclipse.edc.protocol.ids.transform.IdsTransformerRegistryImpl;
 import org.eclipse.edc.protocol.ids.transform.type.contract.ContractOfferToIdsContractOfferTransformer;
 import org.eclipse.edc.protocol.ids.transform.type.policy.ActionToIdsActionTransformer;
 import org.eclipse.edc.protocol.ids.transform.type.policy.PermissionToIdsPermissionTransformer;
 import org.eclipse.edc.spi.types.TypeManager;
-import org.eclipse.edc.spi.types.domain.asset.Asset;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
-import java.time.ZonedDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -47,7 +44,7 @@ class MultipartContractOfferSenderTest {
         var connectorId = IdsId.from("urn:connector:edc").getContent();
         var webhookAddress = "https://webhook";
 
-        var transformerRegistry = new IdsTransformerRegistryImpl();
+        var transformerRegistry = new TypeTransformerRegistryImpl();
         transformerRegistry.register(new ContractOfferToIdsContractOfferTransformer());
         transformerRegistry.register(new PermissionToIdsPermissionTransformer());
         transformerRegistry.register(new ActionToIdsActionTransformer());
@@ -61,7 +58,7 @@ class MultipartContractOfferSenderTest {
     @Test
     void buildMessagePayload_initialRequest_mapPolicyProperties() throws Exception {
         var policy = getPolicy();
-        var request = getContractOfferRequest(policy, ContractOfferRequest.Type.INITIAL);
+        var request = getContractOfferRequest(policy, ContractRequestMessage.Type.INITIAL);
 
         var result = sender.buildMessagePayload(request);
 
@@ -74,7 +71,7 @@ class MultipartContractOfferSenderTest {
     @Test
     void buildMessagePayload_notInitialRequest_mapPolicyProperties() throws Exception {
         var policy = getPolicy();
-        var request = getContractOfferRequest(policy, ContractOfferRequest.Type.COUNTER_OFFER);
+        var request = getContractOfferRequest(policy, ContractRequestMessage.Type.COUNTER_OFFER);
 
         var result = sender.buildMessagePayload(request);
 
@@ -84,19 +81,19 @@ class MultipartContractOfferSenderTest {
                 .containsAllEntriesOf(policy.getExtensibleProperties());
     }
 
-    private ContractOfferRequest getContractOfferRequest(Policy policy, ContractOfferRequest.Type type) {
-        return ContractOfferRequest.Builder.newInstance()
+    private ContractRequestMessage getContractOfferRequest(Policy policy, ContractRequestMessage.Type type) {
+        return ContractRequestMessage.Builder.newInstance()
                 .contractOffer(ContractOffer.Builder.newInstance()
                         .id("contract-offer")
                         .policy(policy)
-                        .asset(Asset.Builder.newInstance().id("asset-id").build())
-                        .contractStart(ZonedDateTime.now())
-                        .contractEnd(ZonedDateTime.now().plusMonths(1))
+                        .assetId("asset-id")
+                        .providerId("providerId")
                         .build())
                 .protocol("protocol")
                 .connectorId("connector")
-                .connectorAddress("https://connector")
+                .counterPartyAddress("https://connector")
                 .type(type)
+                .processId("processId")
                 .build();
     }
 

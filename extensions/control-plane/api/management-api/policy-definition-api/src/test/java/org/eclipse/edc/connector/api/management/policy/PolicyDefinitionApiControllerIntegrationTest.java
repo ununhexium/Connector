@@ -23,6 +23,7 @@ import org.eclipse.edc.connector.contract.spi.types.offer.ContractDefinition;
 import org.eclipse.edc.connector.policy.spi.store.PolicyDefinitionStore;
 import org.eclipse.edc.junit.annotations.ApiTest;
 import org.eclipse.edc.junit.extensions.EdcExtension;
+import org.eclipse.edc.spi.protocol.ProtocolWebhook;
 import org.eclipse.edc.spi.query.SortOrder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,7 +31,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 
 import static io.restassured.RestAssured.given;
@@ -41,6 +41,7 @@ import static org.eclipse.edc.connector.api.management.policy.TestFunctions.crea
 import static org.eclipse.edc.junit.testfixtures.TestUtils.getFreePort;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
+import static org.mockito.Mockito.mock;
 
 @ApiTest
 @ExtendWith(EdcExtension.class)
@@ -51,6 +52,7 @@ public class PolicyDefinitionApiControllerIntegrationTest {
 
     @BeforeEach
     void setUp(EdcExtension extension) {
+        extension.registerServiceMock(ProtocolWebhook.class, mock(ProtocolWebhook.class));
         extension.setConfiguration(Map.of(
                 "web.http.port", String.valueOf(getFreePort()),
                 "web.http.path", "/api",
@@ -64,7 +66,7 @@ public class PolicyDefinitionApiControllerIntegrationTest {
     void getAllpolicydefinitions(PolicyDefinitionStore policyStore) {
         var policy = createPolicy("id");
 
-        policyStore.save(policy);
+        policyStore.create(policy);
 
         baseRequest()
                 .get("/policydefinitions")
@@ -86,7 +88,7 @@ public class PolicyDefinitionApiControllerIntegrationTest {
     void queryAllPolicyDefinitions(PolicyDefinitionStore policyStore) {
         var policy = createPolicy("id");
 
-        policyStore.save(policy);
+        policyStore.create(policy);
 
         baseRequest()
                 .contentType(JSON)
@@ -99,7 +101,7 @@ public class PolicyDefinitionApiControllerIntegrationTest {
 
     @Test
     void queryAllPolicyDefinitions_withQuery(PolicyDefinitionStore policyStore) {
-        IntStream.range(0, 10).forEach(i -> policyStore.save(createPolicy("id" + i)));
+        IntStream.range(0, 10).forEach(i -> policyStore.create(createPolicy("id" + i)));
 
         baseRequest()
                 .contentType(JSON)
@@ -118,7 +120,7 @@ public class PolicyDefinitionApiControllerIntegrationTest {
 
     @Test
     void queryAllPolicyDefinitions_withPaging(PolicyDefinitionStore policyStore) {
-        IntStream.range(0, 10).forEach(i -> policyStore.save(createPolicy("id" + i)));
+        IntStream.range(0, 10).forEach(i -> policyStore.create(createPolicy("id" + i)));
 
         baseRequest()
                 .contentType(JSON)
@@ -138,7 +140,7 @@ public class PolicyDefinitionApiControllerIntegrationTest {
     @Test
     void getSinglePolicy(PolicyDefinitionStore policyStore) {
         var policy = createPolicy("id");
-        policyStore.save(policy);
+        policyStore.create(policy);
 
         baseRequest()
                 .get("/policydefinitions/id")
@@ -173,8 +175,41 @@ public class PolicyDefinitionApiControllerIntegrationTest {
     }
 
     @Test
+    void put_whenPolicyExists(PolicyDefinitionStore policyStore) {
+        var policy = createPolicy("policyDefId");
+        policyStore.create(policy);
+
+        policy.getPolicy().getExtensibleProperties().put("anotherKey", "anotherVal");
+
+        baseRequest()
+                .body(policy)
+                .contentType(JSON)
+                .put("/policydefinitions/policyDefId")
+                .then()
+                .statusCode(204);
+
+        var found = policyStore.findById("policyDefId");
+        assertThat(found).isNotNull();
+        assertThat(found.getPolicy().getExtensibleProperties()).containsEntry("anotherKey", "anotherVal");
+    }
+
+    @Test
+    void put_whenPolicyNotExists(PolicyDefinitionStore policyStore) {
+        var policy = createPolicy("policyId");
+
+        baseRequest()
+                .body(policy)
+                .contentType(JSON)
+                .put("/policydefinitions/policyId")
+                .then()
+                .statusCode(404);
+
+        assertThat(policyStore.findById("policyId")).isNull();
+    }
+
+    @Test
     void postPolicyId_alreadyExists(PolicyDefinitionStore policyStore) {
-        policyStore.save(createPolicy("id"));
+        policyStore.create(createPolicy("id"));
 
         baseRequest()
                 .body(createPolicy("id"))
@@ -188,7 +223,7 @@ public class PolicyDefinitionApiControllerIntegrationTest {
     void deletePolicy(PolicyDefinitionStore policyStore) {
         var policy = createPolicy("id");
 
-        policyStore.save(policy);
+        policyStore.create(policy);
 
         baseRequest()
                 .contentType(JSON)
@@ -208,20 +243,9 @@ public class PolicyDefinitionApiControllerIntegrationTest {
     }
 
     @Test
-    void deletePolicy_ExistsInContractDefinitionNotExistsInPolicyStore(ContractDefinitionStore contractDefinitionStore) {
+    void deletePolicy_whenReferencedInContractDefinition(ContractDefinitionStore contractDefinitionStore, PolicyDefinitionStore policyStore) {
         var policy = createPolicy("access");
-        contractDefinitionStore.save(createContractDefinition(policy.getUid()));
-        baseRequest()
-                .contentType(JSON)
-                .delete("/policydefinitions/access")
-                .then()
-                .statusCode(404);
-    }
-
-    @Test
-    void deletePolicy_alreadyReferencedInContractDefinition(ContractDefinitionStore contractDefinitionStore, PolicyDefinitionStore policyStore) {
-        var policy = createPolicy("access");
-        policyStore.save(policy);
+        policyStore.create(policy);
         contractDefinitionStore.save(createContractDefinition(policy.getUid()));
 
         baseRequest()
@@ -238,7 +262,6 @@ public class PolicyDefinitionApiControllerIntegrationTest {
                 .contractPolicyId("contract")
                 .accessPolicyId(accessPolicyId)
                 .selectorExpression(createSelectorExpression())
-                .validity(TimeUnit.HOURS.toSeconds(1))
                 .build();
     }
 

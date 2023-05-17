@@ -20,15 +20,15 @@ dependencies {
     implementation(project(":spi:control-plane:control-plane-spi"))
     implementation(project(":core:common:util"))
 
+    implementation(libs.opentelemetry.annotations)
+
+    testImplementation(project(":core:control-plane:catalog-core"))
+    testImplementation(project(":core:control-plane:contract-core"))
     testImplementation(project(":core:control-plane:control-plane-core"))
+    testImplementation(project(":core:data-plane-selector:data-plane-selector-core"))
+    testImplementation(project(":core:control-plane:transfer-core"))
     testImplementation(project(":core:common:junit"))
     testImplementation(libs.awaitility)
 }
 
-publishing {
-    publications {
-        create<MavenPublication>(project.name) {
-            from(components["java"])
-        }
-    }
-}
+

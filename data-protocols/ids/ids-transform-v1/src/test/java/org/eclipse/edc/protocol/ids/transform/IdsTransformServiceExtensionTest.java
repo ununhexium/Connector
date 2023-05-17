@@ -21,7 +21,7 @@ import de.fraunhofer.iais.eis.Resource;
 import de.fraunhofer.iais.eis.ResourceCatalog;
 import de.fraunhofer.iais.eis.util.RdfResource;
 import org.eclipse.edc.catalog.spi.Catalog;
-import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreementRequest;
+import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreementMessage;
 import org.eclipse.edc.connector.contract.spi.types.offer.ContractOffer;
 import org.eclipse.edc.junit.extensions.DependencyInjectionExtension;
 import org.eclipse.edc.policy.model.Action;
@@ -33,11 +33,11 @@ import org.eclipse.edc.policy.model.Permission;
 import org.eclipse.edc.policy.model.Prohibition;
 import org.eclipse.edc.protocol.ids.spi.domain.connector.Connector;
 import org.eclipse.edc.protocol.ids.spi.domain.connector.SecurityProfile;
-import org.eclipse.edc.protocol.ids.spi.transform.IdsTransformerRegistry;
 import org.eclipse.edc.protocol.ids.spi.types.container.OfferedAsset;
 import org.eclipse.edc.spi.system.ServiceExtensionContext;
 import org.eclipse.edc.spi.system.injection.ObjectFactory;
 import org.eclipse.edc.spi.types.domain.asset.Asset;
+import org.eclipse.edc.transform.spi.TypeTransformerRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.ExtensionContext;
@@ -59,11 +59,11 @@ class IdsTransformServiceExtensionTest {
     private IdsTransformServiceExtension idsTransformServiceExtension;
 
     private ServiceExtensionContext serviceExtensionContext;
-    private final IdsTransformerRegistry transformerRegistry = mock(IdsTransformerRegistry.class);
+    private final TypeTransformerRegistry transformerRegistry = mock(TypeTransformerRegistry.class);
 
     @BeforeEach
     void setUp(ServiceExtensionContext context, ObjectFactory factory) {
-        context.registerService(IdsTransformerRegistry.class, transformerRegistry);
+        context.registerService(TypeTransformerRegistry.class, transformerRegistry);
         idsTransformServiceExtension = factory.constructInstance(IdsTransformServiceExtension.class);
         serviceExtensionContext = context;
     }
@@ -89,7 +89,7 @@ class IdsTransformServiceExtensionTest {
                     Arguments.arguments(Connector.class, de.fraunhofer.iais.eis.Connector.class),
                     Arguments.arguments(Constraint.class, de.fraunhofer.iais.eis.Constraint.class),
                     Arguments.arguments(ContractOffer.class, de.fraunhofer.iais.eis.ContractOffer.class),
-                    Arguments.arguments(ContractAgreementRequest.class, de.fraunhofer.iais.eis.ContractAgreement.class),
+                    Arguments.arguments(ContractAgreementMessage.class, de.fraunhofer.iais.eis.ContractAgreement.class),
                     Arguments.arguments(Catalog.class, ResourceCatalog.class),
                     Arguments.arguments(de.fraunhofer.iais.eis.Constraint.class, Constraint.class),
                     Arguments.arguments(de.fraunhofer.iais.eis.Permission.class, Permission.class),

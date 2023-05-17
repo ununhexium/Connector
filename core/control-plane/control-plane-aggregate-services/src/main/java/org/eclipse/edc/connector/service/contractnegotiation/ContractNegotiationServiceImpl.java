@@ -21,7 +21,7 @@ import org.eclipse.edc.connector.contract.spi.types.command.CancelNegotiationCom
 import org.eclipse.edc.connector.contract.spi.types.command.DeclineNegotiationCommand;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiation;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationStates;
-import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractOfferRequest;
+import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractRequest;
 import org.eclipse.edc.connector.service.query.QueryValidator;
 import org.eclipse.edc.connector.spi.contractnegotiation.ContractNegotiationService;
 import org.eclipse.edc.service.spi.result.ServiceResult;
@@ -37,20 +37,21 @@ import static java.util.Optional.ofNullable;
 public class ContractNegotiationServiceImpl implements ContractNegotiationService {
 
     private final ContractNegotiationStore store;
-    private final ConsumerContractNegotiationManager manager;
+    private final ConsumerContractNegotiationManager consumerManager;
     private final TransactionContext transactionContext;
     private final QueryValidator queryValidator;
 
-    public ContractNegotiationServiceImpl(ContractNegotiationStore store, ConsumerContractNegotiationManager manager, TransactionContext transactionContext) {
+    public ContractNegotiationServiceImpl(ContractNegotiationStore store, ConsumerContractNegotiationManager consumerManager,
+                                          TransactionContext transactionContext) {
         this.store = store;
-        this.manager = manager;
+        this.consumerManager = consumerManager;
         this.transactionContext = transactionContext;
         queryValidator = new QueryValidator(ContractNegotiation.class);
     }
 
     @Override
     public ContractNegotiation findbyId(String contractNegotiationId) {
-        return transactionContext.execute(() -> store.find(contractNegotiationId));
+        return transactionContext.execute(() -> store.findById(contractNegotiationId));
     }
 
     @Override
@@ -75,23 +76,23 @@ public class ContractNegotiationServiceImpl implements ContractNegotiationServic
 
     @Override
     public ContractAgreement getForNegotiation(String negotiationId) {
-        return transactionContext.execute(() -> ofNullable(store.find(negotiationId))
+        return transactionContext.execute(() -> ofNullable(store.findById(negotiationId))
                 .map(ContractNegotiation::getContractAgreement).orElse(null));
     }
 
     @Override
-    public ContractNegotiation initiateNegotiation(ContractOfferRequest request) {
-        return transactionContext.execute(() -> manager.initiate(request).getContent());
+    public ContractNegotiation initiateNegotiation(ContractRequest request) {
+        return transactionContext.execute(() -> consumerManager.initiate(request).getContent());
     }
 
     @Override
     public ServiceResult<ContractNegotiation> cancel(String negotiationId) {
         return transactionContext.execute(() -> {
-            var negotiation = store.find(negotiationId);
+            var negotiation = store.findById(negotiationId);
             if (negotiation == null) {
                 return ServiceResult.notFound(format("ContractNegotiation %s does not exist", negotiationId));
             } else {
-                manager.enqueueCommand(new CancelNegotiationCommand(negotiationId));
+                consumerManager.enqueueCommand(new CancelNegotiationCommand(negotiationId));
                 return ServiceResult.success(negotiation);
             }
         });
@@ -101,13 +102,13 @@ public class ContractNegotiationServiceImpl implements ContractNegotiationServic
     public ServiceResult<ContractNegotiation> decline(String negotiationId) {
         return transactionContext.execute(() -> {
             try {
-                var negotiation = store.find(negotiationId);
+                var negotiation = store.findById(negotiationId);
                 if (negotiation == null) {
                     return ServiceResult.notFound(format("ContractNegotiation %s does not exist", negotiationId));
                 }
 
-                if (negotiation.canDecline()) {
-                    manager.enqueueCommand(new DeclineNegotiationCommand(negotiationId));
+                if (negotiation.canBeTerminated()) {
+                    consumerManager.enqueueCommand(new DeclineNegotiationCommand(negotiationId));
                     return ServiceResult.success(negotiation);
                 } else {
                     return ServiceResult.conflict(format("Cannot decline ContractNegotiation %s as it is in state %s", negotiationId, ContractNegotiationStates.from(negotiation.getState())));
@@ -118,4 +119,5 @@ public class ContractNegotiationServiceImpl implements ContractNegotiationServic
             }
         });
     }
+
 }

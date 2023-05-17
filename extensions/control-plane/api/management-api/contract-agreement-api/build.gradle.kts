@@ -27,9 +27,12 @@ dependencies {
     implementation(libs.jakarta.rsApi)
 
     testImplementation(project(":core:control-plane:control-plane-core"))
+    testImplementation(project(":core:data-plane-selector:data-plane-selector-core"))
     testImplementation(project(":extensions:common:http"))
     testImplementation(project(":core:common:junit"))
     testImplementation(libs.restAssured)
+    testImplementation(testFixtures(project(":extensions:common:http:jersey-core")))
+
 }
 
 edcBuild {
@@ -38,10 +41,4 @@ edcBuild {
     }
 }
 
-publishing {
-    publications {
-        create<MavenPublication>(project.name) {
-            from(components["java"])
-        }
-    }
-}
+

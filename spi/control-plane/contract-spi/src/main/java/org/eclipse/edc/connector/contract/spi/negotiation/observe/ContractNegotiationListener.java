@@ -59,7 +59,16 @@ public interface ContractNegotiationListener {
      *
      * @param negotiation the contract negotiation that has been approved.
      */
-    default void approved(ContractNegotiation negotiation) {
+    default void accepted(ContractNegotiation negotiation) {
+
+    }
+
+    /**
+     * Called after a {@link ContractNegotiation} was terminated.
+     *
+     * @param negotiation the contract negotiation that has been terminated.
+     */
+    default void terminated(ContractNegotiation negotiation) {
 
     }
 
@@ -67,26 +76,48 @@ public interface ContractNegotiationListener {
      * Called after a {@link ContractNegotiation} was declined.
      *
      * @param negotiation the contract negotiation that has been declined.
+     * @deprecated please use {@link #terminated(ContractNegotiation)}
      */
+    @Deprecated(since = "milestone9")
     default void declined(ContractNegotiation negotiation) {
-
-    }
-
-    /**
-     * Called after a {@link ContractNegotiation} was confirmed.
-     *
-     * @param negotiation the contract negotiation that has been confirmed.
-     */
-    default void confirmed(ContractNegotiation negotiation) {
-
+        terminated(negotiation);
     }
 
     /**
      * Called after a {@link ContractNegotiation} failed.
      *
      * @param negotiation the contract negotiation that failed.
+     * @deprecated please use {@link #terminated(ContractNegotiation)}
      */
+    @Deprecated(since = "milestone9")
     default void failed(ContractNegotiation negotiation) {
+        terminated(negotiation);
+    }
+
+    /**
+     * Called after a {@link ContractNegotiation} was agreed by the provider.
+     *
+     * @param negotiation the contract negotiation that has been confirmed.
+     */
+    default void agreed(ContractNegotiation negotiation) {
+
+    }
+
+    /**
+     * Called after a {@link ContractNegotiation} was verified by the consumer.
+     *
+     * @param negotiation the contract negotiation that has been verified.
+     */
+    default void verified(ContractNegotiation negotiation) {
+
+    }
+
+    /**
+     * Called after a {@link ContractNegotiation} was finalized by the provider.
+     *
+     * @param negotiation the contract negotiation that has been finalized.
+     */
+    default void finalized(ContractNegotiation negotiation) {
 
     }
 }

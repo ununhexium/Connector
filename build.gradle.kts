@@ -21,20 +21,10 @@ val javaVersion: String by project
 val edcScmConnection: String by project
 val edcWebsiteUrl: String by project
 val edcScmUrl: String by project
-val groupId: String by project
-val defaultVersion: String by project
 val annotationProcessorVersion: String by project
 val metaModelVersion: String by project
 
-var actualVersion: String = (project.findProperty("version") ?: defaultVersion) as String
-if (actualVersion == "unspecified") {
-    actualVersion = defaultVersion
-}
-
 buildscript {
-    repositories {
-        mavenLocal()
-    }
     dependencies {
         val edcGradlePluginsVersion: String by project
         classpath("org.eclipse.edc.edc-build:org.eclipse.edc.edc-build.gradle.plugin:${edcGradlePluginsVersion}")
@@ -42,7 +32,7 @@ buildscript {
 }
 
 allprojects {
-    apply(plugin = "${groupId}.edc-build")
+    apply(plugin = "${group}.edc-build")
 
     // configure which version of the annotation processor to use. defaults to the same version as the plugin
     configure<org.eclipse.edc.plugins.autodoc.AutodocExtension> {
@@ -53,9 +43,7 @@ allprojects {
     configure<org.eclipse.edc.plugins.edcbuild.extensions.BuildExtension> {
         versions {
             // override default dependency versions here
-            projectVersion.set(actualVersion)
             metaModel.set(metaModelVersion)
-
         }
         pom {
             projectName.set(project.name)
@@ -79,23 +67,11 @@ allprojects {
         configDirectory.set(rootProject.file("resources"))
     }
 
-
     // EdcRuntimeExtension uses this to determine the runtime classpath of the module to run.
     tasks.register("printClasspath") {
         doLast {
             println(sourceSets["main"].runtimeClasspath.asPath)
         }
     }
-
-}
-repositories {
-    mavenCentral()
-}
-
-// Dependency analysis active if property "dependency.analysis" is set. Possible values are <'fail'|'warn'|'ignore'>.
-if (project.hasProperty("dependency.analysis")) {
-    apply(plugin = "org.eclipse.edc.dependency-rules")
-    configure<org.eclipse.edc.gradle.DependencyRulesPluginExtension> {
-        severity.set(project.property("dependency.analysis").toString())
-    }
+    
 }

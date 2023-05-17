@@ -28,10 +28,10 @@ public class CatalogRequestDto {
     private QuerySpecDto querySpec;
     @NotNull
     private String providerUrl;
+    private String protocol;
 
     private CatalogRequestDto() {
     }
-
 
     public String getProviderUrl() {
         return providerUrl;
@@ -41,6 +41,9 @@ public class CatalogRequestDto {
         return querySpec;
     }
 
+    public String getProtocol() {
+        return protocol;
+    }
 
     @JsonPOJOBuilder(withPrefix = "")
     public static final class Builder {
@@ -62,6 +65,11 @@ public class CatalogRequestDto {
 
         public Builder providerUrl(String providerUrl) {
             instance.providerUrl = providerUrl;
+            return this;
+        }
+
+        public Builder protocol(String protocol) {
+            instance.protocol = protocol;
             return this;
         }
 

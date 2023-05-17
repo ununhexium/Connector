@@ -28,11 +28,11 @@ import org.eclipse.edc.spi.asset.AssetIndex;
 import org.eclipse.edc.spi.asset.AssetSelectorExpression;
 import org.eclipse.edc.spi.system.ServiceExtension;
 import org.eclipse.edc.spi.system.ServiceExtensionContext;
+import org.eclipse.edc.spi.telemetry.Telemetry;
 import org.eclipse.edc.spi.types.domain.DataAddress;
 import org.eclipse.edc.spi.types.domain.asset.Asset;
 
 import java.nio.file.Path;
-import java.util.concurrent.TimeUnit;
 
 public class FileTransferExtension implements ServiceExtension {
 
@@ -49,10 +49,12 @@ public class FileTransferExtension implements ServiceExtension {
     @Inject
     private PolicyDefinitionStore policyStore;
 
+    @Inject
+    private Telemetry telemetry;
+
     @Override
     public void initialize(ServiceExtensionContext context) {
         var monitor = context.getMonitor();
-        var telemetry = context.getTelemetry();
 
         var sourceFactory = new FileTransferDataSourceFactory();
         pipelineService.registerFactory(sourceFactory);
@@ -61,7 +63,7 @@ public class FileTransferExtension implements ServiceExtension {
         pipelineService.registerFactory(sinkFactory);
 
         var policy = createPolicy();
-        policyStore.save(policy);
+        policyStore.create(policy);
 
         registerDataEntries(context);
         registerContractDefinition(policy.getUid());
@@ -96,7 +98,7 @@ public class FileTransferExtension implements ServiceExtension {
         var assetId = "test-document";
         var asset = Asset.Builder.newInstance().id(assetId).build();
 
-        assetIndex.accept(asset, dataAddress);
+        assetIndex.create(asset, dataAddress);
     }
 
     private void registerContractDefinition(String policyId) {
@@ -106,7 +108,6 @@ public class FileTransferExtension implements ServiceExtension {
                 .accessPolicyId(policyId)
                 .contractPolicyId(policyId)
                 .selectorExpression(AssetSelectorExpression.Builder.newInstance().whenEquals(Asset.PROPERTY_ID, "test-document").build())
-                .validity(TimeUnit.HOURS.toSeconds(1))
                 .build();
 
         contractStore.save(contractDefinition);

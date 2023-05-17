@@ -22,6 +22,7 @@ import org.eclipse.edc.connector.transfer.spi.types.TransferProcess;
 import org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates;
 import org.eclipse.edc.junit.annotations.ApiTest;
 import org.eclipse.edc.junit.extensions.EdcExtension;
+import org.eclipse.edc.spi.protocol.ProtocolWebhook;
 import org.eclipse.edc.spi.types.domain.DataAddress;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -43,6 +44,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.lessThan;
+import static org.mockito.Mockito.mock;
 
 @ApiTest
 @ExtendWith(EdcExtension.class)
@@ -61,6 +63,7 @@ class HttpProvisionerWebhookApiControllerIntegrationTest {
                 "web.http.provisioner.path", PROVISIONER_BASE_PATH,
                 "edc.api.auth.key", authKey
         ));
+        extension.registerServiceMock(ProtocolWebhook.class, mock(ProtocolWebhook.class));
     }
 
     @ParameterizedTest
@@ -87,7 +90,7 @@ class HttpProvisionerWebhookApiControllerIntegrationTest {
     @Test
     void callProvisionWebhook(TransferProcessStore store) {
 
-        store.save(createTransferProcess());
+        store.updateOrCreate(createTransferProcess());
 
         var rq = ProvisionerWebhookRequest.Builder.newInstance()
                 .assetId("test-asset")
@@ -137,7 +140,7 @@ class HttpProvisionerWebhookApiControllerIntegrationTest {
     @Test
     void callDeprovisionWebhook(TransferProcessStore store) {
 
-        store.save(createTransferProcess());
+        store.updateOrCreate(createTransferProcess());
 
         var rq = DeprovisionedResource.Builder.newInstance()
                 .provisionedResourceId("resource-id")
@@ -172,7 +175,7 @@ class HttpProvisionerWebhookApiControllerIntegrationTest {
     private TransferProcess.Builder createTransferProcessBuilder() {
         return TransferProcess.Builder.newInstance()
                 .id("tp-id")
-                .state(TransferProcessStates.IN_PROGRESS.code())
+                .state(TransferProcessStates.STARTED.code())
                 .type(TransferProcess.Type.PROVIDER)
                 .dataRequest(DataRequest.Builder.newInstance()
                         .destinationType("file")

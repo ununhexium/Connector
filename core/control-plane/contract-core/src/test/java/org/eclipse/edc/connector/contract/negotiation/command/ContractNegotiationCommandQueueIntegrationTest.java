@@ -19,11 +19,9 @@ import org.eclipse.edc.connector.contract.negotiation.ProviderContractNegotiatio
 import org.eclipse.edc.connector.contract.negotiation.command.handlers.SingleContractNegotiationCommandHandler;
 import org.eclipse.edc.connector.contract.spi.negotiation.observe.ContractNegotiationObservable;
 import org.eclipse.edc.connector.contract.spi.negotiation.store.ContractNegotiationStore;
+import org.eclipse.edc.connector.contract.spi.types.command.ContractNegotiationCommand;
 import org.eclipse.edc.connector.contract.spi.types.command.SingleContractNegotiationCommand;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiation;
-import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationStates;
-import org.eclipse.edc.connector.contract.spi.types.negotiation.command.ContractNegotiationCommand;
-import org.eclipse.edc.connector.contract.spi.validation.ContractValidationService;
 import org.eclipse.edc.connector.policy.spi.store.PolicyDefinitionStore;
 import org.eclipse.edc.spi.command.BoundedCommandQueue;
 import org.eclipse.edc.spi.command.CommandHandlerRegistry;
@@ -31,19 +29,19 @@ import org.eclipse.edc.spi.command.CommandQueue;
 import org.eclipse.edc.spi.command.CommandRunner;
 import org.eclipse.edc.spi.message.RemoteMessageDispatcherRegistry;
 import org.eclipse.edc.spi.monitor.Monitor;
-import org.eclipse.edc.statemachine.retry.SendRetryManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
+import static org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationStates.TERMINATING;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class ContractNegotiationCommandQueueIntegrationTest {
+    private static final String PARTICIPANT_ID = "participantId";
 
     private final ContractNegotiationStore store = mock(ContractNegotiationStore.class);
-    private final ContractValidationService validationService = mock(ContractValidationService.class);
     private final RemoteMessageDispatcherRegistry dispatcherRegistry = mock(RemoteMessageDispatcherRegistry.class);
     private final ContractNegotiationObservable observable = mock(ContractNegotiationObservable.class);
     private final PolicyDefinitionStore policyStore = mock(PolicyDefinitionStore.class);
@@ -54,7 +52,6 @@ class ContractNegotiationCommandQueueIntegrationTest {
     private String negotiationId;
     private ContractNegotiation negotiation;
     private TestCommand command;
-    private SendRetryManager sendRetryManager = mock(SendRetryManager.class);
 
     @BeforeEach
     void setUp() {
@@ -72,21 +69,20 @@ class ContractNegotiationCommandQueueIntegrationTest {
         negotiation = getNegotiation(negotiationId);
         command = new TestCommand(negotiationId);
 
-        when(store.find(negotiationId)).thenReturn(negotiation);
+        when(store.findById(negotiationId)).thenReturn(negotiation);
     }
 
     @Test
-    void submitTestCommand_providerManager() throws Exception {
+    void submitTestCommand_providerManager() {
         var negotiationManager = ProviderContractNegotiationManagerImpl.Builder.newInstance()
+                .participantId(PARTICIPANT_ID)
                 .monitor(monitor)
-                .validationService(validationService)
                 .dispatcherRegistry(dispatcherRegistry)
                 .commandQueue(commandQueue)
                 .commandRunner(commandRunner)
                 .observable(observable)
                 .store(store)
                 .policyStore(policyStore)
-                .sendRetryManager(sendRetryManager)
                 .build();
 
         negotiationManager.start();
@@ -95,7 +91,7 @@ class ContractNegotiationCommandQueueIntegrationTest {
 
 
         await().untilAsserted(() -> {
-            assertThat(negotiation.getState()).isEqualTo(ContractNegotiationStates.ERROR.code());
+            assertThat(negotiation.getState()).isEqualTo(TERMINATING.code());
             assertThat(negotiation.getErrorDetail()).isEqualTo(errorDetail);
         });
 
@@ -104,34 +100,29 @@ class ContractNegotiationCommandQueueIntegrationTest {
     }
 
     @Test
-    void submitTestCommand_consumerManager() throws Exception {
-        when(store.find(negotiationId)).thenReturn(negotiation);
+    void submitTestCommand_consumerManager() {
+        when(store.findById(negotiationId)).thenReturn(negotiation);
 
         // Create and start the negotiation manager
         var negotiationManager = ConsumerContractNegotiationManagerImpl.Builder.newInstance()
+                .participantId(PARTICIPANT_ID)
                 .monitor(monitor)
-                .validationService(validationService)
                 .dispatcherRegistry(dispatcherRegistry)
                 .commandQueue(commandQueue)
                 .commandRunner(commandRunner)
                 .observable(observable)
                 .store(store)
                 .policyStore(policyStore)
-                .sendRetryManager(sendRetryManager)
                 .build();
         negotiationManager.start();
 
-        // Enqueue command
         negotiationManager.enqueueCommand(command);
 
-
         await().untilAsserted(() -> {
-            assertThat(negotiation.getState()).isEqualTo(ContractNegotiationStates.ERROR.code());
+            assertThat(negotiation.getState()).isEqualTo(TERMINATING.code());
             assertThat(negotiation.getErrorDetail()).isEqualTo(errorDetail);
         });
 
-
-        // Stop the negotiation manager
         negotiationManager.stop();
     }
 
@@ -155,7 +146,7 @@ class ContractNegotiationCommandQueueIntegrationTest {
     }
 
     /**
-     * Handler for the {@link TestCommand}. Will transition the specific {@link ContractNegotiation} to the error state
+     * Handler for the {@link TestCommand}. Will transition the specific {@link ContractNegotiation} to the terminating state
      * and set a custom error detail.
      */
     private static class TestCommandHandler extends SingleContractNegotiationCommandHandler<TestCommand> {
@@ -174,7 +165,7 @@ class ContractNegotiationCommandQueueIntegrationTest {
 
         @Override
         protected boolean modify(ContractNegotiation negotiation) {
-            negotiation.transitionError(errorDetail);
+            negotiation.transitionTerminating(errorDetail);
             store.save(negotiation);
             return true;
         }

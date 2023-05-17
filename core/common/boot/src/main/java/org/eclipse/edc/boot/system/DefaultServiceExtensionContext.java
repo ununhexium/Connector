@@ -21,10 +21,7 @@ import org.eclipse.edc.spi.system.ConfigurationExtension;
 import org.eclipse.edc.spi.system.ServiceExtensionContext;
 import org.eclipse.edc.spi.system.configuration.Config;
 import org.eclipse.edc.spi.system.configuration.ConfigFactory;
-import org.eclipse.edc.spi.telemetry.Telemetry;
-import org.eclipse.edc.spi.types.TypeManager;
 
-import java.time.Clock;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,20 +33,17 @@ import java.util.UUID;
  * <p>Prior to using, {@link #initialize()} must be called.</p>
  */
 public class DefaultServiceExtensionContext implements ServiceExtensionContext {
-
     private final Map<Class<?>, Object> services = new HashMap<>();
     private final List<ConfigurationExtension> configurationExtensions;
     private boolean isReadOnly = false;
+    private String participantId;
     private String connectorId;
     private Config config;
 
-    public DefaultServiceExtensionContext(TypeManager typeManager, Monitor monitor, Telemetry telemetry, List<ConfigurationExtension> configurationExtensions) {
+    public DefaultServiceExtensionContext(Monitor monitor, List<ConfigurationExtension> configurationExtensions) {
         this.configurationExtensions = configurationExtensions;
-        // register as services
-        registerService(TypeManager.class, typeManager);
+        // register as service
         registerService(Monitor.class, monitor);
-        registerService(Telemetry.class, telemetry);
-        registerService(Clock.class, Clock.systemUTC());
     }
 
     @Override
@@ -60,6 +54,11 @@ public class DefaultServiceExtensionContext implements ServiceExtensionContext {
     @Override
     public void freeze() {
         isReadOnly = true;
+    }
+
+    @Override
+    public String getParticipantId() {
+        return participantId;
     }
 
     @Override
@@ -108,6 +107,10 @@ public class DefaultServiceExtensionContext implements ServiceExtensionContext {
         });
         config = loadConfig();
         connectorId = getSetting("edc.connector.name", "edc-" + UUID.randomUUID());
+        participantId = getSetting(PARTICIPANT_ID, ANONYMOUS_PARTICIPANT);
+        if (ANONYMOUS_PARTICIPANT.equals(participantId)) {
+            getMonitor().warning("The runtime is configured as an anonymous participant. DO NOT DO THIS IN PRODUCTION.");
+        }
     }
 
     // this method exists so that getting env vars can be mocked during testing
@@ -122,7 +125,7 @@ public class DefaultServiceExtensionContext implements ServiceExtensionContext {
                 .reduce(Config::merge)
                 .orElse(ConfigFactory.empty());
 
-        var environmentConfig = ConfigFactory.fromMap(getEnvironmentVariables());
+        var environmentConfig = ConfigFactory.fromEnvironment(getEnvironmentVariables());
         var systemPropertyConfig = ConfigFactory.fromProperties(System.getProperties());
 
         return config.merge(environmentConfig).merge(systemPropertyConfig);

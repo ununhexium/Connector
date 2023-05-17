@@ -32,17 +32,18 @@ import org.eclipse.edc.connector.transfer.spi.types.ProvisionResponse;
 import org.eclipse.edc.connector.transfer.spi.types.ProvisionedResourceSet;
 import org.eclipse.edc.connector.transfer.spi.types.ResourceManifest;
 import org.eclipse.edc.connector.transfer.spi.types.TransferProcess;
-import org.eclipse.edc.connector.transfer.spi.types.TransferType;
 import org.eclipse.edc.junit.annotations.ComponentTest;
 import org.eclipse.edc.policy.model.Policy;
 import org.eclipse.edc.spi.asset.DataAddressResolver;
 import org.eclipse.edc.spi.command.CommandQueue;
 import org.eclipse.edc.spi.command.CommandRunner;
+import org.eclipse.edc.spi.entity.StatefulEntity;
 import org.eclipse.edc.spi.message.RemoteMessageDispatcherRegistry;
 import org.eclipse.edc.spi.monitor.Monitor;
 import org.eclipse.edc.spi.result.Result;
 import org.eclipse.edc.spi.retry.ExponentialWaitStrategy;
 import org.eclipse.edc.spi.types.TypeManager;
+import org.eclipse.edc.spi.types.domain.callback.CallbackAddress;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -55,9 +56,9 @@ import java.util.stream.IntStream;
 
 import static java.util.concurrent.CompletableFuture.completedFuture;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.InstanceOfAssertFactories.comparable;
 import static org.awaitility.Awaitility.await;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.INITIAL;
-import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.UNSAVED;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -83,15 +84,18 @@ class TransferProcessManagerImplIntegrationTest {
         var policyArchive = mock(PolicyArchive.class);
         when(policyArchive.findPolicyForContract(anyString())).thenReturn(Policy.Builder.newInstance().build());
 
+        var monitor = mock(Monitor.class);
+        var waitStrategy = mock(ExponentialWaitStrategy.class);
+        var clock = Clock.systemUTC();
         transferProcessManager = TransferProcessManagerImpl.Builder.newInstance()
                 .provisionManager(provisionManager)
                 .dataFlowManager(mock(DataFlowManager.class))
-                .waitStrategy(mock(ExponentialWaitStrategy.class))
+                .waitStrategy(waitStrategy)
                 .batchSize(TRANSFER_MANAGER_BATCHSIZE)
                 .dispatcherRegistry(mock(RemoteMessageDispatcherRegistry.class))
                 .manifestGenerator(manifestGenerator)
-                .monitor(mock(Monitor.class))
-                .clock(Clock.systemUTC())
+                .monitor(monitor)
+                .clock(clock)
                 .commandQueue(mock(CommandQueue.class))
                 .commandRunner(mock(CommandRunner.class))
                 .typeManager(new TypeManager())
@@ -105,30 +109,35 @@ class TransferProcessManagerImplIntegrationTest {
 
     @Test
     @DisplayName("Verify that no process 'starves' during two consecutive runs, when the batch size > number of processes")
-    void verifyProvision_shouldNotStarve() throws InterruptedException {
+    void verifyProvision_shouldNotStarve() {
         var numProcesses = TRANSFER_MANAGER_BATCHSIZE * 2;
-        when(provisionManager.provision(any(), any(Policy.class))).thenAnswer(i -> {
-            return completedFuture(List.of(ProvisionResponse.Builder.newInstance().resource(new TestProvisionedDataDestinationResource("any", "1")).build()));
-        });
+        when(provisionManager.provision(any(), any(Policy.class))).thenAnswer(i -> completedFuture(List.of(
+                ProvisionResponse.Builder.newInstance()
+                        .resource(new TestProvisionedDataDestinationResource("any", "1"))
+                        .build()
+        )));
 
         var manifest = ResourceManifest.Builder.newInstance().definitions(List.of(new TestResourceDefinition())).build();
+        var callback = CallbackAddress.Builder.newInstance().uri("local://test").build();
         var processes = IntStream.range(0, numProcesses)
                 .mapToObj(i -> provisionedResourceSet())
-                .map(resourceSet -> createUnsavedTransferProcess().resourceManifest(manifest).provisionedResourceSet(resourceSet).build())
-                .peek(TransferProcess::transitionInitial)
-                .peek(store::save)
+                .map(resourceSet -> createInitialTransferProcess().resourceManifest(manifest).callbackAddresses(List.of(callback)).provisionedResourceSet(resourceSet).build())
+                .peek(store::updateOrCreate)
                 .collect(Collectors.toList());
 
         transferProcessManager.start();
-
 
         await().untilAsserted(() -> {
             assertThat(processes).describedAs("All transfer processes state should be greater than INITIAL")
                     .allSatisfy(process -> {
                         var id = process.getId();
-                        var storedProcess = store.find(id);
-                        assertThat(storedProcess).describedAs("Should exist in the TransferProcessStore").isNotNull();
-                        assertThat(storedProcess.getState()).isGreaterThan(INITIAL.code());
+                        var storedProcess = store.findById(id);
+
+                        assertThat(storedProcess).describedAs("Should exist in the TransferProcessStore")
+                                .isNotNull().extracting(StatefulEntity::getState).asInstanceOf(comparable(Integer.class))
+                                .isGreaterThan(INITIAL.code());
+
+                        assertThat(storedProcess.getCallbackAddresses()).usingRecursiveFieldByFieldElementComparator().contains(callback);
                     });
             verify(provisionManager, times(numProcesses)).provision(any(), any());
         });
@@ -141,11 +150,10 @@ class TransferProcessManagerImplIntegrationTest {
                 .build();
     }
 
-    private TransferProcess.Builder createUnsavedTransferProcess() {
+    private TransferProcess.Builder createInitialTransferProcess() {
         String processId = UUID.randomUUID().toString();
         var dataRequest = DataRequest.Builder.newInstance()
                 .id(processId)
-                .transferType(new TransferType())
                 .managedResources(true)
                 .destinationType("test-type")
                 .contractId(UUID.randomUUID().toString())
@@ -155,7 +163,6 @@ class TransferProcessManagerImplIntegrationTest {
                 .provisionedResourceSet(ProvisionedResourceSet.Builder.newInstance().build())
                 .type(TransferProcess.Type.CONSUMER)
                 .id("test-process-" + processId)
-                .state(UNSAVED.code())
                 .dataRequest(dataRequest);
     }
 }

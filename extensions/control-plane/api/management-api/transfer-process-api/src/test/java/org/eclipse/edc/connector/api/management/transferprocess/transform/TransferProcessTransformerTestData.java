@@ -14,32 +14,31 @@
 
 package org.eclipse.edc.connector.api.management.transferprocess.transform;
 
-import org.eclipse.edc.connector.api.management.transferprocess.model.DataAddressInformationDto;
+import org.eclipse.edc.api.model.CallbackAddressDto;
+import org.eclipse.edc.api.model.DataAddressDto;
 import org.eclipse.edc.connector.api.management.transferprocess.model.DataRequestDto;
 import org.eclipse.edc.connector.api.management.transferprocess.model.TransferProcessDto;
 import org.eclipse.edc.connector.transfer.spi.types.DataRequest;
 import org.eclipse.edc.connector.transfer.spi.types.TransferProcess;
 import org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates;
 import org.eclipse.edc.spi.types.domain.DataAddress;
-import org.eclipse.edc.transform.spi.TransformerContext;
+import org.eclipse.edc.spi.types.domain.callback.CallbackAddress;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
-import static org.mockito.Mockito.mock;
-
 public class TransferProcessTransformerTestData {
 
-    TransformerContext context = mock(TransformerContext.class);
+    public CallbackAddress callbackAddress = CallbackAddress.Builder.newInstance().uri("local://test").build();
     String id = UUID.randomUUID().toString();
     TransferProcess.Type type = TransferProcess.Type.CONSUMER;
     TransferProcessStates state = TransferProcessStates.values()[ThreadLocalRandom.current().nextInt(TransferProcessStates.values().length)];
-    long stateTimestamp = ThreadLocalRandom.current().nextLong();
+    long stateTimestamp = System.currentTimeMillis();
     long createdTimestamp = ThreadLocalRandom.current().nextLong();
     String errorDetail = "test error detail";
-
     Map<String, String> dataDestinationProperties = Map.of("key1", "value1");
     String dataDestinationType = "test-destination-type";
     DataAddress.Builder dataDestination = DataAddress.Builder.newInstance().type(dataDestinationType).properties(dataDestinationProperties);
@@ -53,8 +52,10 @@ public class TransferProcessTransformerTestData {
             .stateTimestamp(stateTimestamp)
             .createdAt(createdTimestamp)
             .errorDetail(errorDetail)
-            .dataRequest(dataRequest);
+            .dataRequest(dataRequest)
+            .callbackAddresses(List.of(callbackAddress));
     DataRequestDto dataRequestDto = DataRequestDto.Builder.newInstance().build();
+    CallbackAddressDto callbackAddressDto = CallbackAddressDto.Builder.newInstance().uri("local://test").build();
     TransferProcessDto.Builder dto = TransferProcessDto.Builder.newInstance()
             .id(id)
             .type(type.name())
@@ -64,8 +65,9 @@ public class TransferProcessTransformerTestData {
             .dataRequest(dataRequestDto)
             .createdAt(createdTimestamp)
             .updatedAt(createdTimestamp)
+            .callbackAddresses(List.of(callbackAddressDto))
             .dataDestination(
-                    DataAddressInformationDto.Builder.newInstance()
+                    DataAddressDto.Builder.newInstance()
                             .properties(mapWith(dataDestinationProperties, "type", dataDestinationType))
                             .build());
 

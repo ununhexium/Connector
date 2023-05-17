@@ -17,10 +17,9 @@ plugins {
     `java-library`
 }
 
-publishing {
-    publications {
-        create<MavenPublication>(project.name) {
-            from(components["java"])
-        }
-    }
+dependencies {
+    api(libs.jackson.annotations)
+    api(libs.jackson.databind)
 }
+
+

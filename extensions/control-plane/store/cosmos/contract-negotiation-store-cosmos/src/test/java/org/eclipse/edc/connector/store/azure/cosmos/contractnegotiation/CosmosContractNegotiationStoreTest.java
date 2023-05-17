@@ -38,6 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.eclipse.edc.connector.store.azure.cosmos.contractnegotiation.TestFunctions.createNegotiationBuilder;
 import static org.eclipse.edc.connector.store.azure.cosmos.contractnegotiation.TestFunctions.generateDocument;
+import static org.eclipse.edc.spi.persistence.StateEntityStore.hasState;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -69,7 +70,7 @@ class CosmosContractNegotiationStoreTest {
         var doc = generateDocument();
         when(cosmosDbApi.queryItemById("test-id-1")).thenReturn(doc);
 
-        var result = store.find("test-id-1");
+        var result = store.findById("test-id-1");
 
         assertThat(result).usingRecursiveComparison().isEqualTo(doc.getWrappedInstance());
         verify(cosmosDbApi).queryItemById("test-id-1");
@@ -80,7 +81,7 @@ class CosmosContractNegotiationStoreTest {
     void find_notFound() {
         when(cosmosDbApi.queryItemById(anyString())).thenReturn(null);
 
-        assertThat(store.find("test-id-1")).isNull();
+        assertThat(store.findById("test-id-1")).isNull();
         verify(cosmosDbApi).queryItemById(anyString());
         verifyNoMoreInteractions(cosmosDbApi);
     }
@@ -110,8 +111,9 @@ class CosmosContractNegotiationStoreTest {
 
         store.save(negotiation);
 
-        verify(cosmosDbApi).saveItem(any(ContractNegotiationDocument.class));
-        verify(cosmosDbApi, times(2)).invokeStoredProcedure(eq("lease"), eq(PARTITION_KEY), any());
+        verify(cosmosDbApi).queryItemById(eq(negotiation.getId()));
+        verify(cosmosDbApi).createItem(any(ContractNegotiationDocument.class));
+        verify(cosmosDbApi, times(2)).invokeStoredProcedure(eq("lease"), eq(PARTITION_KEY), any(), any(), any());
         verifyNoMoreInteractions(cosmosDbApi);
     }
 
@@ -124,7 +126,7 @@ class CosmosContractNegotiationStoreTest {
 
         verify(cosmosDbApi).queryItemById("test-id");
         verify(cosmosDbApi).deleteItem("test-id");
-        verify(cosmosDbApi, times(2)).invokeStoredProcedure(eq("lease"), eq(PARTITION_KEY), any());
+        verify(cosmosDbApi, times(2)).invokeStoredProcedure(eq("lease"), eq(PARTITION_KEY), any(), any(), any());
         verifyNoMoreInteractions(cosmosDbApi);
     }
 
@@ -151,12 +153,12 @@ class CosmosContractNegotiationStoreTest {
     }
 
     @Test
-    void nextForState() {
-        var state = ContractNegotiationStates.CONFIRMED;
+    void nextNotLeased() {
+        var state = ContractNegotiationStates.AGREED;
         when(cosmosDbApi.invokeStoredProcedure("nextForState", PARTITION_KEY, state.code(), 100, "test-connector"))
                 .thenReturn("[]");
 
-        var result = store.nextForState(state.code(), 100);
+        var result = store.nextNotLeased(100, hasState(state.code()));
 
         assertThat(result).isEmpty();
         verify(cosmosDbApi).invokeStoredProcedure("nextForState", PARTITION_KEY, state.code(), 100, "test-connector");

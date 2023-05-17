@@ -18,15 +18,14 @@ package org.eclipse.edc.protocol.ids.api.multipart.dispatcher;
 import org.eclipse.edc.protocol.ids.api.configuration.IdsApiConfiguration;
 import org.eclipse.edc.protocol.ids.api.multipart.dispatcher.sender.IdsMultipartSender;
 import org.eclipse.edc.protocol.ids.api.multipart.dispatcher.sender.SenderDelegateContext;
-import org.eclipse.edc.protocol.ids.api.multipart.dispatcher.sender.type.MultipartArtifactRequestSender;
 import org.eclipse.edc.protocol.ids.api.multipart.dispatcher.sender.type.MultipartCatalogDescriptionRequestSender;
 import org.eclipse.edc.protocol.ids.api.multipart.dispatcher.sender.type.MultipartContractAgreementSender;
 import org.eclipse.edc.protocol.ids.api.multipart.dispatcher.sender.type.MultipartContractOfferSender;
 import org.eclipse.edc.protocol.ids.api.multipart.dispatcher.sender.type.MultipartContractRejectionSender;
 import org.eclipse.edc.protocol.ids.api.multipart.dispatcher.sender.type.MultipartDescriptionRequestSender;
 import org.eclipse.edc.protocol.ids.api.multipart.dispatcher.sender.type.MultipartEndpointDataReferenceRequestSender;
+import org.eclipse.edc.protocol.ids.api.multipart.dispatcher.sender.type.MultipartTransferRequestSender;
 import org.eclipse.edc.protocol.ids.spi.service.DynamicAttributeTokenService;
-import org.eclipse.edc.protocol.ids.spi.transform.IdsTransformerRegistry;
 import org.eclipse.edc.runtime.metamodel.annotation.Extension;
 import org.eclipse.edc.runtime.metamodel.annotation.Inject;
 import org.eclipse.edc.spi.http.EdcHttpClient;
@@ -35,6 +34,8 @@ import org.eclipse.edc.spi.monitor.Monitor;
 import org.eclipse.edc.spi.security.Vault;
 import org.eclipse.edc.spi.system.ServiceExtension;
 import org.eclipse.edc.spi.system.ServiceExtensionContext;
+import org.eclipse.edc.spi.types.TypeManager;
+import org.eclipse.edc.transform.spi.TypeTransformerRegistry;
 
 import static org.eclipse.edc.protocol.ids.util.ConnectorIdUtil.resolveConnectorId;
 
@@ -52,7 +53,7 @@ public class IdsMultipartDispatcherServiceExtension implements ServiceExtension 
     private DynamicAttributeTokenService dynamicAttributeTokenService;
 
     @Inject
-    private IdsTransformerRegistry transformerRegistry;
+    private TypeTransformerRegistry transformerRegistry;
 
     @Inject
     private IdsApiConfiguration idsApiConfiguration;
@@ -62,6 +63,9 @@ public class IdsMultipartDispatcherServiceExtension implements ServiceExtension 
 
     @Inject
     private Vault vault;
+
+    @Inject
+    private TypeManager typeManager;
 
     @Override
     public String name() {
@@ -73,14 +77,13 @@ public class IdsMultipartDispatcherServiceExtension implements ServiceExtension 
         var connectorId = resolveConnectorId(context);
         var idsWebhookAddress = idsApiConfiguration.getIdsWebhookAddress();
 
-        var objectMapper = context.getTypeManager().getMapper("ids");
-        var typeManager = context.getTypeManager();
+        var objectMapper = typeManager.getMapper("ids");
 
         var senderContext = new SenderDelegateContext(connectorId, objectMapper, transformerRegistry, idsWebhookAddress);
 
         var sender = new IdsMultipartSender(monitor, httpClient, dynamicAttributeTokenService, objectMapper);
         var dispatcher = new IdsMultipartRemoteMessageDispatcher(sender);
-        dispatcher.register(new MultipartArtifactRequestSender(senderContext, vault));
+        dispatcher.register(new MultipartTransferRequestSender(senderContext, vault));
         dispatcher.register(new MultipartDescriptionRequestSender(senderContext));
         dispatcher.register(new MultipartContractOfferSender(senderContext));
         dispatcher.register(new MultipartContractAgreementSender(senderContext));

@@ -42,11 +42,10 @@ import okhttp3.MultipartReader;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
-import org.eclipse.edc.connector.contract.spi.negotiation.ConsumerContractNegotiationManager;
-import org.eclipse.edc.connector.contract.spi.negotiation.ProviderContractNegotiationManager;
 import org.eclipse.edc.connector.contract.spi.offer.ContractOfferResolver;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiation;
 import org.eclipse.edc.connector.contract.spi.types.offer.ContractOffer;
+import org.eclipse.edc.connector.spi.contractnegotiation.ContractNegotiationProtocolService;
 import org.eclipse.edc.junit.annotations.ComponentTest;
 import org.eclipse.edc.junit.extensions.EdcExtension;
 import org.eclipse.edc.policy.model.Action;
@@ -59,12 +58,13 @@ import org.eclipse.edc.protocol.ids.spi.types.IdsId;
 import org.eclipse.edc.protocol.ids.spi.types.IdsType;
 import org.eclipse.edc.protocol.ids.util.CalendarUtil;
 import org.eclipse.edc.runtime.metamodel.annotation.Provider;
+import org.eclipse.edc.service.spi.result.ServiceResult;
 import org.eclipse.edc.spi.asset.AssetIndex;
 import org.eclipse.edc.spi.http.EdcHttpClient;
 import org.eclipse.edc.spi.iam.ClaimToken;
 import org.eclipse.edc.spi.iam.IdentityService;
 import org.eclipse.edc.spi.iam.TokenRepresentation;
-import org.eclipse.edc.spi.response.StatusResult;
+import org.eclipse.edc.spi.protocol.ProtocolWebhook;
 import org.eclipse.edc.spi.result.Result;
 import org.eclipse.edc.spi.system.ServiceExtension;
 import org.eclipse.edc.spi.types.TypeManager;
@@ -79,7 +79,6 @@ import java.math.BigInteger;
 import java.net.URI;
 import java.net.http.HttpHeaders;
 import java.nio.charset.StandardCharsets;
-import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedList;
 import java.util.List;
@@ -91,6 +90,7 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.eclipse.edc.junit.testfixtures.TestUtils.getFreePort;
 import static org.eclipse.edc.protocol.ids.spi.domain.IdsConstants.IDS_WEBHOOK_ADDRESS_PROPERTY;
+import static org.eclipse.edc.spi.CoreConstants.EDC_NAMESPACE;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
@@ -107,10 +107,7 @@ class MultipartControllerIntegrationTest {
     private final ObjectMapper objectMapper = getCustomizedObjectMapper();
 
     private final ContractOfferResolver contractOfferResolver = mock(ContractOfferResolver.class);
-    private final ConsumerContractNegotiationManager consumerContractNegotiationManager =
-            mock(ConsumerContractNegotiationManager.class);
-    private final ProviderContractNegotiationManager providerContractNegotiationManager =
-            mock(ProviderContractNegotiationManager.class);
+    private final ContractNegotiationProtocolService service = mock(ContractNegotiationProtocolService.class);
 
     @BeforeEach
     void init(EdcExtension extension) {
@@ -125,8 +122,8 @@ class MultipartControllerIntegrationTest {
 
         extension.registerSystemExtension(ServiceExtension.class, new TestExtension());
         extension.registerServiceMock(ContractOfferResolver.class, contractOfferResolver);
-        extension.registerServiceMock(ProviderContractNegotiationManager.class, providerContractNegotiationManager);
-        extension.registerServiceMock(ConsumerContractNegotiationManager.class, consumerContractNegotiationManager);
+        extension.registerServiceMock(ContractNegotiationProtocolService.class, service);
+        extension.registerServiceMock(ProtocolWebhook.class, mock(ProtocolWebhook.class));
     }
 
     @Test
@@ -258,17 +255,16 @@ class MultipartControllerIntegrationTest {
         var assetId = UUID.randomUUID().toString();
         var asset = Asset.Builder.newInstance()
                 .id(assetId)
-                .property("asset:prop:fileName", "test.txt")
-                .property("asset:prop:byteSize", BigInteger.valueOf(10))
-                .property("asset:prop:fileExtension", "txt")
+                .property(EDC_NAMESPACE + "fileName", "test.txt")
+                .property(EDC_NAMESPACE + "byteSize", BigInteger.valueOf(10))
+                .property(EDC_NAMESPACE + "fileExtension", "txt")
                 .build();
-        assetIndex.accept(asset, DataAddress.Builder.newInstance().type("test").build());
+        assetIndex.create(asset, DataAddress.Builder.newInstance().type("test").build());
         var contractOffer = ContractOffer.Builder.newInstance()
                 .id(UUID.randomUUID().toString())
-                .asset(asset)
+                .assetId(asset.getId())
                 .policy(createEverythingAllowedPolicy())
-                .contractStart(ZonedDateTime.now())
-                .contractEnd(ZonedDateTime.now().plusMonths(1))
+                .providerId("provider")
                 .build();
         when(contractOfferResolver.queryContractOffers(any())).thenReturn(Stream.of(contractOffer));
 
@@ -394,11 +390,11 @@ class MultipartControllerIntegrationTest {
         String assetId = UUID.randomUUID().toString();
         Asset asset = Asset.Builder.newInstance()
                 .id(assetId)
-                .property("asset:prop:fileName", "test.txt")
-                .property("asset:prop:byteSize", BigInteger.valueOf(10))
-                .property("asset:prop:fileExtension", "txt")
+                .property(EDC_NAMESPACE + "fileName", "test.txt")
+                .property(EDC_NAMESPACE + "byteSize", BigInteger.valueOf(10))
+                .property(EDC_NAMESPACE + "fileExtension", "txt")
                 .build();
-        assetIndex.accept(asset, DataAddress.Builder.newInstance().type("test").build());
+        assetIndex.create(asset, DataAddress.Builder.newInstance().type("test").build());
 
         var request = createRequest(getDescriptionRequestMessage(
                 IdsId.Builder.newInstance().value(assetId).type(IdsType.ARTIFACT).build()
@@ -455,11 +451,11 @@ class MultipartControllerIntegrationTest {
         String assetId = UUID.randomUUID().toString();
         Asset asset = Asset.Builder.newInstance()
                 .id(assetId)
-                .property("asset:prop:fileName", "test.txt")
-                .property("asset:prop:byteSize", BigInteger.valueOf(10))
-                .property("asset:prop:fileExtension", "txt")
+                .property(EDC_NAMESPACE + "fileName", "test.txt")
+                .property(EDC_NAMESPACE + "byteSize", BigInteger.valueOf(10))
+                .property(EDC_NAMESPACE + "fileExtension", "txt")
                 .build();
-        assetIndex.accept(asset, DataAddress.Builder.newInstance().type("test").build());
+        assetIndex.create(asset, DataAddress.Builder.newInstance().type("test").build());
 
         var request = createRequest(getDescriptionRequestMessage(
                 IdsId.Builder.newInstance().value(assetId).type(IdsType.REPRESENTATION).build()
@@ -520,17 +516,16 @@ class MultipartControllerIntegrationTest {
         String assetId = UUID.randomUUID().toString();
         Asset asset = Asset.Builder.newInstance()
                 .id(assetId)
-                .property("asset:prop:fileName", "test.txt")
-                .property("asset:prop:byteSize", BigInteger.valueOf(10))
-                .property("asset:prop:fileExtension", "txt")
+                .property(EDC_NAMESPACE + "fileName", "test.txt")
+                .property(EDC_NAMESPACE + "byteSize", BigInteger.valueOf(10))
+                .property(EDC_NAMESPACE + "fileExtension", "txt")
                 .build();
-        assetIndex.accept(asset, DataAddress.Builder.newInstance().type("test").build());
+        assetIndex.create(asset, DataAddress.Builder.newInstance().type("test").build());
         var contractOffer = ContractOffer.Builder.newInstance()
                 .id(UUID.randomUUID().toString())
-                .asset(asset)
+                .assetId(asset.getId())
                 .policy(createEverythingAllowedPolicy())
-                .contractStart(ZonedDateTime.now())
-                .contractEnd(ZonedDateTime.now().plusMonths(1))
+                .providerId("provider")
                 .build();
         when(contractOfferResolver.queryContractOffers(any())).thenReturn(Stream.of(contractOffer));
 
@@ -601,7 +596,7 @@ class MultipartControllerIntegrationTest {
 
     @Test
     void testHandleContractRequest(EdcHttpClient httpClient, AssetIndex assetIndex) throws Exception {
-        when(providerContractNegotiationManager.requested(any(), any())).thenReturn(StatusResult.success(createContractNegotiation("id")));
+        when(service.notifyRequested(any(), any())).thenReturn(ServiceResult.success(createContractNegotiation("id")));
         var assetId = "1234";
         var request = createRequestWithPayload(getContractRequestMessage(),
                 new ContractRequestBuilder(URI.create("urn:contractrequest:2345"))
@@ -614,7 +609,7 @@ class MultipartControllerIntegrationTest {
                         ._contractEnd_(CalendarUtil.gregorianNow())
                         .build());
         var asset = Asset.Builder.newInstance().id(assetId).build();
-        assetIndex.accept(asset, DataAddress.Builder.newInstance().type("test").build());
+        assetIndex.create(asset, DataAddress.Builder.newInstance().type("test").build());
 
         var response = httpClient.execute(request);
 
@@ -661,8 +656,8 @@ class MultipartControllerIntegrationTest {
                         ._contractDate_(CalendarUtil.gregorianNow())
                         .build());
         var asset = Asset.Builder.newInstance().id(assetId).build();
-        assetIndex.accept(asset, DataAddress.Builder.newInstance().type("test").build());
-        when(consumerContractNegotiationManager.confirmed(any(), any(), any(), any())).thenReturn(StatusResult.success(createContractNegotiation("id")));
+        assetIndex.create(asset, DataAddress.Builder.newInstance().type("test").build());
+        when(service.notifyAgreed(any(), any())).thenReturn(ServiceResult.success(createContractNegotiation("id")));
 
         var response = httpClient.execute(request);
 
@@ -694,12 +689,12 @@ class MultipartControllerIntegrationTest {
         });
         jsonHeader.inPath("$.ids:issuerConnector.@id").isString().isEqualTo("urn:connector:" + CONNECTOR_ID);
         jsonHeader.inPath("$.ids:senderAgent.@id").isString().isEqualTo("urn:connector:" + CONNECTOR_ID);
-        verify(consumerContractNegotiationManager).confirmed(any(), any(), argThat(agreement -> assetId.equals(agreement.getAssetId())), any());
+        verify(service).notifyAgreed(argThat(message -> assetId.equals(message.getContractAgreement().getAssetId())), any());
     }
 
     @Test
     void testHandleContractRejection(EdcHttpClient httpClient) throws Exception {
-        when(providerContractNegotiationManager.declined(any(), any())).thenReturn(StatusResult.success(createContractNegotiation("id")));
+        when(service.notifyTerminated(any(), any())).thenReturn(ServiceResult.success(createContractNegotiation("id")));
         var request = createRequest(getContractRejectionMessage());
 
         var response = httpClient.execute(request);

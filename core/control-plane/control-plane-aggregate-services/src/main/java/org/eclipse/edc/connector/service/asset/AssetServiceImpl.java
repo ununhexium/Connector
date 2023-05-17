@@ -14,13 +14,13 @@
 
 package org.eclipse.edc.connector.service.asset;
 
+import org.eclipse.edc.connector.asset.spi.observe.AssetObservable;
 import org.eclipse.edc.connector.contract.spi.negotiation.store.ContractNegotiationStore;
 import org.eclipse.edc.connector.service.query.QueryValidator;
 import org.eclipse.edc.connector.spi.asset.AssetService;
 import org.eclipse.edc.service.spi.result.ServiceResult;
 import org.eclipse.edc.spi.asset.AssetIndex;
 import org.eclipse.edc.spi.dataaddress.DataAddressValidator;
-import org.eclipse.edc.spi.observe.asset.AssetObservable;
 import org.eclipse.edc.spi.query.Criterion;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.eclipse.edc.spi.types.domain.DataAddress;
@@ -76,13 +76,12 @@ public class AssetServiceImpl implements AssetService {
         }
 
         return transactionContext.execute(() -> {
-            if (findById(asset.getId()) == null) {
-                index.accept(asset, dataAddress);
+            var createResult = index.create(asset, dataAddress);
+            if (createResult.succeeded()) {
                 observable.invokeForEach(l -> l.created(asset));
                 return ServiceResult.success(asset);
-            } else {
-                return ServiceResult.conflict(format("Asset %s cannot be created because it already exist", asset.getId()));
             }
+            return ServiceResult.fromFailure(createResult);
         });
     }
 
@@ -101,12 +100,26 @@ public class AssetServiceImpl implements AssetService {
             }
 
             var deleted = index.deleteById(assetId);
-            if (deleted == null) {
-                return ServiceResult.notFound(format("Asset %s does not exist", assetId));
-            }
+            deleted.onSuccess(a -> observable.invokeForEach(l -> l.deleted(a)));
+            return ServiceResult.from(deleted);
+        });
+    }
 
-            observable.invokeForEach(l -> l.deleted(deleted));
-            return ServiceResult.success(deleted);
+    @Override
+    public ServiceResult<Asset> update(Asset asset) {
+        return transactionContext.execute(() -> {
+            var updatedAsset = index.updateAsset(asset);
+            updatedAsset.onSuccess(a -> observable.invokeForEach(l -> l.updated(a)));
+            return ServiceResult.from(updatedAsset);
+        });
+    }
+
+    @Override
+    public ServiceResult<DataAddress> update(String assetId, DataAddress dataAddress) {
+        return transactionContext.execute(() -> {
+            var result = index.updateDataAddress(assetId, dataAddress);
+            result.onSuccess(da -> observable.invokeForEach(l -> l.updated(findById(assetId))));
+            return ServiceResult.from(result);
         });
     }
 }

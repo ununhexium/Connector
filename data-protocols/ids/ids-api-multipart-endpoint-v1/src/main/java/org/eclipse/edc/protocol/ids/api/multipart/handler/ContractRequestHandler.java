@@ -17,64 +17,59 @@ package org.eclipse.edc.protocol.ids.api.multipart.handler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.fraunhofer.iais.eis.ContractRequest;
-import de.fraunhofer.iais.eis.ContractRequestMessage;
-import org.eclipse.edc.connector.contract.spi.negotiation.ProviderContractNegotiationManager;
-import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractOfferRequest;
+import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractRequestMessage;
 import org.eclipse.edc.connector.contract.spi.types.offer.ContractOffer;
+import org.eclipse.edc.connector.spi.contractnegotiation.ContractNegotiationProtocolService;
 import org.eclipse.edc.protocol.ids.api.multipart.message.MultipartRequest;
 import org.eclipse.edc.protocol.ids.api.multipart.message.MultipartResponse;
 import org.eclipse.edc.protocol.ids.spi.transform.ContractTransformerInput;
-import org.eclipse.edc.protocol.ids.spi.transform.IdsTransformerRegistry;
 import org.eclipse.edc.protocol.ids.spi.types.IdsId;
 import org.eclipse.edc.protocol.ids.spi.types.MessageProtocol;
 import org.eclipse.edc.spi.asset.AssetIndex;
 import org.eclipse.edc.spi.monitor.Monitor;
-import org.eclipse.edc.spi.result.Result;
+import org.eclipse.edc.transform.spi.TypeTransformerRegistry;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 
 import static org.eclipse.edc.protocol.ids.api.multipart.util.ResponseUtil.badParameters;
 import static org.eclipse.edc.protocol.ids.api.multipart.util.ResponseUtil.createMultipartResponse;
-import static org.eclipse.edc.protocol.ids.api.multipart.util.ResponseUtil.inProcessFromStatusResult;
+import static org.eclipse.edc.protocol.ids.api.multipart.util.ResponseUtil.inProcessFromServiceResult;
 import static org.eclipse.edc.protocol.ids.spi.domain.IdsConstants.IDS_WEBHOOK_ADDRESS_PROPERTY;
 
 /**
- * This class handles and processes incoming IDS {@link ContractRequestMessage}s.
+ * This class handles and processes incoming IDS {@link de.fraunhofer.iais.eis.ContractRequestMessage}s.
  */
 public class ContractRequestHandler implements Handler {
 
     private final Monitor monitor;
     private final ObjectMapper objectMapper;
     private final IdsId connectorId;
-    private final ProviderContractNegotiationManager negotiationManager;
-    private final IdsTransformerRegistry transformerRegistry;
+    private final TypeTransformerRegistry transformerRegistry;
     private final AssetIndex assetIndex;
+    private final ContractNegotiationProtocolService service;
 
     public ContractRequestHandler(
-            @NotNull Monitor monitor,
-            @NotNull IdsId connectorId,
-            @NotNull ObjectMapper objectMapper,
-            @NotNull ProviderContractNegotiationManager negotiationManager,
-            @NotNull IdsTransformerRegistry transformerRegistry,
-            @NotNull AssetIndex assetIndex) {
+            Monitor monitor, IdsId connectorId, ObjectMapper objectMapper,
+            TypeTransformerRegistry transformerRegistry,
+            AssetIndex assetIndex, ContractNegotiationProtocolService service) {
         this.monitor = monitor;
         this.connectorId = connectorId;
         this.objectMapper = objectMapper;
-        this.negotiationManager = negotiationManager;
         this.transformerRegistry = transformerRegistry;
         this.assetIndex = assetIndex;
+        this.service = service;
     }
 
     @Override
     public boolean canHandle(@NotNull MultipartRequest multipartRequest) {
-        return multipartRequest.getHeader() instanceof ContractRequestMessage;
+        return multipartRequest.getHeader() instanceof de.fraunhofer.iais.eis.ContractRequestMessage;
     }
 
     @Override
     public @NotNull MultipartResponse handleRequest(@NotNull MultipartRequest multipartRequest) {
         var claimToken = multipartRequest.getClaimToken();
-        var message = (ContractRequestMessage) multipartRequest.getHeader();
+        var message = (de.fraunhofer.iais.eis.ContractRequestMessage) multipartRequest.getHeader();
 
         ContractRequest contractRequest;
         try {
@@ -84,7 +79,6 @@ public class ContractRequestHandler implements Handler {
             return createMultipartResponse(badParameters(message, connectorId));
         }
 
-        // Get webhook address of requesting connector from message properties
         var idsWebhookAddress = message.getProperties().get(IDS_WEBHOOK_ADDRESS_PROPERTY);
         if (idsWebhookAddress == null || idsWebhookAddress.toString().isBlank()) {
             var msg = "Ids webhook address is invalid";
@@ -92,7 +86,6 @@ public class ContractRequestHandler implements Handler {
             return createMultipartResponse(badParameters(message, connectorId), msg);
         }
 
-        // extract target from contract request
         var permission = contractRequest.getPermission().stream().findFirst().orElse(null);
         if (permission == null) {
             monitor.debug("ContractRequestHandler: Contract Request is invalid");
@@ -105,7 +98,6 @@ public class ContractRequestHandler implements Handler {
             return createMultipartResponse(badParameters(message, connectorId));
         }
 
-        // search for matching asset
         var assetResult = IdsId.from(String.valueOf(target));
         if (assetResult.failed()) {
             var msg = "Target id is missing";
@@ -121,13 +113,12 @@ public class ContractRequestHandler implements Handler {
             return createMultipartResponse(badParameters(message, connectorId), msg);
         }
 
-        // Create contract offer request
         var input = ContractTransformerInput.Builder.newInstance()
                 .contract(contractRequest)
                 .asset(asset)
                 .build();
 
-        Result<ContractOffer> result = transformerRegistry.transform(input, ContractOffer.class);
+        var result = transformerRegistry.transform(input, ContractOffer.class);
         if (result.failed()) {
             monitor.debug(String.format("Could not transform contract request: [%s]",
                     String.join(", ", result.getFailureMessages())));
@@ -135,19 +126,17 @@ public class ContractRequestHandler implements Handler {
         }
 
         var contractOffer = result.getContent();
-        var requestObj = ContractOfferRequest.Builder.newInstance()
+        var requestObj = ContractRequestMessage.Builder.newInstance()
                 .protocol(MessageProtocol.IDS_MULTIPART)
-                .connectorAddress(idsWebhookAddress.toString())
-                .type(ContractOfferRequest.Type.INITIAL)
+                .callbackAddress(idsWebhookAddress.toString())
+                .type(ContractRequestMessage.Type.INITIAL)
                 .connectorId(String.valueOf(message.getIssuerConnector()))
-                .correlationId(String.valueOf(message.getTransferContract()))
+                .processId(String.valueOf(message.getTransferContract()))
                 .contractOffer(contractOffer)
                 .build();
 
-        //TODO use ContractNegotiationService for initiation after project structure review
+        var negotiationInitiateResult = service.notifyRequested(requestObj, claimToken);
 
-        var negotiationInitiateResult = negotiationManager.requested(claimToken, requestObj);
-
-        return createMultipartResponse(inProcessFromStatusResult(negotiationInitiateResult, message, connectorId));
+        return createMultipartResponse(inProcessFromServiceResult(negotiationInitiateResult, message, connectorId));
     }
 }

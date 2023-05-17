@@ -15,13 +15,10 @@
 
 package org.eclipse.edc.connector.service.transferprocess;
 
-import org.eclipse.edc.connector.contract.spi.negotiation.store.ContractNegotiationStore;
-import org.eclipse.edc.connector.contract.spi.validation.ContractValidationService;
 import org.eclipse.edc.connector.service.query.QueryValidator;
 import org.eclipse.edc.connector.spi.transferprocess.TransferProcessService;
 import org.eclipse.edc.connector.transfer.spi.TransferProcessManager;
 import org.eclipse.edc.connector.transfer.spi.store.TransferProcessStore;
-import org.eclipse.edc.connector.transfer.spi.types.DataRequest;
 import org.eclipse.edc.connector.transfer.spi.types.DeprovisionedResource;
 import org.eclipse.edc.connector.transfer.spi.types.ProvisionResponse;
 import org.eclipse.edc.connector.transfer.spi.types.ProvisionedContentResource;
@@ -30,16 +27,17 @@ import org.eclipse.edc.connector.transfer.spi.types.ProvisionedDataDestinationRe
 import org.eclipse.edc.connector.transfer.spi.types.ProvisionedResource;
 import org.eclipse.edc.connector.transfer.spi.types.TransferProcess;
 import org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates;
+import org.eclipse.edc.connector.transfer.spi.types.TransferRequest;
 import org.eclipse.edc.connector.transfer.spi.types.command.AddProvisionedResourceCommand;
-import org.eclipse.edc.connector.transfer.spi.types.command.CancelTransferCommand;
 import org.eclipse.edc.connector.transfer.spi.types.command.DeprovisionCompleteCommand;
 import org.eclipse.edc.connector.transfer.spi.types.command.DeprovisionRequest;
-import org.eclipse.edc.connector.transfer.spi.types.command.FailTransferCommand;
+import org.eclipse.edc.connector.transfer.spi.types.command.SingleTransferProcessCommand;
+import org.eclipse.edc.connector.transfer.spi.types.command.TerminateTransferCommand;
 import org.eclipse.edc.service.spi.result.ServiceResult;
 import org.eclipse.edc.spi.dataaddress.DataAddressValidator;
-import org.eclipse.edc.spi.iam.ClaimToken;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.eclipse.edc.spi.result.AbstractResult;
+import org.eclipse.edc.spi.result.Result;
 import org.eclipse.edc.spi.types.domain.transfer.command.CompleteTransferCommand;
 import org.eclipse.edc.transaction.spi.TransactionContext;
 import org.jetbrains.annotations.NotNull;
@@ -48,7 +46,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.Function;
+import java.util.function.BiFunction;
 import java.util.stream.Stream;
 
 import static java.lang.String.format;
@@ -58,26 +56,21 @@ public class TransferProcessServiceImpl implements TransferProcessService {
     private final TransferProcessManager manager;
     private final TransactionContext transactionContext;
     private final QueryValidator queryValidator;
-    private final ContractNegotiationStore negotiationStore;
-    private final ContractValidationService contractValidationService;
     private final DataAddressValidator dataAddressValidator;
 
     public TransferProcessServiceImpl(TransferProcessStore transferProcessStore, TransferProcessManager manager,
-                                      TransactionContext transactionContext, ContractNegotiationStore negotiationStore,
-                                      ContractValidationService contractValidationService,
+                                      TransactionContext transactionContext,
                                       DataAddressValidator dataAddressValidator) {
         this.transferProcessStore = transferProcessStore;
         this.manager = manager;
         this.transactionContext = transactionContext;
-        this.negotiationStore = negotiationStore;
-        this.contractValidationService = contractValidationService;
         this.dataAddressValidator = dataAddressValidator;
         queryValidator = new QueryValidator(TransferProcess.class, getSubtypes());
     }
 
     @Override
     public @Nullable TransferProcess findById(String transferProcessId) {
-        return transactionContext.execute(() -> transferProcessStore.find(transferProcessId));
+        return transactionContext.execute(() -> transferProcessStore.findById(transferProcessId));
     }
 
     @Override
@@ -93,34 +86,29 @@ public class TransferProcessServiceImpl implements TransferProcessService {
     @Override
     public @Nullable String getState(String transferProcessId) {
         return transactionContext.execute(() -> {
-            var process = transferProcessStore.find(transferProcessId);
+            var process = transferProcessStore.findById(transferProcessId);
             return Optional.ofNullable(process).map(p -> TransferProcessStates.from(p.getState()).name()).orElse(null);
         });
     }
 
     @Override
-    public @NotNull ServiceResult<TransferProcess> cancel(String transferProcessId) {
-        return apply(transferProcessId, this::cancelImpl);
+    public @NotNull ServiceResult<TransferProcess> terminate(String transferProcessId, String reason) {
+        return transactionContext.execute(() -> runAsync(new TerminateTransferCommand(transferProcessId, reason)));
     }
 
     @Override
     public @NotNull ServiceResult<TransferProcess> complete(String transferProcessId) {
-        return apply(transferProcessId, this::completeImpl);
-    }
-
-    @Override
-    public @NotNull ServiceResult<TransferProcess> fail(String transferProcessId, String errorDetail) {
-        return apply(transferProcessId, failImpl(errorDetail));
+        return transactionContext.execute(() -> runAsync(new CompleteTransferCommand(transferProcessId)));
     }
 
     @Override
     public @NotNull ServiceResult<TransferProcess> deprovision(String transferProcessId) {
-        return apply(transferProcessId, this::deprovisionImpl);
+        return transactionContext.execute(() -> runAsync(new DeprovisionRequest(transferProcessId)));
     }
 
     @Override
-    public @NotNull ServiceResult<String> initiateTransfer(DataRequest request) {
-        var validDestination = dataAddressValidator.validate(request.getDataDestination());
+    public @NotNull ServiceResult<TransferProcess> initiateTransfer(TransferRequest request) {
+        var validDestination = dataAddressValidator.validate(request.getDataRequest().getDataDestination());
         if (validDestination.failed()) {
             return ServiceResult.badRequest(validDestination.getFailureMessages().toArray(new String[]{}));
         }
@@ -136,30 +124,29 @@ public class TransferProcessServiceImpl implements TransferProcessService {
     }
 
     @Override
-    public @NotNull ServiceResult<String> initiateTransfer(DataRequest request, ClaimToken claimToken) {
-        var validDestination = dataAddressValidator.validate(request.getDataDestination());
-        if (validDestination.failed()) {
-            return ServiceResult.badRequest(validDestination.getFailureMessages().toArray(new String[]{}));
-        }
-
-        return transactionContext.execute(() ->
-                Optional.ofNullable(negotiationStore.findContractAgreement(request.getContractId()))
-                        .filter(agreement -> contractValidationService.validateAgreement(claimToken, agreement).succeeded())
-                        .map(agreement -> manager.initiateProviderRequest(request))
-                        .filter(AbstractResult::succeeded)
-                        .map(AbstractResult::getContent)
-                        .map(ServiceResult::success)
-                        .orElse(ServiceResult.conflict("Request couldn't be initialised.")));
-    }
-
-    @Override
     public ServiceResult<TransferProcess> completeDeprovision(String transferProcessId, DeprovisionedResource resource) {
-        return apply(transferProcessId, completeDeprovisionImpl(resource));
+        return transactionContext.execute(() -> runAsync(new DeprovisionCompleteCommand(transferProcessId, resource)));
     }
 
     @Override
     public ServiceResult<TransferProcess> addProvisionedResource(String transferProcessId, ProvisionResponse response) {
-        return apply(transferProcessId, addProvisionedResourceImpl(response));
+        return transactionContext.execute(() -> runAsync(new AddProvisionedResourceCommand(transferProcessId, response)));
+    }
+
+    private ServiceResult<TransferProcess> runAsync(SingleTransferProcessCommand command) {
+        return Optional.of(command.getTransferProcessId())
+                .map(transferProcessStore::findById)
+                .map(transferProcess -> {
+                    var validator = asyncCommandValidators.get(command.getClass());
+                    var validationResult = validator.apply(command, transferProcess);
+                    if (validationResult.failed()) {
+                        return ServiceResult.<TransferProcess>conflict(format("Cannot %s because %s", command.getClass().getSimpleName(), validationResult.getFailureDetail()));
+                    }
+
+                    manager.enqueueCommand(command);
+                    return ServiceResult.success(transferProcess);
+                })
+                .orElse(ServiceResult.notFound(format("TransferProcess with id %s not found", command.getTransferProcessId())));
     }
 
     private Map<Class<?>, List<Class<?>>> getSubtypes() {
@@ -169,86 +156,26 @@ public class TransferProcessServiceImpl implements TransferProcessService {
         );
     }
 
-    private ServiceResult<TransferProcess> apply(String transferProcessId, Function<TransferProcess, ServiceResult<TransferProcess>> function) {
-        return transactionContext.execute(() -> {
-            var transferProcess = transferProcessStore.find(transferProcessId);
-            return Optional.ofNullable(transferProcess)
-                    .map(function)
-                    .orElse(ServiceResult.notFound(format("TransferProcess %s does not exist", transferProcessId)));
-        });
-    }
+    private final Map<Class<? extends SingleTransferProcessCommand>, CommandValidator> asyncCommandValidators = Map.of(
+            TerminateTransferCommand.class,
+            (command, transferProcess) -> transferProcess.canBeTerminated()
+                    ? Result.success()
+                    : Result.failure(format("TransferProcess %s is in state %s", transferProcess.getId(), TransferProcessStates.from(transferProcess.getState()))),
 
-    private ServiceResult<TransferProcess> cancelImpl(TransferProcess transferProcess) {
-        // Attempt the transition only to verify that the transition is allowed.
-        // The updated transfer process is not persisted at this point, and is discarded.
-        try {
-            transferProcess.transitionCancelled();
-        } catch (IllegalStateException e) {
-            return ServiceResult.conflict(format("TransferProcess %s cannot be canceled as it is in state %s", transferProcess.getId(), TransferProcessStates.from(transferProcess.getState())));
-        }
+            org.eclipse.edc.spi.types.domain.transfer.command.CompleteTransferCommand.class,
+            (command, transferProcess) -> transferProcess.canBeCompleted()
+                    ? Result.success()
+                    : Result.failure(format("TransferProcess %s is in state %s", transferProcess.getId(), TransferProcessStates.from(transferProcess.getState()))),
 
-        manager.enqueueCommand(new CancelTransferCommand(transferProcess.getId()));
+            DeprovisionRequest.class,
+            (command, transferProcess) -> transferProcess.canBeDeprovisioned()
+                    ? Result.success()
+                    : Result.failure(format("TransferProcess %s is in state %s", transferProcess.getId(), TransferProcessStates.from(transferProcess.getState()))),
 
-        return ServiceResult.success(transferProcess);
-    }
+            DeprovisionCompleteCommand.class, (command, transferProcess) -> Result.success(),
 
-    private ServiceResult<TransferProcess> deprovisionImpl(TransferProcess transferProcess) {
-        // Attempt the transition only to verify that the transition is allowed.
-        // The updated transfer process is not persisted at this point, and is discarded.
-        try {
-            transferProcess.transitionDeprovisioning();
-        } catch (IllegalStateException e) {
-            return ServiceResult.conflict(format("TransferProcess %s cannot be deprovisioned as it is in state %s", transferProcess.getId(), TransferProcessStates.from(transferProcess.getState())));
-        }
+            AddProvisionedResourceCommand.class, (command, transferProcess) -> Result.success()
+    );
 
-        manager.enqueueCommand(new DeprovisionRequest(transferProcess.getId()));
-
-        return ServiceResult.success(transferProcess);
-    }
-
-    private ServiceResult<TransferProcess> completeImpl(TransferProcess transferProcess) {
-        // Attempt the transition only to verify that the transition is allowed.
-        // The updated transfer process is not persisted at this point, and is discarded.
-        try {
-            transferProcess.transitionCompleted();
-        } catch (IllegalStateException e) {
-            return ServiceResult.conflict(format("TransferProcess %s cannot be completed as it is in state %s", transferProcess.getId(), TransferProcessStates.from(transferProcess.getState())));
-        }
-
-        manager.enqueueCommand(new CompleteTransferCommand(transferProcess.getId()));
-
-        return ServiceResult.success(transferProcess);
-    }
-
-    private Function<TransferProcess, ServiceResult<TransferProcess>> failImpl(String failReason) {
-
-        return (transferProcess) -> {
-            // Attempt the transition only to verify that the transition is allowed.
-            // The updated transfer process is not persisted at this point, and is discarded.
-            try {
-                transferProcess.transitionError(failReason);
-            } catch (IllegalStateException e) {
-                return ServiceResult.conflict(format("Cannot fail TransferProcess %s as it is in state %s", transferProcess.getId(), TransferProcessStates.from(transferProcess.getState())));
-            }
-
-            manager.enqueueCommand(new FailTransferCommand(transferProcess.getId(), failReason));
-
-            return ServiceResult.success(transferProcess);
-        };
-
-    }
-
-    private Function<TransferProcess, ServiceResult<TransferProcess>> completeDeprovisionImpl(DeprovisionedResource resource) {
-        return (transferProcess -> {
-            manager.enqueueCommand(new DeprovisionCompleteCommand(transferProcess.getId(), resource));
-            return ServiceResult.success(transferProcess);
-        });
-    }
-
-    private Function<TransferProcess, ServiceResult<TransferProcess>> addProvisionedResourceImpl(ProvisionResponse response) {
-        return (transferProcess -> {
-            manager.enqueueCommand(new AddProvisionedResourceCommand(transferProcess.getId(), response));
-            return ServiceResult.success(transferProcess);
-        });
-    }
+    private interface CommandValidator extends BiFunction<SingleTransferProcessCommand, TransferProcess, Result<Void>> {}
 }

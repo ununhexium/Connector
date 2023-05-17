@@ -39,7 +39,6 @@ import org.eclipse.edc.protocol.ids.api.multipart.message.MultipartRequest;
 import org.eclipse.edc.protocol.ids.spi.domain.connector.Connector;
 import org.eclipse.edc.protocol.ids.spi.service.CatalogService;
 import org.eclipse.edc.protocol.ids.spi.service.ConnectorService;
-import org.eclipse.edc.protocol.ids.spi.transform.IdsTransformerRegistry;
 import org.eclipse.edc.protocol.ids.spi.types.IdsId;
 import org.eclipse.edc.protocol.ids.spi.types.IdsType;
 import org.eclipse.edc.spi.asset.AssetIndex;
@@ -48,11 +47,11 @@ import org.eclipse.edc.spi.monitor.Monitor;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.eclipse.edc.spi.result.Result;
 import org.eclipse.edc.spi.types.domain.asset.Asset;
+import org.eclipse.edc.transform.spi.TypeTransformerRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
-import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -83,7 +82,7 @@ class DescriptionRequestHandlerTest {
     private final int rangeTo = 10;
     private DescriptionRequestHandler handler;
 
-    private IdsTransformerRegistry transformerRegistry;
+    private TypeTransformerRegistry transformerRegistry;
     private AssetIndex assetIndex;
     private CatalogService catalogService;
     private ContractOfferResolver contractOfferResolver;
@@ -93,14 +92,21 @@ class DescriptionRequestHandlerTest {
     void init() {
         var connectorId = IdsId.from("urn:connector:edc").getContent();
 
-        transformerRegistry = mock(IdsTransformerRegistry.class);
+        transformerRegistry = mock(TypeTransformerRegistry.class);
         assetIndex = mock(AssetIndex.class);
         catalogService = mock(CatalogService.class);
         contractOfferResolver = mock(ContractOfferResolver.class);
         connectorService = mock(ConnectorService.class);
 
-        handler = new DescriptionRequestHandler(mock(Monitor.class), connectorId, transformerRegistry,
-                assetIndex, catalogService, contractOfferResolver, connectorService, new ObjectMapper());
+        handler = new DescriptionRequestHandler(
+                mock(Monitor.class),
+                connectorId,
+                transformerRegistry,
+                assetIndex,
+                catalogService,
+                contractOfferResolver,
+                connectorService,
+                new ObjectMapper());
     }
 
     @Test
@@ -187,9 +193,7 @@ class DescriptionRequestHandlerTest {
         var contractOffer = ContractOffer.Builder.newInstance()
                 .id("id")
                 .policy(Policy.Builder.newInstance().build())
-                .asset(Asset.Builder.newInstance().id("test-asset").build())
-                .contractStart(ZonedDateTime.now())
-                .contractEnd(ZonedDateTime.now().plusMonths(1))
+                .assetId("test-asset")
                 .build();
         var request = MultipartRequest.Builder.newInstance()
                 .header(descriptionRequestMessage(URI.create("urn:resource:" + assetId)))

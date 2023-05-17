@@ -67,10 +67,6 @@ the test to run. All of these annotations are composite annotations and contains
   integration test requires the AWS S3 storage emulator to run.
 - `@DapsTest`: Marks an integration test with `DapsIntegrationTest` Junit tag. This should be used when the integration
   test is requires Daps IAM endpoint to run.
-- `@OpenTelemetryIntegrationTest`: Marks an integration test with `OpenTelemetryIntegrationTest` Junit Tag. This should
-  be used for integration tests that require the
-  [OpenTelemetry agent](https://github.com/open-telemetry/opentelemetry-java-instrumentation), for example tests about
-  metrics and traces.
 - `@EndToEndTest`: Marks an integration test with `EndToEndTest` Junit Tag. This should be used when entire system is
 - involved in a test.
 - `@ComponentTest`: Marks an integration test with `ComponentTest` Junit Tag. This should be used when the test does not
@@ -241,8 +237,3 @@ runner module as `testCompileOnly`. (example in [`build.gradle.kts`](/system-tes
 This would permit the dependency isolation between runtimes (very important the test need to run two different
 components like a control plane and a data plane).
 
-## Performance tests
-
-To evaluate performance of the system such tests can be added. Each performance tests should be tagged with
-`@PerformanceTest` annotation. To maintain historic data about system performance these tests are executed nightly via
-github workflow `performancetests.yml`, test reports are uploaded as an github artifact at end of workflow run.

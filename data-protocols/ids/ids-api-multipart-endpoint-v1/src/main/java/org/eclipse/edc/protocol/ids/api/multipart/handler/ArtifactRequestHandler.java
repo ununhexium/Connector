@@ -18,8 +18,8 @@ package org.eclipse.edc.protocol.ids.api.multipart.handler;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.fraunhofer.iais.eis.ArtifactRequestMessage;
 import org.eclipse.edc.connector.contract.spi.negotiation.store.ContractNegotiationStore;
-import org.eclipse.edc.connector.spi.transferprocess.TransferProcessService;
-import org.eclipse.edc.connector.transfer.spi.types.DataRequest;
+import org.eclipse.edc.connector.spi.transferprocess.TransferProcessProtocolService;
+import org.eclipse.edc.connector.transfer.spi.types.protocol.TransferRequestMessage;
 import org.eclipse.edc.protocol.ids.api.multipart.message.MultipartRequest;
 import org.eclipse.edc.protocol.ids.api.multipart.message.MultipartResponse;
 import org.eclipse.edc.protocol.ids.spi.types.IdsId;
@@ -43,13 +43,13 @@ import static org.eclipse.edc.protocol.ids.api.multipart.util.ResponseUtil.malfo
 import static org.eclipse.edc.protocol.ids.spi.domain.IdsConstants.IDS_WEBHOOK_ADDRESS_PROPERTY;
 
 public class ArtifactRequestHandler implements Handler {
-    
+
     private final IdsId connectorId;
     private final Monitor monitor;
     private final ObjectMapper objectMapper;
     private final ContractNegotiationStore contractNegotiationStore;
     private final Vault vault;
-    private final TransferProcessService transferProcessService;
+    private final TransferProcessProtocolService service;
 
     public ArtifactRequestHandler(
             @NotNull Monitor monitor,
@@ -57,13 +57,13 @@ public class ArtifactRequestHandler implements Handler {
             @NotNull ObjectMapper objectMapper,
             @NotNull ContractNegotiationStore contractNegotiationStore,
             @NotNull Vault vault,
-            @NotNull TransferProcessService transferProcessService) {
+            @NotNull TransferProcessProtocolService service) {
         this.monitor = monitor;
         this.connectorId = connectorId;
         this.objectMapper = objectMapper;
         this.contractNegotiationStore = contractNegotiationStore;
         this.vault = vault;
-        this.transferProcessService = transferProcessService;
+        this.service = service;
     }
 
     @Override
@@ -143,22 +143,19 @@ public class ArtifactRequestHandler implements Handler {
             return createMultipartResponse(badParameters(multipartRequest.getHeader(), connectorId));
         }
 
-        // NB: DO NOT use the asset id provided by the client as that can open aan attack vector where a client references an artifact that
-        //     is different from the one specified by the contract
-
-        var dataRequest = DataRequest.Builder.newInstance()
-                .id(message.getId().toString())
+        var requestMessage = TransferRequestMessage.Builder.newInstance()
+                .processId(message.getId().toString())
                 .protocol(MessageProtocol.IDS_MULTIPART)
-                .dataDestination(dataDestination)
                 .connectorId(connectorId.toString())
+                .callbackAddress(idsWebhookAddress)
+                .dataDestination(dataDestination)
+                .properties(props)
                 .assetId(contractAgreement.getAssetId())
                 .contractId(contractAgreement.getId())
-                .properties(props)
-                .connectorAddress(idsWebhookAddress)
                 .build();
 
         // Initiate a transfer process for the request
-        var transferInitiateResult = transferProcessService.initiateTransfer(dataRequest, claimToken);
+        var transferInitiateResult = service.notifyRequested(requestMessage, claimToken);
 
         // Store secret if process initiated successfully
         if (transferInitiateResult.succeeded() && artifactRequestMessagePayload.getSecret() != null) {

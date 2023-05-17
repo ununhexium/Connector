@@ -23,6 +23,7 @@ import org.eclipse.edc.web.jersey.mapper.UnexpectedExceptionMapper;
 import org.eclipse.edc.web.jersey.mapper.ValidationExceptionMapper;
 import org.eclipse.edc.web.jetty.JettyService;
 import org.eclipse.edc.web.spi.WebService;
+import org.eclipse.edc.web.spi.provider.ObjectMapperProvider;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.media.multipart.MultiPartFeature;
 import org.glassfish.jersey.server.ResourceConfig;
@@ -89,8 +90,7 @@ public class JerseyRestService implements WebService {
         // In order to use instances with Jersey, the controller types must be registered along with an {@link AbstractBinder} that maps those types to the instances.
         resourceConfig.registerClasses(controllers.stream().map(Object::getClass).collect(toSet()));
         resourceConfig.registerInstances(new Binder());
-        resourceConfig.registerInstances(new TypeManagerContextResolver(typeManager));
-
+        resourceConfig.registerInstances(new ObjectMapperProvider(typeManager.getMapper()));
         resourceConfig.registerInstances(new EdcApiExceptionMapper());
         resourceConfig.registerInstances(new ValidationExceptionMapper());
         resourceConfig.registerInstances(new UnexpectedExceptionMapper(monitor));

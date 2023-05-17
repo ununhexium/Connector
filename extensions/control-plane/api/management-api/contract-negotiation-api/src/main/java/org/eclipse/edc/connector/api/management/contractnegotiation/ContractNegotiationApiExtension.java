@@ -15,24 +15,33 @@
 
 package org.eclipse.edc.connector.api.management.contractnegotiation;
 
-import org.eclipse.edc.api.transformer.DtoTransformerRegistry;
+import jakarta.json.Json;
 import org.eclipse.edc.connector.api.management.configuration.ManagementApiConfiguration;
 import org.eclipse.edc.connector.api.management.contractnegotiation.transform.ContractAgreementToContractAgreementDtoTransformer;
 import org.eclipse.edc.connector.api.management.contractnegotiation.transform.ContractNegotiationToContractNegotiationDtoTransformer;
+import org.eclipse.edc.connector.api.management.contractnegotiation.transform.JsonObjectFromContractAgreementDtoTransformer;
+import org.eclipse.edc.connector.api.management.contractnegotiation.transform.JsonObjectFromContractNegotiationDtoTransformer;
+import org.eclipse.edc.connector.api.management.contractnegotiation.transform.JsonObjectFromNegotiationStateTransformer;
+import org.eclipse.edc.connector.api.management.contractnegotiation.transform.JsonObjectToContractOfferDescriptionTransformer;
+import org.eclipse.edc.connector.api.management.contractnegotiation.transform.JsonObjectToNegotiationInitiateRequestDtoTransformer;
 import org.eclipse.edc.connector.api.management.contractnegotiation.transform.NegotiationInitiateRequestDtoToDataRequestTransformer;
 import org.eclipse.edc.connector.spi.contractnegotiation.ContractNegotiationService;
+import org.eclipse.edc.jsonld.spi.JsonLd;
 import org.eclipse.edc.runtime.metamodel.annotation.Extension;
 import org.eclipse.edc.runtime.metamodel.annotation.Inject;
 import org.eclipse.edc.spi.system.ServiceExtension;
 import org.eclipse.edc.spi.system.ServiceExtensionContext;
+import org.eclipse.edc.transform.spi.TypeTransformerRegistry;
 import org.eclipse.edc.web.spi.WebService;
 
 import java.time.Clock;
+import java.util.Map;
 
 @Extension(value = ContractNegotiationApiExtension.NAME)
 public class ContractNegotiationApiExtension implements ServiceExtension {
 
     public static final String NAME = "Management API: Contract Negotiation";
+
     @Inject
     private WebService webService;
 
@@ -40,13 +49,16 @@ public class ContractNegotiationApiExtension implements ServiceExtension {
     private ManagementApiConfiguration config;
 
     @Inject
-    private DtoTransformerRegistry transformerRegistry;
+    private TypeTransformerRegistry transformerRegistry;
 
     @Inject
     private ContractNegotiationService service;
 
     @Inject
     private Clock clock;
+
+    @Inject
+    private JsonLd jsonLd;
 
     @Override
     public String name() {
@@ -58,10 +70,16 @@ public class ContractNegotiationApiExtension implements ServiceExtension {
         transformerRegistry.register(new ContractNegotiationToContractNegotiationDtoTransformer());
         transformerRegistry.register(new ContractAgreementToContractAgreementDtoTransformer());
         transformerRegistry.register(new NegotiationInitiateRequestDtoToDataRequestTransformer(clock));
+        var factory = Json.createBuilderFactory(Map.of());
+        transformerRegistry.register(new JsonObjectFromContractNegotiationDtoTransformer(factory));
+        transformerRegistry.register(new JsonObjectFromContractAgreementDtoTransformer(factory));
+        transformerRegistry.register(new JsonObjectToNegotiationInitiateRequestDtoTransformer());
+        transformerRegistry.register(new JsonObjectFromNegotiationStateTransformer(factory));
+        transformerRegistry.register(new JsonObjectToContractOfferDescriptionTransformer());
 
         var monitor = context.getMonitor();
 
-        var controller = new ContractNegotiationApiController(monitor, service, transformerRegistry);
-        webService.registerResource(config.getContextAlias(), controller);
+        webService.registerResource(config.getContextAlias(), new ContractNegotiationApiController(monitor, service, transformerRegistry));
+        webService.registerResource(config.getContextAlias(), new ContractNegotiationNewApiController(service, transformerRegistry, jsonLd, monitor));
     }
 }

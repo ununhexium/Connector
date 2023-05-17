@@ -21,14 +21,16 @@ import org.eclipse.edc.connector.contract.spi.types.offer.ContractOffer;
 import org.eclipse.edc.policy.model.Policy;
 import org.eclipse.edc.protocol.ids.spi.types.container.OfferedAsset;
 import org.eclipse.edc.protocol.ids.transform.type.connector.CatalogToIdsResourceCatalogTransformer;
+import org.eclipse.edc.spi.asset.AssetIndex;
+import org.eclipse.edc.spi.query.QuerySpec;
 import org.eclipse.edc.spi.types.domain.asset.Asset;
 import org.eclipse.edc.transform.spi.TransformerContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
-import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -45,11 +47,21 @@ class CatalogToIdsResourceCatalogTransformerTest {
     private CatalogToIdsResourceCatalogTransformer transformer;
 
     private TransformerContext context;
+    private AssetIndex assetIndex;
+
+    private static ContractOffer createContractOffer(String id, Asset asset) {
+        return ContractOffer.Builder.newInstance()
+                .id(id)
+                .assetId(asset.getId())
+                .policy(Policy.Builder.newInstance().build())
+                .build();
+    }
 
     @BeforeEach
     void setUp() {
-        transformer = new CatalogToIdsResourceCatalogTransformer();
         context = mock(TransformerContext.class);
+        assetIndex = mock(AssetIndex.class);
+        transformer = new CatalogToIdsResourceCatalogTransformer(assetIndex);
     }
 
     @Test
@@ -64,6 +76,8 @@ class CatalogToIdsResourceCatalogTransformerTest {
                 .contractOffers(List.of(o1, o2))
                 .build();
         when(context.transform(isA(OfferedAsset.class), eq(Resource.class))).thenReturn(resource);
+        //noinspection unchecked
+        when(assetIndex.queryAssets(isA(QuerySpec.class))).thenReturn(Stream.of(a1, a2));
 
         var result = transformer.transform(catalog, context);
 
@@ -71,15 +85,6 @@ class CatalogToIdsResourceCatalogTransformerTest {
         assertThat(result.getId()).isEqualTo(EXPECTED_CATALOG_ID);
         assertThat(result.getOfferedResource()).hasSize(2);
         verify(context, times(2)).transform(isA(OfferedAsset.class), eq(Resource.class));
-    }
-
-    private static ContractOffer createContractOffer(String id, Asset asset) {
-        return ContractOffer.Builder.newInstance()
-                .id(id)
-                .asset(asset)
-                .policy(Policy.Builder.newInstance().build())
-                .contractStart(ZonedDateTime.now())
-                .contractEnd(ZonedDateTime.now())
-                .build();
+        verify(assetIndex).queryAssets(isA(QuerySpec.class));
     }
 }

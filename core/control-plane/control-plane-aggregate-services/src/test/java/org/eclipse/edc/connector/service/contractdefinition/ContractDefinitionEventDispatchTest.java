@@ -14,14 +14,17 @@
 
 package org.eclipse.edc.connector.service.contractdefinition;
 
+import org.eclipse.edc.connector.contract.spi.event.contractdefinition.ContractDefinitionCreated;
+import org.eclipse.edc.connector.contract.spi.event.contractdefinition.ContractDefinitionDeleted;
+import org.eclipse.edc.connector.contract.spi.event.contractdefinition.ContractDefinitionEvent;
 import org.eclipse.edc.connector.contract.spi.types.offer.ContractDefinition;
+import org.eclipse.edc.connector.dataplane.selector.spi.store.DataPlaneInstanceStore;
 import org.eclipse.edc.connector.spi.contractdefinition.ContractDefinitionService;
 import org.eclipse.edc.junit.extensions.EdcExtension;
 import org.eclipse.edc.spi.asset.AssetSelectorExpression;
 import org.eclipse.edc.spi.event.EventRouter;
 import org.eclipse.edc.spi.event.EventSubscriber;
-import org.eclipse.edc.spi.event.contractdefinition.ContractDefinitionCreated;
-import org.eclipse.edc.spi.event.contractdefinition.ContractDefinitionDeleted;
+import org.eclipse.edc.spi.protocol.ProtocolWebhook;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,8 +33,9 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.awaitility.Awaitility.await;
+import static org.eclipse.edc.junit.matchers.EventEnvelopeMatcher.isEnvelopeOf;
 import static org.eclipse.edc.junit.testfixtures.TestUtils.getFreePort;
-import static org.mockito.ArgumentMatchers.isA;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
@@ -42,6 +46,8 @@ public class ContractDefinitionEventDispatchTest {
 
     @BeforeEach
     void setUp(EdcExtension extension) {
+        extension.registerServiceMock(ProtocolWebhook.class, mock(ProtocolWebhook.class));
+        extension.registerServiceMock(DataPlaneInstanceStore.class, mock(DataPlaneInstanceStore.class));
         extension.setConfiguration(Map.of(
                 "web.http.port", String.valueOf(getFreePort()),
                 "web.http.path", "/api"
@@ -50,22 +56,21 @@ public class ContractDefinitionEventDispatchTest {
 
     @Test
     void shouldDispatchEventOnContractDefinitionCreationAndDeletion(ContractDefinitionService service, EventRouter eventRouter) {
-        eventRouter.register(eventSubscriber);
+        eventRouter.register(ContractDefinitionEvent.class, eventSubscriber);
         var contractDefinition = ContractDefinition.Builder.newInstance()
                 .id(UUID.randomUUID().toString())
                 .contractPolicyId(UUID.randomUUID().toString())
                 .accessPolicyId(UUID.randomUUID().toString())
                 .selectorExpression(AssetSelectorExpression.SELECT_ALL)
-                .validity(100)
                 .build();
 
         service.create(contractDefinition);
 
-        await().untilAsserted(() -> verify(eventSubscriber).on(isA(ContractDefinitionCreated.class)));
+        await().untilAsserted(() -> verify(eventSubscriber).on(argThat(isEnvelopeOf(ContractDefinitionCreated.class))));
 
         service.delete(contractDefinition.getId());
 
-        await().untilAsserted(() -> verify(eventSubscriber).on(isA(ContractDefinitionDeleted.class)));
+        await().untilAsserted(() -> verify(eventSubscriber).on(argThat(isEnvelopeOf(ContractDefinitionDeleted.class))));
     }
 
 }

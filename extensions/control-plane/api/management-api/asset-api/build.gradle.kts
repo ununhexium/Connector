@@ -20,14 +20,19 @@ plugins {
 
 dependencies {
     api(project(":spi:control-plane:control-plane-spi"))
+    api(project(":spi:common:json-ld-spi"))
+    implementation(project(":extensions:common:json-ld"))
     implementation(project(":extensions:common:api:api-core"))
     implementation(project(":extensions:common:api:management-api-configuration"))
+    implementation(project(":extensions:common:http:jersey-core"))
 
     implementation(libs.jakarta.rsApi)
 
     testImplementation(project(":core:control-plane:control-plane-core"))
+    testImplementation(project(":core:data-plane-selector:data-plane-selector-core"))
     testImplementation(project(":extensions:common:http"))
     testImplementation(project(":core:common:junit"))
+    testImplementation(testFixtures(project(":extensions:common:http:jersey-core")))
     testImplementation(libs.restAssured)
     testImplementation(libs.awaitility)
 }
@@ -38,10 +43,4 @@ edcBuild {
     }
 }
 
-publishing {
-    publications {
-        create<MavenPublication>(project.name) {
-            from(components["java"])
-        }
-    }
-}
+

@@ -83,9 +83,8 @@ public class ContractOfferFromIdsContractOfferOrRequestTransformer implements Id
 
         var contractOfferBuilder = ContractOffer.Builder.newInstance()
                 .policy(policy)
-                .consumer(contract.getConsumer())
-                .provider(contract.getProvider())
-                .asset(asset);
+                .providerId(contract.getProvider().toString())
+                .assetId(asset.getId());
 
         var result = IdsId.from(contract.getId().toString());
         if (result.failed()) {
@@ -100,14 +99,6 @@ public class ContractOfferFromIdsContractOfferOrRequestTransformer implements Id
         }
 
         contractOfferBuilder.id(idsId.getValue());
-
-        if (contract.getContractEnd() != null) {
-            contractOfferBuilder.contractEnd(contract.getContractEnd().toGregorianCalendar().toZonedDateTime());
-        }
-
-        if (contract.getContractStart() != null) {
-            contractOfferBuilder.contractStart(contract.getContractStart().toGregorianCalendar().toZonedDateTime());
-        }
 
         return contractOfferBuilder.build();
     }

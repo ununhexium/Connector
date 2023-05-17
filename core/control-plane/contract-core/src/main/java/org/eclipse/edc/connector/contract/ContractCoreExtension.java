@@ -21,7 +21,7 @@ import org.eclipse.edc.connector.contract.listener.ContractNegotiationEventListe
 import org.eclipse.edc.connector.contract.negotiation.ConsumerContractNegotiationManagerImpl;
 import org.eclipse.edc.connector.contract.negotiation.ProviderContractNegotiationManagerImpl;
 import org.eclipse.edc.connector.contract.observe.ContractNegotiationObservableImpl;
-import org.eclipse.edc.connector.contract.offer.ContractDefinitionServiceImpl;
+import org.eclipse.edc.connector.contract.offer.ContractDefinitionResolverImpl;
 import org.eclipse.edc.connector.contract.offer.ContractOfferResolverImpl;
 import org.eclipse.edc.connector.contract.policy.PolicyArchiveImpl;
 import org.eclipse.edc.connector.contract.policy.PolicyEquality;
@@ -30,16 +30,19 @@ import org.eclipse.edc.connector.contract.spi.negotiation.NegotiationWaitStrateg
 import org.eclipse.edc.connector.contract.spi.negotiation.ProviderContractNegotiationManager;
 import org.eclipse.edc.connector.contract.spi.negotiation.observe.ContractNegotiationObservable;
 import org.eclipse.edc.connector.contract.spi.negotiation.store.ContractNegotiationStore;
-import org.eclipse.edc.connector.contract.spi.offer.ContractDefinitionService;
+import org.eclipse.edc.connector.contract.spi.offer.ContractDefinitionResolver;
 import org.eclipse.edc.connector.contract.spi.offer.ContractOfferResolver;
 import org.eclipse.edc.connector.contract.spi.offer.store.ContractDefinitionStore;
+import org.eclipse.edc.connector.contract.spi.types.command.ContractNegotiationCommand;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiation;
-import org.eclipse.edc.connector.contract.spi.types.negotiation.command.ContractNegotiationCommand;
 import org.eclipse.edc.connector.contract.spi.validation.ContractValidationService;
+import org.eclipse.edc.connector.contract.validation.ContractExpiryCheckFunction;
 import org.eclipse.edc.connector.contract.validation.ContractValidationServiceImpl;
 import org.eclipse.edc.connector.policy.spi.store.PolicyArchive;
 import org.eclipse.edc.connector.policy.spi.store.PolicyDefinitionStore;
 import org.eclipse.edc.policy.engine.spi.PolicyEngine;
+import org.eclipse.edc.policy.engine.spi.RuleBindingRegistry;
+import org.eclipse.edc.policy.model.Permission;
 import org.eclipse.edc.runtime.metamodel.annotation.CoreExtension;
 import org.eclipse.edc.runtime.metamodel.annotation.Extension;
 import org.eclipse.edc.runtime.metamodel.annotation.Inject;
@@ -54,20 +57,25 @@ import org.eclipse.edc.spi.command.CommandRunner;
 import org.eclipse.edc.spi.event.EventRouter;
 import org.eclipse.edc.spi.message.RemoteMessageDispatcherRegistry;
 import org.eclipse.edc.spi.monitor.Monitor;
+import org.eclipse.edc.spi.protocol.ProtocolWebhook;
 import org.eclipse.edc.spi.retry.ExponentialWaitStrategy;
 import org.eclipse.edc.spi.system.ExecutorInstrumentation;
 import org.eclipse.edc.spi.system.ServiceExtension;
 import org.eclipse.edc.spi.system.ServiceExtensionContext;
 import org.eclipse.edc.spi.telemetry.Telemetry;
-import org.eclipse.edc.statemachine.retry.EntitySendRetryManager;
+import org.eclipse.edc.spi.types.TypeManager;
+import org.eclipse.edc.statemachine.retry.EntityRetryProcessConfiguration;
 import org.jetbrains.annotations.NotNull;
 
 import java.time.Clock;
 
+import static org.eclipse.edc.connector.contract.spi.validation.ContractValidationService.TRANSFER_SCOPE;
+import static org.eclipse.edc.connector.contract.validation.ContractExpiryCheckFunction.CONTRACT_EXPIRY_EVALUATION_KEY;
+
 @Provides({
         ContractOfferResolver.class, ContractValidationService.class, ConsumerContractNegotiationManager.class,
         PolicyArchive.class, ProviderContractNegotiationManager.class, ContractNegotiationObservable.class,
-        ContractDefinitionService.class
+        ContractDefinitionResolver.class
 })
 @CoreExtension
 @Extension(value = ContractCoreExtension.NAME)
@@ -77,6 +85,8 @@ public class ContractCoreExtension implements ServiceExtension {
 
     public static final long DEFAULT_ITERATION_WAIT = 1000;
     public static final int DEFAULT_BATCH_SIZE = 20;
+    public static final int DEFAULT_SEND_RETRY_LIMIT = 7;
+    public static final long DEFAULT_SEND_RETRY_BASE_DELAY = 1000L;
 
     @Setting(value = "the iteration wait time in milliseconds in the negotiation state machine. Default value " + DEFAULT_ITERATION_WAIT, type = "long")
     private static final String NEGOTIATION_STATE_MACHINE_ITERATION_WAIT_MILLIS = "edc.negotiation.state-machine.iteration-wait-millis";
@@ -87,16 +97,16 @@ public class ContractCoreExtension implements ServiceExtension {
     @Setting(value = "the batch size in the provider negotiation state machine. Default value " + DEFAULT_BATCH_SIZE, type = "int")
     private static final String NEGOTIATION_PROVIDER_STATE_MACHINE_BATCH_SIZE = "edc.negotiation.provider.state-machine.batch-size";
 
-    @Setting
+    @Setting(value = "how many times a specific operation must be tried before terminating the consumer negotiation with error", type = "int", defaultValue = DEFAULT_SEND_RETRY_LIMIT + "")
     private static final String NEGOTIATION_CONSUMER_SEND_RETRY_LIMIT = "edc.negotiation.consumer.send.retry.limit";
 
-    @Setting
+    @Setting(value = "how many times a specific operation must be tried before terminating the provider negotiation with error", type = "int", defaultValue = DEFAULT_SEND_RETRY_LIMIT + "")
     private static final String NEGOTIATION_PROVIDER_SEND_RETRY_LIMIT = "edc.negotiation.provider.send.retry.limit";
 
-    @Setting
+    @Setting(value = "The base delay for the consumer negotiation retry mechanism in millisecond", type = "long", defaultValue = DEFAULT_SEND_RETRY_BASE_DELAY + "")
     private static final String NEGOTIATION_CONSUMER_SEND_RETRY_BASE_DELAY_MS = "edc.negotiation.consumer.send.retry.base-delay.ms";
 
-    @Setting
+    @Setting(value = "The base delay for the provider negotiation retry mechanism in millisecond", type = "long", defaultValue = DEFAULT_SEND_RETRY_BASE_DELAY + "")
     private static final String NEGOTIATION_PROVIDER_SEND_RETRY_BASE_DELAY_MS = "edc.negotiation.provider.send.retry.base-delay.ms";
 
     private ConsumerContractNegotiationManagerImpl consumerNegotiationManager;
@@ -139,6 +149,14 @@ public class ContractCoreExtension implements ServiceExtension {
     @Inject
     private EventRouter eventRouter;
 
+    @Inject
+    private TypeManager typeManager;
+    @Inject
+    private RuleBindingRegistry ruleBindingRegistry;
+
+    @Inject
+    private ProtocolWebhook protocolWebhook;
+
     @Override
     public String name() {
         return NAME;
@@ -146,7 +164,7 @@ public class ContractCoreExtension implements ServiceExtension {
 
     @Override
     public void initialize(ServiceExtensionContext context) {
-        registerTypes(context);
+        typeManager.registerTypes(ContractNegotiation.class);
         registerServices(context);
     }
 
@@ -168,15 +186,23 @@ public class ContractCoreExtension implements ServiceExtension {
     }
 
     private void registerServices(ServiceExtensionContext context) {
-        var definitionService = new ContractDefinitionServiceImpl(monitor, contractDefinitionStore, policyEngine, policyStore);
-        context.registerService(ContractDefinitionService.class, definitionService);
+        var definitionService = new ContractDefinitionResolverImpl(monitor, contractDefinitionStore, policyEngine, policyStore);
+        context.registerService(ContractDefinitionResolver.class, definitionService);
 
-        var contractOfferResolver = new ContractOfferResolverImpl(agentService, definitionService, assetIndex, policyStore, clock, monitor);
+        var participantId = context.getParticipantId();
+        var contractOfferResolver = new ContractOfferResolverImpl(participantId, agentService, definitionService, assetIndex, policyStore, clock, monitor);
         context.registerService(ContractOfferResolver.class, contractOfferResolver);
 
-        var policyEquality = new PolicyEquality(context.getTypeManager());
-        var validationService = new ContractValidationServiceImpl(agentService, definitionService, assetIndex, policyStore, clock, policyEngine, policyEquality);
+        var policyEquality = new PolicyEquality(typeManager);
+        var validationService = new ContractValidationServiceImpl(participantId, agentService, definitionService, assetIndex, policyStore, policyEngine, policyEquality);
         context.registerService(ContractValidationService.class, validationService);
+
+        // bind/register rule to evaluate contract expiry
+        ruleBindingRegistry.bind("USE", TRANSFER_SCOPE);
+        ruleBindingRegistry.bind(CONTRACT_EXPIRY_EVALUATION_KEY, TRANSFER_SCOPE);
+        var function = new ContractExpiryCheckFunction();
+        policyEngine.registerFunction(TRANSFER_SCOPE, Permission.class, CONTRACT_EXPIRY_EVALUATION_KEY, function);
+
 
         var iterationWaitMillis = context.getSetting(NEGOTIATION_STATE_MACHINE_ITERATION_WAIT_MILLIS, DEFAULT_ITERATION_WAIT);
         var waitStrategy = context.hasService(NegotiationWaitStrategy.class) ? context.getService(NegotiationWaitStrategy.class) : new ExponentialWaitStrategy(iterationWaitMillis);
@@ -191,10 +217,10 @@ public class ContractCoreExtension implements ServiceExtension {
         context.registerService(PolicyArchive.class, new PolicyArchiveImpl(store));
 
         consumerNegotiationManager = ConsumerContractNegotiationManagerImpl.Builder.newInstance()
+                .participantId(participantId)
                 .waitStrategy(waitStrategy)
                 .dispatcherRegistry(dispatcherRegistry)
                 .monitor(monitor)
-                .validationService(validationService)
                 .commandQueue(commandQueue)
                 .commandRunner(commandRunner)
                 .observable(observable)
@@ -204,14 +230,15 @@ public class ContractCoreExtension implements ServiceExtension {
                 .store(store)
                 .policyStore(policyStore)
                 .batchSize(context.getSetting(NEGOTIATION_CONSUMER_STATE_MACHINE_BATCH_SIZE, DEFAULT_BATCH_SIZE))
-                .sendRetryManager(consumerSendRetryManager(context))
+                .entityRetryProcessConfiguration(consumerEntityRetryProcessConfiguration(context))
+                .protocolWebhook(protocolWebhook)
                 .build();
 
         providerNegotiationManager = ProviderContractNegotiationManagerImpl.Builder.newInstance()
+                .participantId(participantId)
                 .waitStrategy(waitStrategy)
                 .dispatcherRegistry(dispatcherRegistry)
                 .monitor(monitor)
-                .validationService(validationService)
                 .commandQueue(commandQueue)
                 .commandRunner(commandRunner)
                 .observable(observable)
@@ -221,29 +248,25 @@ public class ContractCoreExtension implements ServiceExtension {
                 .store(store)
                 .policyStore(policyStore)
                 .batchSize(context.getSetting(NEGOTIATION_PROVIDER_STATE_MACHINE_BATCH_SIZE, DEFAULT_BATCH_SIZE))
-                .sendRetryManager(providerSendRetryManager(context))
+                .entityRetryProcessConfiguration(providerEntityRetryProcessConfiguration(context))
+                .protocolWebhook(protocolWebhook)
                 .build();
 
         context.registerService(ConsumerContractNegotiationManager.class, consumerNegotiationManager);
         context.registerService(ProviderContractNegotiationManager.class, providerNegotiationManager);
     }
 
-    private EntitySendRetryManager providerSendRetryManager(ServiceExtensionContext context) {
-        var retryLimit = context.getSetting(NEGOTIATION_PROVIDER_SEND_RETRY_LIMIT, 7);
-        var retryBaseDelay = context.getSetting(NEGOTIATION_PROVIDER_SEND_RETRY_BASE_DELAY_MS, 100L);
-        return new EntitySendRetryManager(monitor, () -> new ExponentialWaitStrategy(retryBaseDelay), clock, retryLimit);
+    private EntityRetryProcessConfiguration providerEntityRetryProcessConfiguration(ServiceExtensionContext context) {
+        var retryLimit = context.getSetting(NEGOTIATION_PROVIDER_SEND_RETRY_LIMIT, DEFAULT_SEND_RETRY_LIMIT);
+        var retryBaseDelay = context.getSetting(NEGOTIATION_PROVIDER_SEND_RETRY_BASE_DELAY_MS, DEFAULT_SEND_RETRY_BASE_DELAY);
+        return new EntityRetryProcessConfiguration(retryLimit, () -> new ExponentialWaitStrategy(retryBaseDelay));
     }
 
     @NotNull
-    private EntitySendRetryManager consumerSendRetryManager(ServiceExtensionContext context) {
-        var retryLimit = context.getSetting(NEGOTIATION_CONSUMER_SEND_RETRY_LIMIT, 7);
-        var retryBaseDelay = context.getSetting(NEGOTIATION_CONSUMER_SEND_RETRY_BASE_DELAY_MS, 100L);
-        return new EntitySendRetryManager(monitor, () -> new ExponentialWaitStrategy(retryBaseDelay), clock, retryLimit);
-    }
-
-    private void registerTypes(ServiceExtensionContext context) {
-        var typeManager = context.getTypeManager();
-        typeManager.registerTypes(ContractNegotiation.class);
+    private EntityRetryProcessConfiguration consumerEntityRetryProcessConfiguration(ServiceExtensionContext context) {
+        var retryLimit = context.getSetting(NEGOTIATION_CONSUMER_SEND_RETRY_LIMIT, DEFAULT_SEND_RETRY_LIMIT);
+        var retryBaseDelay = context.getSetting(NEGOTIATION_CONSUMER_SEND_RETRY_BASE_DELAY_MS, DEFAULT_SEND_RETRY_BASE_DELAY);
+        return new EntityRetryProcessConfiguration(retryLimit, () -> new ExponentialWaitStrategy(retryBaseDelay));
     }
 
 }

@@ -18,13 +18,9 @@ plugins {
 }
 
 dependencies {
+    implementation(libs.bundles.jackson)
+
     testImplementation(project(":data-protocols:ids:ids-core"))
 }
 
-publishing {
-    publications {
-        create<MavenPublication>(project.name) {
-            from(components["java"])
-        }
-    }
-}
+

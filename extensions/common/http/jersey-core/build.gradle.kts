@@ -14,6 +14,7 @@
 
 plugins {
     `java-library`
+    `java-test-fixtures`
 }
 
 dependencies {
@@ -21,18 +22,18 @@ dependencies {
     api(project(":extensions:common:http:jetty-core"))
 
     implementation(libs.bundles.jersey.core)
-    implementation("org.eclipse.jetty.toolchain:jetty-jakarta-servlet-api:5.0.2")
+    implementation(libs.jetty.jakarta.servlet.api)
 
     testImplementation(project(":core:common:junit"))
-
     testImplementation(libs.restAssured)
     testImplementation(libs.jersey.beanvalidation) //for validation
+
+    testFixturesApi(project(":core:common:junit"))
+    testFixturesApi(project(":extensions:common:json-ld"))
+    testFixturesApi(libs.jakarta.rsApi)
+    testFixturesApi(libs.jacksonJsonP)
+    testFixturesApi(libs.junit.jupiter.api)
+    testFixturesApi(libs.mockito.core)
 }
 
-publishing {
-    publications {
-        create<MavenPublication>(project.name) {
-            from(components["java"])
-        }
-    }
-}
+

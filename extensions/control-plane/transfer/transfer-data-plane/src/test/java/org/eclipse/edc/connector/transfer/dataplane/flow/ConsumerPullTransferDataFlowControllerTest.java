@@ -19,7 +19,6 @@ import org.eclipse.edc.connector.transfer.dataplane.spi.proxy.ConsumerPullTransf
 import org.eclipse.edc.connector.transfer.dataplane.spi.proxy.ConsumerPullTransferEndpointDataReferenceService;
 import org.eclipse.edc.connector.transfer.spi.types.DataRequest;
 import org.eclipse.edc.policy.model.Policy;
-import org.eclipse.edc.spi.message.MessageContext;
 import org.eclipse.edc.spi.message.RemoteMessageDispatcherRegistry;
 import org.eclipse.edc.spi.result.Result;
 import org.eclipse.edc.spi.types.domain.DataAddress;
@@ -49,6 +48,28 @@ class ConsumerPullTransferDataFlowControllerTest {
     private ConsumerPullTransferEndpointDataReferenceService proxyReferenceServiceMock;
     private ConsumerPullTransferDataFlowController flowController;
 
+    private static EndpointDataReference createEndpointDataReference() {
+        return EndpointDataReference.Builder.newInstance()
+                .id(UUID.randomUUID().toString())
+                .endpoint("test.endpoint.url")
+                .build();
+    }
+
+    private static DataAddress testDataAddress() {
+        return DataAddress.Builder.newInstance().type("test-type").build();
+    }
+
+    private static DataRequest createDataRequest() {
+        return DataRequest.Builder.newInstance()
+                .id(UUID.randomUUID().toString())
+                .protocol("ids-multipart")
+                .contractId(UUID.randomUUID().toString())
+                .assetId(UUID.randomUUID().toString())
+                .connectorAddress("test.connector.address")
+                .processId(UUID.randomUUID().toString())
+                .destinationType(HTTP_PROXY)
+                .build();
+    }
 
     @BeforeEach
     void setUp() {
@@ -75,21 +96,32 @@ class ConsumerPullTransferDataFlowControllerTest {
         var edrRequestCaptor = ArgumentCaptor.forClass(EndpointDataReferenceMessage.class);
         var proxyCreationRequestCaptor = ArgumentCaptor.forClass(ConsumerPullTransferEndpointDataReferenceCreationRequest.class);
 
-        when(dispatcherRegistryMock.send(any(), any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+        when(dispatcherRegistryMock.send(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
         when(proxyReferenceServiceMock.createProxyReference(any())).thenReturn(Result.success(edr));
         when(proxyResolverMock.resolveProxyUrl(dataAddress)).thenReturn(Result.success(proxyUrl));
 
         var result = flowController.initiateFlow(request, dataAddress, Policy.Builder.newInstance().build());
 
         verify(proxyReferenceServiceMock).createProxyReference(proxyCreationRequestCaptor.capture());
-        verify(dispatcherRegistryMock).send(eq(Object.class), edrRequestCaptor.capture(), any(MessageContext.class));
+        verify(dispatcherRegistryMock).send(eq(Object.class), edrRequestCaptor.capture());
         verify(proxyResolverMock).resolveProxyUrl(any());
 
         assertThat(result.succeeded()).isTrue();
+
+        var dataFlowResponse = result.getContent();
+        assertThat(dataFlowResponse.getDataAddress()).isNotNull().satisfies(address -> {
+            assertThat(address.getType()).isEqualTo(EndpointDataReference.EDR_SIMPLE_TYPE);
+            assertThat(address.getProperty(EndpointDataReference.ENDPOINT)).isEqualTo(edr.getEndpoint());
+            assertThat(address.getProperty(EndpointDataReference.AUTH_KEY)).isEqualTo(edr.getAuthKey());
+            assertThat(address.getProperty(EndpointDataReference.ID)).isEqualTo(edr.getId());
+            assertThat(address.getProperty(EndpointDataReference.AUTH_CODE)).isEqualTo(edr.getAuthCode());
+            assertThat(address.getProperties()).containsAllEntriesOf(edr.getProperties());
+        });
+
         var edrRequest = edrRequestCaptor.getValue();
         assertThat(edrRequest.getConnectorId()).isEqualTo(connectorId);
         assertThat(edrRequest.getProtocol()).isEqualTo(request.getProtocol());
-        assertThat(edrRequest.getConnectorAddress()).isEqualTo(request.getConnectorAddress());
+        assertThat(edrRequest.getCounterPartyAddress()).isEqualTo(request.getConnectorAddress());
         assertThat(edrRequest.getEndpointDataReference()).isEqualTo(edr);
 
         var proxyCreationRequest = proxyCreationRequestCaptor.getValue();
@@ -110,7 +142,7 @@ class ConsumerPullTransferDataFlowControllerTest {
 
         var result = flowController.initiateFlow(request, dataAddress, Policy.Builder.newInstance().build());
 
-        verify(dispatcherRegistryMock, never()).send(any(), any(), any());
+        verify(dispatcherRegistryMock, never()).send(any(), any());
         verify(proxyResolverMock).resolveProxyUrl(any());
 
         assertThat(result.failed()).isTrue();
@@ -133,28 +165,5 @@ class ConsumerPullTransferDataFlowControllerTest {
 
         assertThat(result.failed()).isTrue();
         assertThat(result.getFailureMessages()).allSatisfy(s -> assertThat(s).contains(errorMsg));
-    }
-
-    private static EndpointDataReference createEndpointDataReference() {
-        return EndpointDataReference.Builder.newInstance()
-                .id(UUID.randomUUID().toString())
-                .endpoint("test.endpoint.url")
-                .build();
-    }
-
-    private static DataAddress testDataAddress() {
-        return DataAddress.Builder.newInstance().type("test-type").build();
-    }
-
-    private static DataRequest createDataRequest() {
-        return DataRequest.Builder.newInstance()
-                .id(UUID.randomUUID().toString())
-                .protocol("test-protocol")
-                .contractId(UUID.randomUUID().toString())
-                .assetId(UUID.randomUUID().toString())
-                .connectorAddress("test.connector.address")
-                .processId(UUID.randomUUID().toString())
-                .destinationType(HTTP_PROXY)
-                .build();
     }
 }

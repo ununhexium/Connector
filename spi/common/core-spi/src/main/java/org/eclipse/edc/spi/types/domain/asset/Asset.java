@@ -25,6 +25,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
+import static java.util.Optional.ofNullable;
+import static org.eclipse.edc.spi.CoreConstants.EDC_NAMESPACE;
+
 
 /**
  * The {@link Asset} contains the metadata and describes the data itself or a collection of data.
@@ -32,42 +35,50 @@ import java.util.UUID;
 @JsonDeserialize(builder = Asset.Builder.class)
 public class Asset extends Entity {
 
-    @Deprecated(since = "Do not use anymore. The ID should be accessed through the getter")
-    public static final String PROPERTY_ID = "asset:prop:id";
-    public static final String PROPERTY_NAME = "asset:prop:name";
-    public static final String PROPERTY_DESCRIPTION = "asset:prop:description";
-    public static final String PROPERTY_VERSION = "asset:prop:version";
-    public static final String PROPERTY_CONTENT_TYPE = "asset:prop:contenttype";
+    public static final String PROPERTY_ID = EDC_NAMESPACE + "id";
+    public static final String PROPERTY_NAME = EDC_NAMESPACE + "name";
+    public static final String PROPERTY_DESCRIPTION = EDC_NAMESPACE + "description";
+    public static final String PROPERTY_VERSION = EDC_NAMESPACE + "version";
+    public static final String PROPERTY_CONTENT_TYPE = EDC_NAMESPACE + "contenttype";
+    public static final String EDC_ASSET_TYPE = EDC_NAMESPACE + "Asset";
+    public static final String EDC_ASSET_PROPERTIES = EDC_NAMESPACE + "properties";
+    public static final String EDC_ASSET_PRIVATE_PROPERTIES = EDC_NAMESPACE + "privateProperties";
+
+    @Deprecated(since = "milestone9")
+    private static final String DEPRECATED_PROPERTY_PREFIX = "asset:prop:";
 
     private final Map<String, Object> properties;
+    private final Map<String, Object> privateProperties;
 
     protected Asset() {
         properties = new HashMap<>();
+        privateProperties = new HashMap<>();
     }
 
     @Override
     public String getId() {
-        return id == null ? getPropertyAsString(PROPERTY_ID) : id;
+        return id == null ? ofNullable(getPropertyAsString(PROPERTY_ID)).orElse(getPropertyAsString(DEPRECATED_PROPERTY_PREFIX + id)) : id;
     }
 
     @JsonIgnore
     public String getName() {
-        return getPropertyAsString(PROPERTY_NAME);
+        return ofNullable(getPropertyAsString(PROPERTY_NAME))
+                .orElse(getPropertyAsString(DEPRECATED_PROPERTY_PREFIX + "name"));
     }
 
     @JsonIgnore
     public String getDescription() {
-        return getPropertyAsString(PROPERTY_DESCRIPTION);
+        return ofNullable(getPropertyAsString(PROPERTY_DESCRIPTION)).orElse(getPropertyAsString(DEPRECATED_PROPERTY_PREFIX + "description"));
     }
 
     @JsonIgnore
     public String getVersion() {
-        return getPropertyAsString(PROPERTY_VERSION);
+        return ofNullable(getPropertyAsString(PROPERTY_VERSION)).orElse(getPropertyAsString(DEPRECATED_PROPERTY_PREFIX + "version"));
     }
 
     @JsonIgnore
     public String getContentType() {
-        return getPropertyAsString(PROPERTY_CONTENT_TYPE);
+        return ofNullable(getPropertyAsString(PROPERTY_CONTENT_TYPE)).orElse(getPropertyAsString(DEPRECATED_PROPERTY_PREFIX + "contenttype"));
     }
 
     public Map<String, Object> getProperties() {
@@ -79,25 +90,38 @@ public class Asset extends Entity {
         return properties.get(key);
     }
 
+    public Map<String, Object> getPrivateProperties() {
+        return privateProperties;
+    }
+
+    public Object getPrivateProperty(String key) {
+        return privateProperties.get(key);
+    }
+
     private String getPropertyAsString(String key) {
         var val = getProperty(key);
         return val != null ? val.toString() : null;
     }
 
+    private String getPrivatePropertyAsString(String key) {
+        var val = getPrivateProperty(key);
+        return val != null ? val.toString() : null;
+    }
+
     @JsonPOJOBuilder(withPrefix = "")
-    public static class Builder<B extends Builder<B>> extends Entity.Builder<Asset, Builder<B>> {
+    public static class Builder extends Entity.Builder<Asset, Builder> {
 
         protected Builder(Asset asset) {
             super(asset);
         }
 
         @JsonCreator
-        public static <B extends Builder<B>> Builder<B> newInstance() {
-            return new Builder<>(new Asset());
+        public static Builder newInstance() {
+            return new Builder(new Asset());
         }
 
         @Override
-        public B id(String id) {
+        public Builder id(String id) {
             // todo: remove storing the ID in the properties map in future versions
             entity.properties.put(PROPERTY_ID, id);
             entity.id = id;
@@ -105,14 +129,14 @@ public class Asset extends Entity {
         }
 
         @Override
-        public Builder<B> createdAt(long value) {
+        public Builder createdAt(long value) {
             entity.createdAt = value;
             return self();
         }
 
         @Override
-        public B self() {
-            return (B) this;
+        public Builder self() {
+            return this;
         }
 
         @Override
@@ -123,37 +147,47 @@ public class Asset extends Entity {
             return super.build();
         }
 
-        public B name(String title) {
+        public Builder name(String title) {
             entity.properties.put(PROPERTY_NAME, title);
             return self();
         }
 
-        public B description(String description) {
+        public Builder description(String description) {
             entity.properties.put(PROPERTY_DESCRIPTION, description);
             return self();
         }
 
-        public B version(String version) {
+        public Builder version(String version) {
             entity.properties.put(PROPERTY_VERSION, version);
             return self();
         }
 
-        public B contentType(String contentType) {
+        public Builder contentType(String contentType) {
             entity.properties.put(PROPERTY_CONTENT_TYPE, contentType);
             return self();
         }
 
-        public B properties(Map<String, Object> properties) {
+        public Builder properties(Map<String, Object> properties) {
             Objects.requireNonNull(properties);
             entity.properties.putAll(properties);
             return self();
         }
 
-        public B property(String key, Object value) {
+        public Builder property(String key, Object value) {
             entity.properties.put(key, value);
             return self();
         }
 
+        public Builder privateProperties(Map<String, Object> privateProperties) {
+            Objects.requireNonNull(privateProperties);
+            entity.privateProperties.putAll(privateProperties);
+            return self();
+        }
+
+        public Builder privateProperty(String key, Object value) {
+            entity.privateProperties.put(key, value);
+            return self();
+        }
     }
 
 }

@@ -22,8 +22,6 @@ import org.eclipse.edc.spi.system.ServiceExtensionContext;
 import org.eclipse.edc.spi.system.configuration.Config;
 import org.eclipse.edc.spi.system.configuration.ConfigFactory;
 import org.eclipse.edc.spi.system.injection.ObjectFactory;
-import org.eclipse.edc.spi.telemetry.Telemetry;
-import org.eclipse.edc.spi.types.TypeManager;
 import org.eclipse.edc.web.spi.WebServer;
 import org.eclipse.edc.web.spi.WebService;
 import org.eclipse.edc.web.spi.configuration.WebServiceConfiguration;
@@ -39,7 +37,6 @@ import java.util.Map;
 import static org.eclipse.edc.connector.api.management.configuration.ManagementApiConfigurationExtension.DEPRECATED_SETTINGS;
 import static org.eclipse.edc.connector.api.management.configuration.ManagementApiConfigurationExtension.SETTINGS;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -80,7 +77,6 @@ class ManagementApiConfigurationExtensionTest {
         extension.initialize(context);
 
         verify(configurer).configure(any(), any(), eq(DEPRECATED_SETTINGS));
-        verify(monitor).warning(anyString());
     }
 
     @Test
@@ -96,7 +92,7 @@ class ManagementApiConfigurationExtensionTest {
 
     @NotNull
     private DefaultServiceExtensionContext contextWithConfig(Config config) {
-        var context = new DefaultServiceExtensionContext(new TypeManager(), monitor, mock(Telemetry.class), List.of(() -> config));
+        var context = new DefaultServiceExtensionContext(monitor, List.of(() -> config));
         context.initialize();
         return context;
     }

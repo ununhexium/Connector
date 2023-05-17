@@ -21,14 +21,12 @@ import org.eclipse.edc.policy.model.Permission;
 import org.eclipse.edc.policy.model.Policy;
 import org.eclipse.edc.policy.model.Prohibition;
 import org.eclipse.edc.protocol.ids.transform.type.contract.ContractOfferToIdsContractOfferTransformer;
-import org.eclipse.edc.spi.types.domain.asset.Asset;
 import org.eclipse.edc.transform.spi.TransformerContext;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
-import java.time.ZonedDateTime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -41,7 +39,7 @@ import static org.mockito.Mockito.when;
 class ContractOfferToIdsContractOfferTransformerTest {
     private static final String CONTRACT_OFFER_ID = "456uz984390236s";
     private static final URI OFFER_ID = URI.create("urn:contractoffer:" + CONTRACT_OFFER_ID);
-    private static final URI PROVIDER_URI = URI.create("https://provider.com/");
+    private static final String PROVIDER_ID = "https://provider.com/";
 
     private ContractOfferToIdsContractOfferTransformer transformer;
 
@@ -77,7 +75,7 @@ class ContractOfferToIdsContractOfferTransformerTest {
 
         assertNotNull(result);
         assertEquals(OFFER_ID, result.getId());
-        assertEquals(PROVIDER_URI, result.getProvider());
+        assertEquals(PROVIDER_ID, result.getProvider().toString());
         assertEquals(1, result.getObligation().size());
         assertEquals(idsObligation, result.getObligation().get(0));
         assertEquals(1, result.getPermission().size());
@@ -95,10 +93,8 @@ class ContractOfferToIdsContractOfferTransformerTest {
         return ContractOffer.Builder.newInstance()
                 .id(CONTRACT_OFFER_ID)
                 .policy(policy)
-                .asset(Asset.Builder.newInstance().id("test-asset").build())
-                .provider(PROVIDER_URI)
-                .contractStart(ZonedDateTime.now())
-                .contractEnd(ZonedDateTime.now().plusMonths(1))
+                .assetId("test-asset")
+                .providerId(PROVIDER_ID)
                 .build();
     }
 }

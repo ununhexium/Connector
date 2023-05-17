@@ -39,7 +39,7 @@ public class BaseSqlDialectStatements implements AssetStatements {
         return format("INSERT INTO %s (%s, %s) VALUES (?, ?%s)",
                 getDataAddressTable(),
                 getDataAddressAssetIdFkColumn(),
-                getDataAddressColumnProperties(),
+                getDataAddressPropertiesColumn(),
                 getFormatAsJsonOperator());
     }
 
@@ -86,6 +86,19 @@ public class BaseSqlDialectStatements implements AssetStatements {
     }
 
     @Override
+    public String getUpdateDataAddressTemplate() {
+        return format("UPDATE %s SET %s = ?%s WHERE %s = ?", getDataAddressTable(),
+                getDataAddressPropertiesColumn(),
+                getFormatAsJsonOperator(),
+                getDataAddressAssetIdFkColumn());
+    }
+
+    @Override
+    public String getDeletePropertyByIdTemplate() {
+        return format("DELETE FROM %s WHERE %s = ?", getAssetPropertyTable(), getPropertyAssetIdFkColumn());
+    }
+
+    @Override
     public String getCountVariableName() {
         return "COUNT";
     }
@@ -122,6 +135,7 @@ public class BaseSqlDialectStatements implements AssetStatements {
 
         stmt.addParameter(querySpec.getLimit());
         stmt.addParameter(querySpec.getOffset());
+
         return stmt;
     }
 

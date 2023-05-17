@@ -32,8 +32,6 @@ public interface TransferProcessStoreStatements extends LeaseStatements {
 
     String getDeleteTransferProcessTemplate();
 
-    String getNextForStateTemplate();
-
     String getUpdateTransferProcessTemplate();
 
     String getInsertDataRequestTemplate();
@@ -114,10 +112,6 @@ public interface TransferProcessStoreStatements extends LeaseStatements {
         return "managed_resources";
     }
 
-    default String getTransferTypeColumn() {
-        return "transfer_type";
-    }
-
     default String getProcessIdColumn() {
         return "process_id";
     }
@@ -154,6 +148,10 @@ public interface TransferProcessStoreStatements extends LeaseStatements {
         return "deprovisioned_resources";
     }
 
+    default String getCallbackAddressesColumn() {
+        return "callback_addresses";
+    }
+    
     default String getFormatAsJsonOperator() {
         return BaseSqlDialect.getJsonCastOperator();
     }

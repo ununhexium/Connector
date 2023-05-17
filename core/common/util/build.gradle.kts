@@ -18,13 +18,7 @@ plugins {
 }
 
 dependencies {
-    testImplementation("org.junit-pioneer:junit-pioneer:1.9.1")
+    testImplementation(libs.junit.pioneer)
 }
 
-publishing {
-    publications {
-        create<MavenPublication>(project.name) {
-            from(components["java"])
-        }
-    }
-}
+

@@ -21,15 +21,16 @@ import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiat
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationStates;
 import org.eclipse.edc.connector.store.azure.cosmos.contractnegotiation.model.ContractNegotiationDocument;
 import org.eclipse.edc.policy.model.Policy;
+import org.eclipse.edc.spi.types.domain.callback.CallbackAddress;
 
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.UUID;
 
 public class TestFunctions {
 
     public static ContractNegotiation createNegotiation() {
-        return createNegotiation(ContractNegotiationStates.UNSAVED);
+        return createNegotiation(ContractNegotiationStates.INITIAL);
     }
 
     public static ContractNegotiation createNegotiation(ContractNegotiationStates state) {
@@ -40,6 +41,9 @@ public class TestFunctions {
         return createNegotiationBuilder(id)
                 .state(state.code())
                 .contractAgreement(createContractBuilder().build())
+                .callbackAddresses(List.of(CallbackAddress.Builder.newInstance()
+                        .uri("local://test")
+                        .build()))
                 .build();
     }
 
@@ -58,17 +62,15 @@ public class TestFunctions {
     }
 
     public static ContractAgreement.Builder createContractBuilder() {
-        return createContractBuilder("1:2");
+        return createContractBuilder("1:2:3");
     }
 
     public static ContractAgreement.Builder createContractBuilder(String id) {
         return ContractAgreement.Builder.newInstance()
-                .providerAgentId("provider")
-                .consumerAgentId("consumer")
+                .providerId("provider")
+                .consumerId("consumer")
                 .assetId(UUID.randomUUID().toString())
                 .policy(Policy.Builder.newInstance().build())
-                .contractStartDate(Instant.now().getEpochSecond())
-                .contractEndDate(Instant.now().plus(1, ChronoUnit.DAYS).getEpochSecond())
                 .contractSigningDate(Instant.now().getEpochSecond())
                 .id(id);
     }

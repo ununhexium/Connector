@@ -92,8 +92,8 @@ public class ContractAgreementFromIdsContractAgreementTransformer implements Ids
 
         var builder = ContractAgreement.Builder.newInstance()
                 .policy(policy)
-                .consumerAgentId(String.valueOf(contractAgreement.getConsumer()))
-                .providerAgentId(String.valueOf(contractAgreement.getProvider()))
+                .consumerId(String.valueOf(contractAgreement.getConsumer()))
+                .providerId(String.valueOf(contractAgreement.getProvider()))
                 .assetId(assetId);
 
         var result = IdsId.from(contractAgreement.getId());
@@ -110,13 +110,6 @@ public class ContractAgreementFromIdsContractAgreementTransformer implements Ids
 
         builder.id(idsId.getValue());
 
-        if (contractAgreement.getContractEnd() != null) {
-            builder.contractEndDate(contractAgreement.getContractEnd().toGregorianCalendar().toZonedDateTime().toEpochSecond());
-        }
-
-        if (contractAgreement.getContractStart() != null) {
-            builder.contractStartDate(contractAgreement.getContractStart().toGregorianCalendar().toZonedDateTime().toEpochSecond());
-        }
 
         if (contractAgreement.getContractDate() != null) {
             builder.contractSigningDate(contractAgreement.getContractDate().toGregorianCalendar().toZonedDateTime().toEpochSecond());

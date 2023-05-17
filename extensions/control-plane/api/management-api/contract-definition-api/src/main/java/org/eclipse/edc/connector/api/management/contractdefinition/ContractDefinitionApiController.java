@@ -20,20 +20,22 @@ import jakarta.ws.rs.BeanParam;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
+import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import org.eclipse.edc.api.model.IdResponseDto;
 import org.eclipse.edc.api.query.QuerySpecDto;
-import org.eclipse.edc.api.transformer.DtoTransformerRegistry;
 import org.eclipse.edc.connector.api.management.contractdefinition.model.ContractDefinitionRequestDto;
 import org.eclipse.edc.connector.api.management.contractdefinition.model.ContractDefinitionResponseDto;
+import org.eclipse.edc.connector.api.management.contractdefinition.model.ContractDefinitionUpdateDtoWrapper;
 import org.eclipse.edc.connector.contract.spi.types.offer.ContractDefinition;
 import org.eclipse.edc.connector.spi.contractdefinition.ContractDefinitionService;
 import org.eclipse.edc.spi.monitor.Monitor;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.eclipse.edc.spi.result.Result;
+import org.eclipse.edc.transform.spi.TypeTransformerRegistry;
 import org.eclipse.edc.web.spi.exception.InvalidRequestException;
 import org.eclipse.edc.web.spi.exception.ObjectNotFoundException;
 import org.jetbrains.annotations.NotNull;
@@ -51,9 +53,9 @@ import static org.eclipse.edc.web.spi.exception.ServiceResultHandler.exceptionMa
 public class ContractDefinitionApiController implements ContractDefinitionApi {
     private final Monitor monitor;
     private final ContractDefinitionService service;
-    private final DtoTransformerRegistry transformerRegistry;
+    private final TypeTransformerRegistry transformerRegistry;
 
-    public ContractDefinitionApiController(Monitor monitor, ContractDefinitionService service, DtoTransformerRegistry transformerRegistry) {
+    public ContractDefinitionApiController(Monitor monitor, ContractDefinitionService service, TypeTransformerRegistry transformerRegistry) {
         this.monitor = monitor;
         this.service = service;
         this.transformerRegistry = transformerRegistry;
@@ -115,6 +117,25 @@ public class ContractDefinitionApiController implements ContractDefinitionApi {
         monitor.debug(format("Attempting to delete contract definition with id %s", id));
         var result = service.delete(id).orElseThrow(exceptionMapper(ContractDefinition.class, id));
         monitor.debug(format("Contract definition deleted %s", result.getId()));
+    }
+
+    @PUT
+    @Path("{contractDefinitionId}")
+    @Override
+    public void updateContractDefinition(@PathParam("contractDefinitionId") String contractDefinitionId, @Valid ContractDefinitionRequestDto contractDefinition) {
+        var contractDefinitionWrapper = ContractDefinitionUpdateDtoWrapper.Builder
+                .newInstance()
+                .id(contractDefinitionId)
+                .contractDefinition(contractDefinition)
+                .build();
+
+        var contractDefinitionResult = transformerRegistry.transform(contractDefinitionWrapper,
+                ContractDefinition.class);
+        if (contractDefinitionResult.failed()) {
+            throw new InvalidRequestException(contractDefinitionResult.getFailureMessages());
+        }
+        service.update(contractDefinitionResult.getContent())
+                .orElseThrow(exceptionMapper(ContractDefinition.class, contractDefinitionId));
     }
 
     @NotNull

@@ -15,29 +15,32 @@
 
 package org.eclipse.edc.connector.dataplane.http.pipeline;
 
+import org.eclipse.edc.connector.dataplane.http.params.HttpRequestFactory;
+import org.eclipse.edc.connector.dataplane.http.spi.HttpRequestParams;
 import org.eclipse.edc.connector.dataplane.spi.pipeline.DataSource;
+import org.eclipse.edc.connector.dataplane.spi.pipeline.StreamResult;
 import org.eclipse.edc.connector.dataplane.util.sink.ParallelSink;
 import org.eclipse.edc.spi.http.EdcHttpClient;
-import org.eclipse.edc.spi.response.StatusResult;
 
 import java.util.List;
+import java.util.Objects;
 
 import static java.lang.String.format;
-import static org.eclipse.edc.spi.response.ResponseStatus.ERROR_RETRY;
 
 /**
  * Writes data in a streaming fashion to an HTTP endpoint.
  */
 public class HttpDataSink extends ParallelSink {
-    private static final StatusResult<Void> ERROR_WRITING_DATA = StatusResult.failure(ERROR_RETRY, "Error writing data");
+    private static final StreamResult<Void> ERROR_WRITING_DATA = StreamResult.error("Error writing data");
 
     private HttpRequestParams params;
     private EdcHttpClient httpClient;
+    private HttpRequestFactory requestFactory;
 
     @Override
-    protected StatusResult<Void> transferParts(List<DataSource.Part> parts) {
-        for (DataSource.Part part : parts) {
-            var request = params.toRequest(part::openStream);
+    protected StreamResult<Void> transferParts(List<DataSource.Part> parts) {
+        for (var part : parts) {
+            var request = requestFactory.toRequest(params, part::openStream);
             try (var response = httpClient.execute(request)) {
                 if (!response.isSuccessful()) {
                     monitor.severe(format("Error {%s: %s} received writing HTTP data %s to endpoint %s for request: %s",
@@ -45,13 +48,13 @@ public class HttpDataSink extends ParallelSink {
                     return ERROR_WRITING_DATA;
                 }
 
-                return StatusResult.success();
+                return StreamResult.success();
             } catch (Exception e) {
                 monitor.severe(format("Error writing HTTP data %s to endpoint %s for request: %s", part.name(), request.url().url(), request), e);
                 return ERROR_WRITING_DATA;
             }
         }
-        return StatusResult.success();
+        return StreamResult.success();
     }
 
     private HttpDataSink() {
@@ -61,6 +64,10 @@ public class HttpDataSink extends ParallelSink {
 
         public static Builder newInstance() {
             return new Builder();
+        }
+
+        private Builder() {
+            super(new HttpDataSink());
         }
 
         public Builder params(HttpRequestParams params) {
@@ -73,11 +80,14 @@ public class HttpDataSink extends ParallelSink {
             return this;
         }
 
-        protected void validate() {
+        public Builder requestFactory(HttpRequestFactory requestFactory) {
+            sink.requestFactory = requestFactory;
+            return this;
         }
 
-        private Builder() {
-            super(new HttpDataSink());
+        @Override
+        protected void validate() {
+            Objects.requireNonNull(sink.requestFactory, "requestFactory");
         }
     }
 }

@@ -26,16 +26,17 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import org.eclipse.edc.api.model.IdResponseDto;
 import org.eclipse.edc.api.query.QuerySpecDto;
-import org.eclipse.edc.api.transformer.DtoTransformerRegistry;
+import org.eclipse.edc.connector.api.management.transferprocess.model.TerminateTransferDto;
 import org.eclipse.edc.connector.api.management.transferprocess.model.TransferProcessDto;
 import org.eclipse.edc.connector.api.management.transferprocess.model.TransferRequestDto;
 import org.eclipse.edc.connector.api.management.transferprocess.model.TransferState;
 import org.eclipse.edc.connector.spi.transferprocess.TransferProcessService;
-import org.eclipse.edc.connector.transfer.spi.types.DataRequest;
 import org.eclipse.edc.connector.transfer.spi.types.TransferProcess;
+import org.eclipse.edc.connector.transfer.spi.types.TransferRequest;
 import org.eclipse.edc.spi.monitor.Monitor;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.eclipse.edc.spi.result.Result;
+import org.eclipse.edc.transform.spi.TypeTransformerRegistry;
 import org.eclipse.edc.web.spi.exception.InvalidRequestException;
 import org.eclipse.edc.web.spi.exception.ObjectNotFoundException;
 
@@ -54,9 +55,9 @@ import static org.eclipse.edc.web.spi.exception.ServiceResultHandler.exceptionMa
 public class TransferProcessApiController implements TransferProcessApi {
     private final Monitor monitor;
     private final TransferProcessService service;
-    private final DtoTransformerRegistry transformerRegistry;
+    private final TypeTransformerRegistry transformerRegistry;
 
-    public TransferProcessApiController(Monitor monitor, TransferProcessService service, DtoTransformerRegistry transformerRegistry) {
+    public TransferProcessApiController(Monitor monitor, TransferProcessService service, TypeTransformerRegistry transformerRegistry) {
         this.monitor = monitor;
         this.service = service;
         this.transformerRegistry = transformerRegistry;
@@ -99,15 +100,6 @@ public class TransferProcessApiController implements TransferProcessApi {
     }
 
     @POST
-    @Path("/{id}/cancel")
-    @Override
-    public void cancelTransferProcess(@PathParam("id") String id) {
-        monitor.debug("Cancelling TransferProcess with ID " + id);
-        var transferProcess = service.cancel(id).orElseThrow(exceptionMapper(TransferProcess.class, id));
-        monitor.debug(format("Transfer process canceled %s", transferProcess.getId()));
-    }
-
-    @POST
     @Path("/{id}/deprovision")
     @Override
     public void deprovisionTransferProcess(@PathParam("id") String id) {
@@ -117,9 +109,27 @@ public class TransferProcessApiController implements TransferProcessApi {
     }
 
     @POST
+    @Path("/{id}/terminate")
+    @Override
+    public void terminateTransferProcess(@PathParam("id") String id, TerminateTransferDto terminateTransfer) {
+        monitor.debug("Terminating TransferProcess with ID " + id);
+        var transferProcess = service.terminate(id, terminateTransfer.getReason()).orElseThrow(exceptionMapper(TransferProcess.class, id));
+        monitor.debug(format("Termination requested for TransferProcess with ID %s", transferProcess.getId()));
+    }
+
+    @POST
+    @Path("/{id}/cancel")
+    @Override
+    public void cancelTransferProcess(@PathParam("id") String id) {
+        monitor.debug("Cancelling TransferProcess with ID " + id);
+        var transferProcess = service.terminate(id, "transfer process canceled").orElseThrow(exceptionMapper(TransferProcess.class, id));
+        monitor.debug(format("Transfer process canceled %s", transferProcess.getId()));
+    }
+
+    @POST
     @Override
     public IdResponseDto initiateTransfer(@Valid TransferRequestDto transferRequest) {
-        var transformResult = transformerRegistry.transform(transferRequest, DataRequest.class);
+        var transformResult = transformerRegistry.transform(transferRequest, TransferRequest.class);
         if (transformResult.failed()) {
             throw new InvalidRequestException(transformResult.getFailureMessages());
         }
@@ -128,7 +138,7 @@ public class TransferProcessApiController implements TransferProcessApi {
         var dataRequest = transformResult.getContent();
         var result = service.initiateTransfer(dataRequest).orElseThrow(exceptionMapper(TransferProcess.class, transferRequest.getId()));
         return IdResponseDto.Builder.newInstance()
-                .id(result)
+                .id(result.getId())
                 //To be accurate createdAt should come from the transfer object
                 .createdAt(Clock.systemUTC().millis())
                 .build();

@@ -25,14 +25,10 @@ dependencies {
     implementation(libs.opentelemetry.annotations)
 
     testImplementation(project(":core:control-plane:control-plane-core"))
+    testImplementation(project(":core:control-plane:control-plane-aggregate-services"))
     testImplementation(project(":core:common:junit"))
     testImplementation(libs.awaitility)
+    testImplementation(project(":core:common:policy-engine"))
 }
 
-publishing {
-    publications {
-        create<MavenPublication>(project.name) {
-            from(components["java"])
-        }
-    }
-}
+

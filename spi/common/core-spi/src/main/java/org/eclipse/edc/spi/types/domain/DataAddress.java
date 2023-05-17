@@ -24,6 +24,10 @@ import org.jetbrains.annotations.NotNull;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+
+import static org.eclipse.edc.spi.CoreConstants.EDC_NAMESPACE;
+
 
 /**
  * An address that can be used resolve a data location. Data addresses are used throughout the system. For example, an asset has a data address used to resolve its contents,
@@ -35,8 +39,10 @@ import java.util.Objects;
  */
 @JsonDeserialize(builder = DataAddress.Builder.class)
 public class DataAddress {
-    public static final String TYPE = "type";
-    public static final String KEY_NAME = "keyName";
+    public static final String SIMPLE_TYPE = "type";
+    public static final String TYPE = EDC_NAMESPACE + SIMPLE_TYPE;
+    public static final String SIMPLE_KEY_NAME = "keyName";
+    public static final String KEY_NAME = EDC_NAMESPACE + "keyName";
     protected final Map<String, String> properties = new HashMap<>();
 
     protected DataAddress() {
@@ -44,7 +50,7 @@ public class DataAddress {
 
     @NotNull
     public String getType() {
-        return properties.get(TYPE);
+        return getProperty(TYPE);
     }
 
     @JsonIgnore
@@ -54,12 +60,13 @@ public class DataAddress {
     }
 
     public String getProperty(String key) {
-        return properties.get(key);
+        return getProperty(key, null);
     }
 
     public String getProperty(String key, String defaultValue) {
-        if (properties.containsKey(key)) {
-            return properties.get(key);
+        var value = Optional.ofNullable(properties.get(EDC_NAMESPACE + key)).orElseGet(() -> properties.get(key));
+        if (value != null) {
+            return value;
         }
 
         return defaultValue;
@@ -70,7 +77,13 @@ public class DataAddress {
     }
 
     public String getKeyName() {
-        return properties.get(KEY_NAME);
+        return getProperty(KEY_NAME);
+    }
+
+    @JsonIgnore
+    public void setKeyName(String keyName) {
+        Objects.requireNonNull(keyName);
+        properties.put(KEY_NAME, keyName);
     }
 
     /**
@@ -82,12 +95,6 @@ public class DataAddress {
     @JsonIgnore
     public boolean hasProperty(String key) {
         return properties.containsKey(key);
-    }
-
-    @JsonIgnore
-    public void setKeyName(String keyName) {
-        Objects.requireNonNull(keyName);
-        properties.put(KEY_NAME, keyName);
     }
 
     @JsonPOJOBuilder(withPrefix = "")
@@ -110,6 +117,11 @@ public class DataAddress {
 
         public B property(String key, String value) {
             Objects.requireNonNull(key, "Property key null.");
+            if (SIMPLE_TYPE.equals(key)) {
+                key = TYPE;
+            } else if (SIMPLE_KEY_NAME.equals(key)) {
+                key = KEY_NAME;
+            }
             address.properties.put(key, value);
             return self();
         }

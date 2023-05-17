@@ -18,12 +18,14 @@ import org.eclipse.edc.connector.transfer.dataplane.proxy.ConsumerPullTransferPr
 import org.eclipse.edc.connector.transfer.dataplane.spi.proxy.ConsumerPullTransferEndpointDataReferenceCreationRequest;
 import org.eclipse.edc.connector.transfer.dataplane.spi.proxy.ConsumerPullTransferEndpointDataReferenceService;
 import org.eclipse.edc.connector.transfer.spi.flow.DataFlowController;
+import org.eclipse.edc.connector.transfer.spi.types.DataFlowResponse;
 import org.eclipse.edc.connector.transfer.spi.types.DataRequest;
 import org.eclipse.edc.policy.model.Policy;
 import org.eclipse.edc.spi.message.RemoteMessageDispatcherRegistry;
 import org.eclipse.edc.spi.response.ResponseStatus;
 import org.eclipse.edc.spi.response.StatusResult;
 import org.eclipse.edc.spi.types.domain.DataAddress;
+import org.eclipse.edc.spi.types.domain.edr.EndpointDataAddressConstants;
 import org.eclipse.edc.spi.types.domain.edr.EndpointDataReference;
 import org.eclipse.edc.spi.types.domain.edr.EndpointDataReferenceMessage;
 import org.jetbrains.annotations.NotNull;
@@ -52,7 +54,7 @@ public class ConsumerPullTransferDataFlowController implements DataFlowControlle
     }
 
     @Override
-    public @NotNull StatusResult<Void> initiateFlow(DataRequest dataRequest, DataAddress contentAddress, Policy policy) {
+    public @NotNull StatusResult<DataFlowResponse> initiateFlow(DataRequest dataRequest, DataAddress contentAddress, Policy policy) {
         var proxyUrl = proxyResolver.resolveProxyUrl(contentAddress);
         if (proxyUrl.failed()) {
             return StatusResult.failure(ResponseStatus.FATAL_ERROR, format("Failed to resolve proxy url for data request %s%n %s", dataRequest.getId(), proxyUrl.getFailureDetail()));
@@ -72,17 +74,27 @@ public class ConsumerPullTransferDataFlowController implements DataFlowControlle
         return dispatch(proxyCreationResult.getContent(), dataRequest);
     }
 
-    private StatusResult<Void> dispatch(@NotNull EndpointDataReference edr, @NotNull DataRequest dataRequest) {
+    private StatusResult<DataFlowResponse> dispatch(@NotNull EndpointDataReference edr, @NotNull DataRequest dataRequest) {
         var request = EndpointDataReferenceMessage.Builder.newInstance()
                 .connectorId(connectorId)
-                .connectorAddress(dataRequest.getConnectorAddress())
+                .callbackAddress(dataRequest.getConnectorAddress())
                 .protocol(dataRequest.getProtocol())
                 .endpointDataReference(edr)
                 .build();
 
-        return dispatcherRegistry.send(Object.class, request, dataRequest::getId)
-                .thenApply(o -> StatusResult.success())
-                .exceptionally(throwable -> StatusResult.failure(ResponseStatus.ERROR_RETRY, "Transfer failed: " + throwable.getMessage()))
-                .join();
+
+        var response = createResponse(edr);
+        if ("ids-multipart".equals(dataRequest.getProtocol())) {
+            return dispatcherRegistry.send(Object.class, request)
+                    .thenApply(o -> StatusResult.success(response))
+                    .exceptionally(throwable -> StatusResult.failure(ResponseStatus.ERROR_RETRY, "Transfer failed: " + throwable.getMessage()))
+                    .join();
+        } else {
+            return StatusResult.success(response);
+        }
+    }
+
+    private DataFlowResponse createResponse(EndpointDataReference edr) {
+        return DataFlowResponse.Builder.newInstance().dataAddress(EndpointDataAddressConstants.from(edr)).build();
     }
 }

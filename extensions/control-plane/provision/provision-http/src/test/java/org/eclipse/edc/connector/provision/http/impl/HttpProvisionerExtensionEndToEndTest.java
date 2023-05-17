@@ -18,13 +18,16 @@ import okhttp3.Interceptor;
 import org.eclipse.edc.connector.contract.spi.negotiation.store.ContractNegotiationStore;
 import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreement;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiation;
+import org.eclipse.edc.connector.contract.spi.types.offer.ContractOffer;
+import org.eclipse.edc.connector.contract.spi.validation.ContractValidationService;
 import org.eclipse.edc.connector.policy.spi.PolicyDefinition;
 import org.eclipse.edc.connector.policy.spi.store.PolicyDefinitionStore;
 import org.eclipse.edc.connector.provision.http.HttpProvisionerWebhookUrl;
-import org.eclipse.edc.connector.transfer.spi.TransferProcessManager;
+import org.eclipse.edc.connector.spi.transferprocess.TransferProcessProtocolService;
 import org.eclipse.edc.connector.transfer.spi.retry.TransferWaitStrategy;
 import org.eclipse.edc.connector.transfer.spi.store.TransferProcessStore;
-import org.eclipse.edc.connector.transfer.spi.types.DataRequest;
+import org.eclipse.edc.connector.transfer.spi.types.protocol.TransferRequestMessage;
+import org.eclipse.edc.junit.annotations.ComponentTest;
 import org.eclipse.edc.junit.extensions.EdcExtension;
 import org.eclipse.edc.policy.model.Policy;
 import org.eclipse.edc.runtime.metamodel.annotation.Inject;
@@ -32,6 +35,9 @@ import org.eclipse.edc.runtime.metamodel.annotation.Provides;
 import org.eclipse.edc.spi.asset.AssetIndex;
 import org.eclipse.edc.spi.entity.StatefulEntity;
 import org.eclipse.edc.spi.http.EdcHttpClient;
+import org.eclipse.edc.spi.iam.ClaimToken;
+import org.eclipse.edc.spi.protocol.ProtocolWebhook;
+import org.eclipse.edc.spi.result.Result;
 import org.eclipse.edc.spi.system.ServiceExtension;
 import org.eclipse.edc.spi.system.ServiceExtensionContext;
 import org.eclipse.edc.spi.types.domain.DataAddress;
@@ -45,14 +51,15 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Map;
-import java.util.UUID;
 
+import static java.util.UUID.randomUUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.eclipse.edc.connector.provision.http.HttpProvisionerFixtures.PROVISIONER_CONFIG;
 import static org.eclipse.edc.connector.provision.http.HttpProvisionerFixtures.TEST_DATA_TYPE;
 import static org.eclipse.edc.connector.provision.http.HttpProvisionerFixtures.createResponse;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.PROVISIONING_REQUESTED;
+import static org.eclipse.edc.junit.assertions.AbstractResultAssert.assertThat;
 import static org.eclipse.edc.junit.testfixtures.TestUtils.getFreePort;
 import static org.eclipse.edc.junit.testfixtures.TestUtils.testHttpClient;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -60,6 +67,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+@ComponentTest
 @ExtendWith(EdcExtension.class)
 public class HttpProvisionerExtensionEndToEndTest {
     private static final String ASSET_ID = "1";
@@ -67,6 +75,7 @@ public class HttpProvisionerExtensionEndToEndTest {
     private static final String POLICY_ID = "3";
     private final int dataPort = getFreePort();
     private final Interceptor delegate = mock(Interceptor.class);
+    private final ContractValidationService contractValidationService = mock(ContractValidationService.class);
 
     @BeforeEach
     void setup(EdcExtension extension) {
@@ -79,6 +88,8 @@ public class HttpProvisionerExtensionEndToEndTest {
 
         extension.registerServiceMock(TransferWaitStrategy.class, () -> 1);
         extension.registerServiceMock(EdcHttpClient.class, testHttpClient(delegate));
+        extension.registerServiceMock(ContractValidationService.class, contractValidationService);
+        extension.registerServiceMock(ProtocolWebhook.class, mock(ProtocolWebhook.class));
         extension.registerSystemExtension(ServiceExtension.class, new DummyCallbackUrlExtension());
         extension.setConfiguration(PROVISIONER_CONFIG);
         extension.registerSystemExtension(ServiceExtension.class, new ServiceExtension() {
@@ -91,22 +102,24 @@ public class HttpProvisionerExtensionEndToEndTest {
      * Tests the case where an initial request returns a retryable failure and the second request completes.
      */
     @Test
-    void processProviderRequestRetry(TransferProcessManager processManager,
+    void processProviderRequestRetry(TransferProcessProtocolService processManager,
                                      ContractNegotiationStore negotiationStore,
                                      AssetIndex assetIndex,
                                      TransferProcessStore store, PolicyDefinitionStore policyStore) throws Exception {
+        when(contractValidationService.validateAgreement(any(), any())).thenReturn(Result.success(null));
         negotiationStore.save(createContractNegotiation());
-        policyStore.save(createPolicyDefinition());
-        assetIndex.accept(createAssetEntry());
+        policyStore.create(createPolicyDefinition());
+        assetIndex.create(createAssetEntry());
 
         when(delegate.intercept(any()))
                 .thenAnswer(invocation -> createResponse(503, invocation))
                 .thenAnswer(invocation -> createResponse(200, invocation));
 
-        var result = processManager.initiateProviderRequest(createRequest());
+        var result = processManager.notifyRequested(createTransferRequestMessage(), ClaimToken.Builder.newInstance().build());
 
+        assertThat(result).isSucceeded();
         await().untilAsserted(() -> {
-            var transferProcess = store.find(result.getContent());
+            var transferProcess = store.findById(result.getContent().getId());
             assertThat(transferProcess).isNotNull()
                     .extracting(StatefulEntity::getState).isEqualTo(PROVISIONING_REQUESTED.code());
         });
@@ -117,20 +130,27 @@ public class HttpProvisionerExtensionEndToEndTest {
     }
 
     private ContractNegotiation createContractNegotiation() {
+        var policy = Policy.Builder.newInstance().build();
         var contractAgreement = ContractAgreement.Builder.newInstance()
                 .assetId(ASSET_ID)
                 .id(CONTRACT_ID)
-                .policy(Policy.Builder.newInstance().build())
-                .consumerAgentId("consumer")
-                .providerAgentId("provider")
+                .policy(policy)
+                .consumerId("consumer")
+                .providerId("provider")
                 .build();
 
+        var contractOffer = ContractOffer.Builder.newInstance()
+                .id(randomUUID().toString())
+                .assetId(randomUUID().toString())
+                .policy(policy)
+                .build();
         return ContractNegotiation.Builder.newInstance()
-                .id(UUID.randomUUID().toString())
-                .counterPartyId(UUID.randomUUID().toString())
+                .id(randomUUID().toString())
+                .counterPartyId(randomUUID().toString())
                 .counterPartyAddress("test")
                 .protocol("test")
                 .contractAgreement(contractAgreement)
+                .contractOffer(contractOffer)
                 .build();
     }
 
@@ -141,8 +161,16 @@ public class HttpProvisionerExtensionEndToEndTest {
         return new AssetEntry(asset, dataAddress);
     }
 
-    private DataRequest createRequest() {
-        return DataRequest.Builder.newInstance().destinationType("test").assetId(ASSET_ID).contractId(CONTRACT_ID).build();
+    private TransferRequestMessage createTransferRequestMessage() {
+        return TransferRequestMessage.Builder.newInstance()
+                .processId(randomUUID().toString())
+                .dataDestination(DataAddress.Builder.newInstance().type("test").build())
+                .protocol("any")
+                .counterPartyAddress("http://any")
+                .callbackAddress("http://any")
+                .contractId(CONTRACT_ID)
+                .assetId(ASSET_ID)
+                .build();
     }
 
     @Provides(HttpProvisionerWebhookUrl.class)

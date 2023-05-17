@@ -15,6 +15,8 @@
 package org.eclipse.edc.spi.result;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.function.Consumer;
@@ -27,9 +29,10 @@ import java.util.function.Function;
  * and raise unchecked exceptions only when an unexpected event happens, such as a programming error.
  *
  * @param <F> The type of {@link Failure}.
- * @param <T> The type of the content
+ * @param <T> The type of the content.
+ * @param <R> The result self type.
  */
-public abstract class AbstractResult<T, F extends Failure> {
+public abstract class AbstractResult<T, F extends Failure, R extends AbstractResult<T, F, R>> {
 
     private final T content;
     private final F failure;
@@ -74,27 +77,27 @@ public abstract class AbstractResult<T, F extends Failure> {
     /**
      * Executes a {@link Consumer} if this {@link Result} is successful
      */
-    public AbstractResult<T, F> onSuccess(Consumer<T> successAction) {
+    public R onSuccess(Consumer<T> successAction) {
         if (succeeded()) {
             successAction.accept(getContent());
         }
-        return this;
+        return self();
     }
 
     /**
      * Executes a {@link Consumer} if this {@link Result} failed. Passes the {@link Failure} to the consumer
      */
-    public AbstractResult<T, F> onFailure(Consumer<F> failureAction) {
+    public R onFailure(Consumer<F> failureAction) {
         if (failed()) {
             failureAction.accept(getFailure());
         }
-        return this;
+        return self();
     }
 
     /**
      * Alias for {@link AbstractResult#onFailure(Consumer)} to make code a bit more easily readable.
      */
-    public AbstractResult<T, F> orElse(Consumer<F> failureAction) {
+    public R orElse(Consumer<F> failureAction) {
         return onFailure(failureAction);
     }
 
@@ -126,4 +129,70 @@ public abstract class AbstractResult<T, F extends Failure> {
         }
     }
 
+    /**
+     * Return this instance, cast to the {@link R} self type.
+     *
+     * @return this instance.
+     */
+    @SuppressWarnings({"unchecked"})
+    public R self() {
+        return (R) this;
+    }
+
+    /**
+     * Returns a new result instance.
+     * This default implementation exists only to avoid breaking changes, in a future this should become an abstract
+     * method.
+     * If this {@link UnsupportedOperationException} was thrown, please override this method with a proper behavior.
+     *
+     * @param content the content.
+     * @param failure the failure.
+     * @param <R1> the new result type.
+     * @param <C1> the new content type.
+     * @return a new result instance
+     */
+    @NotNull
+    protected <R1 extends AbstractResult<C1, F, R1>, C1> R1 newInstance(@Nullable C1 content, @Nullable F failure) {
+        throw new UnsupportedOperationException("Not implemented for " + getClass());
+    }
+
+    /**
+     * Map the content into another, applying the mapping function.
+     *
+     * @param mapFunction a function that converts the content into another.
+     * @param <T2> the new content type.
+     * @param <R2> the new result type.
+     * @return a new result with a mapped content if succeeded, a new failed one otherwise.
+     */
+    public <T2, R2 extends AbstractResult<T2, F, R2>> R2 map(Function<T, T2> mapFunction) {
+        if (succeeded()) {
+            return newInstance(mapFunction.apply(getContent()), null);
+        } else {
+            return newInstance(null, getFailure());
+        }
+    }
+
+    /**
+     * Maps one result into another, applying the mapping function.
+     *
+     * @param mappingFunction a function converting this result into another
+     * @return the result of the mapping function
+     */
+    public <T2, F2 extends Failure, R2 extends AbstractResult<T2, F2, R2>> R2 flatMap(Function<R, R2> mappingFunction) {
+        return mappingFunction.apply(self());
+    }
+
+    /**
+     * If the result is successful maps the content into a result applying the mapping function, otherwise do nothing.
+     *
+     * @param mappingFunction a function converting this result into another
+     * @return the result of the mapping function
+     */
+    public <T2, R2 extends AbstractResult<T2, F, R2>> R2 compose(Function<T, R2> mappingFunction) {
+        if (succeeded()) {
+            return mappingFunction.apply(getContent());
+        } else {
+            return newInstance(null, getFailure());
+        }
+    }
 }

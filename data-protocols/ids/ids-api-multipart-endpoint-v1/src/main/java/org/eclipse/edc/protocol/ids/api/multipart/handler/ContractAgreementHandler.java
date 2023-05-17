@@ -16,55 +16,53 @@ package org.eclipse.edc.protocol.ids.api.multipart.handler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.fraunhofer.iais.eis.ContractAgreement;
-import de.fraunhofer.iais.eis.ContractAgreementMessage;
-import org.eclipse.edc.connector.contract.spi.negotiation.ConsumerContractNegotiationManager;
+import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreementMessage;
+import org.eclipse.edc.connector.spi.contractnegotiation.ContractNegotiationProtocolService;
 import org.eclipse.edc.protocol.ids.api.multipart.message.MultipartRequest;
 import org.eclipse.edc.protocol.ids.api.multipart.message.MultipartResponse;
 import org.eclipse.edc.protocol.ids.spi.transform.ContractAgreementTransformerOutput;
-import org.eclipse.edc.protocol.ids.spi.transform.IdsTransformerRegistry;
 import org.eclipse.edc.protocol.ids.spi.types.IdsId;
+import org.eclipse.edc.protocol.ids.spi.types.MessageProtocol;
 import org.eclipse.edc.spi.monitor.Monitor;
+import org.eclipse.edc.transform.spi.TypeTransformerRegistry;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 
 import static org.eclipse.edc.protocol.ids.api.multipart.util.ResponseUtil.badParameters;
 import static org.eclipse.edc.protocol.ids.api.multipart.util.ResponseUtil.createMultipartResponse;
-import static org.eclipse.edc.protocol.ids.api.multipart.util.ResponseUtil.processedFromStatusResult;
+import static org.eclipse.edc.protocol.ids.api.multipart.util.ResponseUtil.processedFromServiceResult;
 
 /**
- * This class handles and processes incoming IDS {@link ContractAgreementMessage}s.
+ * This class handles and processes incoming IDS {@link de.fraunhofer.iais.eis.ContractAgreementMessage}s.
  */
 public class ContractAgreementHandler implements Handler {
 
     private final Monitor monitor;
     private final ObjectMapper objectMapper;
     private final IdsId connectorId;
-    private final ConsumerContractNegotiationManager negotiationManager;
-    private final IdsTransformerRegistry transformerRegistry;
+    private final TypeTransformerRegistry transformerRegistry;
+    private final ContractNegotiationProtocolService service;
 
     public ContractAgreementHandler(
-            @NotNull Monitor monitor,
-            @NotNull IdsId connectorId,
-            @NotNull ObjectMapper objectMapper,
-            @NotNull ConsumerContractNegotiationManager negotiationManager,
-            @NotNull IdsTransformerRegistry transformerRegistry) {
+            Monitor monitor, IdsId connectorId, ObjectMapper objectMapper,
+            TypeTransformerRegistry transformerRegistry, ContractNegotiationProtocolService service) {
         this.monitor = monitor;
         this.connectorId = connectorId;
         this.objectMapper = objectMapper;
-        this.negotiationManager = negotiationManager;
         this.transformerRegistry = transformerRegistry;
+        this.service = service;
     }
 
     @Override
     public boolean canHandle(@NotNull MultipartRequest multipartRequest) {
-        return multipartRequest.getHeader() instanceof ContractAgreementMessage;
+        return multipartRequest.getHeader() instanceof de.fraunhofer.iais.eis.ContractAgreementMessage;
     }
 
     @Override
     public @NotNull MultipartResponse handleRequest(@NotNull MultipartRequest multipartRequest) {
         var claimToken = multipartRequest.getClaimToken();
-        var message = (ContractAgreementMessage) multipartRequest.getHeader();
+        var message = (de.fraunhofer.iais.eis.ContractAgreementMessage) multipartRequest.getHeader();
 
         ContractAgreement contractAgreement;
         try {
@@ -74,7 +72,6 @@ public class ContractAgreementHandler implements Handler {
             return createMultipartResponse(badParameters(message, connectorId));
         }
 
-        // extract target from contract request
         var permission = contractAgreement.getPermission().get(0);
         if (permission == null) {
             monitor.debug("ContractAgreementHandler: Contract Agreement is invalid");
@@ -87,13 +84,20 @@ public class ContractAgreementHandler implements Handler {
             return createMultipartResponse(badParameters(message, connectorId));
         }
 
-        // TODO get hash from message
         var output = result.getContent();
-        var processId = message.getTransferContract();
-        var negotiationConfirmResult = negotiationManager.confirmed(claimToken,
-                String.valueOf(processId), output.getContractAgreement(), output.getPolicy());
 
-        return createMultipartResponse(processedFromStatusResult(negotiationConfirmResult, message, connectorId));
+        var request = ContractAgreementMessage.Builder.newInstance()
+                .protocol(MessageProtocol.IDS_MULTIPART)
+                .connectorId(String.valueOf(message.getIssuerConnector()))
+                .counterPartyAddress("") // this will be used by DSP
+                .contractAgreement(output.getContractAgreement())
+                .processId(String.valueOf(message.getTransferContract()))
+                .policy(output.getPolicy())
+                .build();
+
+        var negotiationConfirmResult = service.notifyAgreed(request, claimToken);
+
+        return createMultipartResponse(processedFromServiceResult(negotiationConfirmResult, message, connectorId));
     }
 
 }

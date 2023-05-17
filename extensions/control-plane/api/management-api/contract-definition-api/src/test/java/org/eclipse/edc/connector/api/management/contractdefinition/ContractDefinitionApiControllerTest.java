@@ -16,9 +16,9 @@ package org.eclipse.edc.connector.api.management.contractdefinition;
 
 import org.eclipse.edc.api.model.IdResponseDto;
 import org.eclipse.edc.api.query.QuerySpecDto;
-import org.eclipse.edc.api.transformer.DtoTransformerRegistry;
 import org.eclipse.edc.connector.api.management.contractdefinition.model.ContractDefinitionRequestDto;
 import org.eclipse.edc.connector.api.management.contractdefinition.model.ContractDefinitionResponseDto;
+import org.eclipse.edc.connector.api.management.contractdefinition.model.ContractDefinitionUpdateDtoWrapper;
 import org.eclipse.edc.connector.contract.spi.types.offer.ContractDefinition;
 import org.eclipse.edc.connector.spi.contractdefinition.ContractDefinitionService;
 import org.eclipse.edc.service.spi.result.ServiceResult;
@@ -26,6 +26,7 @@ import org.eclipse.edc.spi.asset.AssetSelectorExpression;
 import org.eclipse.edc.spi.monitor.Monitor;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.eclipse.edc.spi.result.Result;
+import org.eclipse.edc.transform.spi.TypeTransformerRegistry;
 import org.eclipse.edc.web.spi.exception.InvalidRequestException;
 import org.eclipse.edc.web.spi.exception.ObjectConflictException;
 import org.eclipse.edc.web.spi.exception.ObjectNotFoundException;
@@ -48,7 +49,7 @@ import static org.mockito.Mockito.when;
 
 class ContractDefinitionApiControllerTest {
 
-    private final DtoTransformerRegistry transformerRegistry = mock(DtoTransformerRegistry.class);
+    private final TypeTransformerRegistry transformerRegistry = mock(TypeTransformerRegistry.class);
     private final ContractDefinitionService service = mock(ContractDefinitionService.class);
     private ContractDefinitionApiController controller;
 
@@ -242,13 +243,47 @@ class ContractDefinitionApiControllerTest {
         assertThatThrownBy(() -> controller.deleteContractDefinition("definitionId")).isInstanceOf(ObjectConflictException.class);
     }
 
+    @Test
+    void update_whenExists() {
+        var dto = ContractDefinitionRequestDto.Builder.newInstance().build();
+        var contractDefinition = createContractDefinition(UUID.randomUUID().toString());
+        when(transformerRegistry.transform(isA(ContractDefinitionUpdateDtoWrapper.class), eq(ContractDefinition.class))).thenReturn(Result.success(contractDefinition));
+        when(service.update(eq(contractDefinition))).thenReturn(ServiceResult.success(null));
+
+        controller.updateContractDefinition(contractDefinition.getId(), dto);
+
+
+        verify(service).update(contractDefinition);
+        verify(transformerRegistry).transform(isA(ContractDefinitionUpdateDtoWrapper.class), eq(ContractDefinition.class));
+    }
+
+
+    @Test
+    void update_whenNotExists_shouldThrowException() {
+        var dto = ContractDefinitionRequestDto.Builder.newInstance().build();
+        var contractDefinition = createContractDefinition(UUID.randomUUID().toString());
+        when(transformerRegistry.transform(isA(ContractDefinitionUpdateDtoWrapper.class), eq(ContractDefinition.class))).thenReturn(Result.success(contractDefinition));
+        when(service.update(eq(contractDefinition))).thenReturn(ServiceResult.notFound("not found"));
+
+        assertThatThrownBy(() -> controller.updateContractDefinition(contractDefinition.getId(), dto)).isInstanceOf(ObjectNotFoundException.class);
+
+    }
+
+    @Test
+    void update_whenTransformationFails_shouldThrowException() {
+        var dto = ContractDefinitionRequestDto.Builder.newInstance().build();
+        var contractDefinition = createContractDefinition(UUID.randomUUID().toString());
+        when(transformerRegistry.transform(isA(ContractDefinitionUpdateDtoWrapper.class), eq(ContractDefinition.class))).thenReturn(Result.failure("failure"));
+
+        assertThatThrownBy(() -> controller.updateContractDefinition(contractDefinition.getId(), dto)).isInstanceOf(InvalidRequestException.class);
+    }
+
     private ContractDefinition createContractDefinition(String id) {
         return ContractDefinition.Builder.newInstance()
                 .id(id)
                 .accessPolicyId(UUID.randomUUID().toString())
                 .contractPolicyId(UUID.randomUUID().toString())
                 .selectorExpression(AssetSelectorExpression.SELECT_ALL)
-                .validity(100)
                 .build();
     }
 }

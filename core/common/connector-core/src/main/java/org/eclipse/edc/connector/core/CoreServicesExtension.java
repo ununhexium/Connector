@@ -22,6 +22,7 @@ import org.eclipse.edc.connector.core.event.EventRouterImpl;
 import org.eclipse.edc.connector.core.health.HealthCheckServiceConfiguration;
 import org.eclipse.edc.connector.core.health.HealthCheckServiceImpl;
 import org.eclipse.edc.connector.core.security.DefaultPrivateKeyParseFunction;
+import org.eclipse.edc.connector.core.transform.TypeTransformerRegistryImpl;
 import org.eclipse.edc.policy.engine.PolicyEngineImpl;
 import org.eclipse.edc.policy.engine.RuleBindingRegistryImpl;
 import org.eclipse.edc.policy.engine.ScopeFilter;
@@ -43,9 +44,13 @@ import org.eclipse.edc.spi.system.Hostname;
 import org.eclipse.edc.spi.system.ServiceExtension;
 import org.eclipse.edc.spi.system.ServiceExtensionContext;
 import org.eclipse.edc.spi.system.health.HealthCheckService;
+import org.eclipse.edc.spi.types.TypeManager;
+import org.eclipse.edc.transform.spi.TypeTransformerRegistry;
 
 import java.security.PrivateKey;
 import java.time.Duration;
+
+import static org.eclipse.edc.spi.agent.ParticipantAgentService.DEFAULT_IDENTITY_CLAIM_KEY;
 
 @BaseExtension
 @Extension(value = CoreServicesExtension.NAME)
@@ -61,6 +66,13 @@ public class CoreServicesExtension implements ServiceExtension {
     public static final String THREADPOOL_SIZE_SETTING = "edc.core.system.health.check.threadpool-size";
     @Setting
     public static final String HOSTNAME_SETTING = "edc.hostname";
+
+    /**
+     * The name of the claim key used to determine the participant identity.
+     */
+    @Setting
+    public static final String IDENTITY_KEY = "edc.agent.identity.key";
+
     public static final String NAME = "Core Services";
     private static final long DEFAULT_DURATION = 60;
     private static final int DEFAULT_TP_SIZE = 3;
@@ -73,6 +85,9 @@ public class CoreServicesExtension implements ServiceExtension {
 
     @Inject
     private EventExecutorServiceContainer eventExecutorServiceContainer;
+
+    @Inject
+    private TypeManager typeManager;
 
     private HealthCheckServiceImpl healthCheckService;
     private RuleBindingRegistry ruleBindingRegistry;
@@ -91,8 +106,6 @@ public class CoreServicesExtension implements ServiceExtension {
         healthCheckService = new HealthCheckServiceImpl(config, executorInstrumentation);
         ruleBindingRegistry = new RuleBindingRegistryImpl();
 
-        var typeManager = context.getTypeManager();
-        PolicyRegistrationTypes.TYPES.forEach(typeManager::registerTypes);
     }
 
     @Override
@@ -104,6 +117,11 @@ public class CoreServicesExtension implements ServiceExtension {
     public void shutdown() {
         healthCheckService.stop();
         ServiceExtension.super.shutdown();
+    }
+
+    @Override
+    public void prepare() {
+        PolicyRegistrationTypes.TYPES.forEach(typeManager::registerTypes);
     }
 
     @Provider
@@ -126,8 +144,9 @@ public class CoreServicesExtension implements ServiceExtension {
     }
 
     @Provider
-    public ParticipantAgentService participantAgentService() {
-        return new ParticipantAgentServiceImpl();
+    public ParticipantAgentService participantAgentService(ServiceExtensionContext context) {
+        var identityKey = context.getSetting(IDENTITY_KEY, DEFAULT_IDENTITY_CLAIM_KEY);
+        return new ParticipantAgentServiceImpl(identityKey);
     }
 
     @Provider
@@ -149,6 +168,11 @@ public class CoreServicesExtension implements ServiceExtension {
     @Provider
     public HealthCheckService healthCheckService() {
         return healthCheckService;
+    }
+
+    @Provider
+    public TypeTransformerRegistry typeTransformerRegistry() {
+        return new TypeTransformerRegistryImpl();
     }
 
     private HealthCheckServiceConfiguration getHealthCheckConfig(ServiceExtensionContext context) {

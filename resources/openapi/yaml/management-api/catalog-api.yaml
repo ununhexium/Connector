@@ -49,9 +49,10 @@ paths:
                 $ref: '#/components/schemas/Catalog'
           description: Gets contract offers (=catalog) of a single connector
       tags:
-      - Catalog
+      - Catalog (deprecated)
   /catalog/request:
     post:
+      deprecated: true
       operationId: requestCatalog
       requestBody:
         content:
@@ -59,6 +60,23 @@ paths:
             schema:
               $ref: '#/components/schemas/CatalogRequestDto'
         required: true
+      responses:
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Catalog'
+          description: Gets contract offers (=catalog) of a single connector
+      tags:
+      - Catalog (deprecated)
+  /v2/catalog/request:
+    post:
+      operationId: requestCatalog_1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogRequestDto'
       responses:
         default:
           content:
@@ -82,23 +100,6 @@ components:
         type:
           type: string
           example: null
-    Asset:
-      type: object
-      example: null
-      properties:
-        createdAt:
-          type: integer
-          format: int64
-          example: null
-        id:
-          type: string
-          example: null
-        properties:
-          type: object
-          additionalProperties:
-            type: object
-            example: null
-          example: null
     Catalog:
       type: object
       example: null
@@ -108,13 +109,32 @@ components:
           example: null
           items:
             $ref: '#/components/schemas/ContractOffer'
+        dataServices:
+          type: array
+          example: null
+          items:
+            $ref: '#/components/schemas/DataService'
+        datasets:
+          type: array
+          example: null
+          items:
+            $ref: '#/components/schemas/Dataset'
         id:
           type: string
+          example: null
+        properties:
+          type: object
+          additionalProperties:
+            type: object
+            example: null
           example: null
     CatalogRequestDto:
       type: object
       example: null
       properties:
+        protocol:
+          type: string
+          example: null
         providerUrl:
           type: string
           example: null
@@ -137,36 +157,16 @@ components:
       type: object
       example: null
       properties:
-        asset:
-          $ref: '#/components/schemas/Asset'
-        consumer:
+        assetId:
           type: string
-          format: uri
-          example: null
-        contractEnd:
-          type: string
-          format: date-time
-          example: null
-        contractStart:
-          type: string
-          format: date-time
           example: null
         id:
           type: string
           example: null
-        offerEnd:
-          type: string
-          format: date-time
-          example: null
-        offerStart:
-          type: string
-          format: date-time
-          example: null
         policy:
           $ref: '#/components/schemas/Policy'
-        provider:
+        providerId:
           type: string
-          format: uri
           example: null
     CriterionDto:
       type: object
@@ -184,6 +184,51 @@ components:
       required:
       - operandLeft
       - operator
+    DataService:
+      type: object
+      example: null
+      properties:
+        endpointUrl:
+          type: string
+          example: null
+        id:
+          type: string
+          example: null
+        terms:
+          type: string
+          example: null
+    Dataset:
+      type: object
+      example: null
+      properties:
+        distributions:
+          type: array
+          example: null
+          items:
+            $ref: '#/components/schemas/Distribution'
+        id:
+          type: string
+          example: null
+        offers:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/Policy'
+          example: null
+        properties:
+          type: object
+          additionalProperties:
+            type: object
+            example: null
+          example: null
+    Distribution:
+      type: object
+      example: null
+      properties:
+        dataService:
+          $ref: '#/components/schemas/DataService'
+        format:
+          type: string
+          example: null
     Duty:
       type: object
       example: null
@@ -208,8 +253,40 @@ components:
         target:
           type: string
           example: null
-        uid:
+    JsonObject:
+      type: object
+      additionalProperties:
+        $ref: '#/components/schemas/JsonValue'
+      example: null
+      properties:
+        empty:
+          type: boolean
+          example: null
+        valueType:
           type: string
+          enum:
+          - ARRAY
+          - OBJECT
+          - STRING
+          - NUMBER
+          - "TRUE"
+          - "FALSE"
+          - "NULL"
+          example: null
+    JsonValue:
+      type: object
+      example: null
+      properties:
+        valueType:
+          type: string
+          enum:
+          - ARRAY
+          - OBJECT
+          - STRING
+          - NUMBER
+          - "TRUE"
+          - "FALSE"
+          - "NULL"
           example: null
     Permission:
       type: object
@@ -234,9 +311,6 @@ components:
           items:
             $ref: '#/components/schemas/Duty'
         target:
-          type: string
-          example: null
-        uid:
           type: string
           example: null
     Policy:
@@ -301,9 +375,6 @@ components:
           items:
             $ref: '#/components/schemas/Constraint'
         target:
-          type: string
-          example: null
-        uid:
           type: string
           example: null
     QuerySpecDto:

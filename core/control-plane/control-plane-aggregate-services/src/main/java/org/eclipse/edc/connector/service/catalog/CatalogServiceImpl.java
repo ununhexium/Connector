@@ -16,7 +16,7 @@
 package org.eclipse.edc.connector.service.catalog;
 
 import org.eclipse.edc.catalog.spi.Catalog;
-import org.eclipse.edc.catalog.spi.CatalogRequest;
+import org.eclipse.edc.catalog.spi.CatalogRequestMessage;
 import org.eclipse.edc.connector.spi.catalog.CatalogService;
 import org.eclipse.edc.spi.message.RemoteMessageDispatcherRegistry;
 import org.eclipse.edc.spi.query.QuerySpec;
@@ -33,13 +33,25 @@ public class CatalogServiceImpl implements CatalogService {
 
     @Override
     public CompletableFuture<Catalog> getByProviderUrl(String providerUrl, QuerySpec spec) {
-        var request = CatalogRequest.Builder.newInstance()
+        var request = CatalogRequestMessage.Builder.newInstance()
                 .protocol("ids-multipart")
                 .connectorId(providerUrl)
-                .connectorAddress(providerUrl)
+                .counterPartyAddress(providerUrl)
                 .querySpec(spec)
                 .build();
 
-        return dispatcher.send(Catalog.class, request, () -> null);
+        return dispatcher.send(Catalog.class, request);
+    }
+
+    @Override
+    public CompletableFuture<byte[]> request(String providerUrl, String protocol, QuerySpec querySpec) {
+        var request = CatalogRequestMessage.Builder.newInstance()
+                .protocol(protocol)
+                .connectorId(providerUrl)
+                .counterPartyAddress(providerUrl)
+                .querySpec(querySpec)
+                .build();
+
+        return dispatcher.send(byte[].class, request);
     }
 }

@@ -23,6 +23,7 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonPOJOBuilder;
 import org.eclipse.edc.spi.entity.StatefulEntity;
 import org.eclipse.edc.spi.types.domain.DataAddress;
+import org.eclipse.edc.spi.types.domain.callback.CallbackAddress;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -34,28 +35,31 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Predicate;
 
 import static java.lang.String.format;
 import static java.util.Collections.emptyList;
 import static java.util.Collections.unmodifiableList;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toSet;
-import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.CANCELLED;
+import static org.eclipse.edc.connector.transfer.spi.types.TransferProcess.Type.CONSUMER;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.COMPLETED;
+import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.COMPLETING;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.DEPROVISIONED;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.DEPROVISIONING;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.DEPROVISIONING_REQUESTED;
-import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.ENDED;
-import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.ERROR;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.INITIAL;
-import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.IN_PROGRESS;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.PROVISIONED;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.PROVISIONING;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.PROVISIONING_REQUESTED;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.REQUESTED;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.REQUESTING;
-import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.STREAMING;
-import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.UNSAVED;
+import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.STARTED;
+import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.STARTING;
+import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.SUSPENDED;
+import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.SUSPENDING;
+import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.TERMINATED;
+import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.TERMINATING;
 
 /**
  * Represents a data transfer process.
@@ -73,12 +77,11 @@ import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates
  * {@link TransferProcessStates#PROVISIONED} -&gt;
  * {@link TransferProcessStates#REQUESTING} -&gt;
  * {@link TransferProcessStates#REQUESTED} -&gt;
- * {@link TransferProcessStates#IN_PROGRESS} | {@link TransferProcessStates#STREAMING} -&gt;
+ * {@link TransferProcessStates#STARTED} -&gt;
  * {@link TransferProcessStates#COMPLETED} -&gt;
  * {@link TransferProcessStates#DEPROVISIONING} -&gt;
  * {@link TransferProcessStates#DEPROVISIONED} -&gt;
- * {@link TransferProcessStates#ENDED} -&gt;
- * {@link TransferProcessStates#CANCELLED} -&gt; optional, reachable from every state except ENDED, COMPLETED or ERROR
+ * {@link TransferProcessStates#TERMINATED} -&gt;
  * </pre>
  * <p>
  * <p>
@@ -88,12 +91,11 @@ import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates
  * {@link TransferProcessStates#INITIAL} -&gt;
  * {@link TransferProcessStates#PROVISIONING} -&gt;
  * {@link TransferProcessStates#PROVISIONED} -&gt;
- * {@link TransferProcessStates#IN_PROGRESS} | {@link TransferProcessStates#STREAMING} -&gt;
+ * {@link TransferProcessStates#STARTED} -&gt;
  * {@link TransferProcessStates#COMPLETED} -&gt;
  * {@link TransferProcessStates#DEPROVISIONING} -&gt;
  * {@link TransferProcessStates#DEPROVISIONED} -&gt;
- * {@link TransferProcessStates#ENDED} -&gt;
- * {@link TransferProcessStates#CANCELLED} -&gt; optional, reachable from every state except ENDED, COMPLETED or ERROR
+ * {@link TransferProcessStates#TERMINATED} -&gt;
  * </pre>
  * <p>
  */
@@ -101,14 +103,14 @@ import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates
 @JsonDeserialize(builder = TransferProcess.Builder.class)
 public class TransferProcess extends StatefulEntity<TransferProcess> {
 
-    private Type type = Type.CONSUMER;
+    private Type type = CONSUMER;
     private DataRequest dataRequest;
     private DataAddress contentDataAddress;
     private ResourceManifest resourceManifest;
     private ProvisionedResourceSet provisionedResourceSet;
     private List<DeprovisionedResource> deprovisionedResources = new ArrayList<>();
     private Map<String, String> properties = new HashMap<>();
-
+    private List<CallbackAddress> callbackAddresses = new ArrayList<>();
 
     private TransferProcess() {
     }
@@ -139,10 +141,6 @@ public class TransferProcess extends StatefulEntity<TransferProcess> {
 
     public void setContentDataAddress(DataAddress dataAddress) {
         contentDataAddress = dataAddress;
-    }
-
-    public void transitionInitial() {
-        transition(INITIAL, UNSAVED);
     }
 
     public void transitionProvisioning(ResourceManifest manifest) {
@@ -215,6 +213,10 @@ public class TransferProcess extends StatefulEntity<TransferProcess> {
         return Collections.unmodifiableMap(properties);
     }
 
+    public List<CallbackAddress> getCallbackAddresses() {
+        return Collections.unmodifiableList(callbackAddresses);
+    }
+
     public boolean deprovisionComplete() {
         return getResourcesToDeprovision().isEmpty();
     }
@@ -243,72 +245,83 @@ public class TransferProcess extends StatefulEntity<TransferProcess> {
 
     }
 
-    public void transitionInProgressOrStreaming() {
-        var dataRequest = getDataRequest();
-        if (dataRequest.getTransferType().isFinite()) {
-            transitionInProgress();
+    public void transitionStarting() {
+        if (type == CONSUMER) {
+            throw new IllegalStateException("Consumer processes have no STARTING state");
+        }
+
+        transition(STARTING, PROVISIONED, STARTING);
+    }
+
+    public boolean canBeStartedConsumer() {
+        return currentStateIsOneOf(STARTED, REQUESTED);
+    }
+
+    public void transitionStarted() {
+        if (type == CONSUMER) {
+            transition(STARTED, state -> canBeStartedConsumer());
         } else {
-            transitionStreaming();
+            transition(STARTED, STARTED, STARTING);
         }
     }
 
-    public void transitionInProgress() {
-        if (type == Type.CONSUMER) {
-            // the consumer must first transition to the request/ack states before in progress
-            transition(IN_PROGRESS, REQUESTED, IN_PROGRESS);
-        } else {
-            // the provider transitions from provisioned to in progress directly
-            transition(IN_PROGRESS, REQUESTED, PROVISIONED, IN_PROGRESS);
-        }
+    public boolean canBeCompleted() {
+        return currentStateIsOneOf(COMPLETING, STARTED);
     }
 
-    public void transitionStreaming() {
-        if (type == Type.CONSUMER) {
-            // the consumer must first transition to the request/ack states before in progress
-            transition(STREAMING, REQUESTED, STREAMING);
-        } else {
-            // the provider transitions from provisioned to in progress directly
-            transition(STREAMING, PROVISIONED, STREAMING);
-        }
+    public void transitionCompleting() {
+        transition(COMPLETING, state -> canBeCompleted());
     }
 
     public void transitionCompleted() {
-        // consumers are in REQUESTED state after sending a request to the provider, they can directly transition to COMPLETED when the transfer is complete
-        transition(COMPLETED, COMPLETED, IN_PROGRESS, REQUESTED, STREAMING);
+        transition(COMPLETED, COMPLETED, COMPLETING, STARTED);
+    }
+
+    public boolean canBeDeprovisioned() {
+        return currentStateIsOneOf(COMPLETED, TERMINATED, DEPROVISIONING);
     }
 
     public void transitionDeprovisioning() {
-        transition(DEPROVISIONING, COMPLETED, DEPROVISIONING);
+        transition(DEPROVISIONING, state -> canBeDeprovisioned());
     }
 
     public void transitionDeprovisioningRequested() {
         transition(DEPROVISIONING_REQUESTED, DEPROVISIONING);
     }
 
+    public void transitionDeprovisioned(String errorDetail) {
+        this.errorDetail = errorDetail;
+        transitionDeprovisioned();
+    }
+
     public void transitionDeprovisioned() {
         transition(DEPROVISIONED, DEPROVISIONING, DEPROVISIONING_REQUESTED, DEPROVISIONED);
     }
 
-    public void transitionCancelled() {
-        var forbiddenStates = List.of(ENDED, COMPLETED, ERROR);
-
-        var allowedStates = Arrays.stream(TransferProcessStates.values())
-                .filter(it -> !forbiddenStates.contains(it))
-                .toArray(TransferProcessStates[]::new);
-
-        transition(CANCELLED, allowedStates);
+    public boolean canBeTerminated() {
+        return currentStateIsOneOf(INITIAL, PROVISIONING, PROVISIONING_REQUESTED, PROVISIONED, REQUESTING, REQUESTED, STARTING, STARTED, COMPLETING, SUSPENDING, SUSPENDED, TERMINATING);
     }
 
-    public void transitionEnded() {
-        transition(ENDED, DEPROVISIONED);
-    }
-
-    public void transitionError(@Nullable String errorDetail) {
+    public void transitionTerminating(@Nullable String errorDetail) {
         this.errorDetail = errorDetail;
-        state = ERROR.code();
-        stateCount = 1;
-        updateStateTimestamp();
-        setModified();
+        transitionTerminating();
+    }
+
+    public void transitionTerminating() {
+        transition(TERMINATING, state -> canBeTerminated());
+    }
+
+    public void transitionTerminated() {
+        transition(TERMINATED, state -> canBeTerminated());
+    }
+
+    public boolean currentStateIsOneOf(TransferProcessStates... states) {
+        return Arrays.stream(states).map(TransferProcessStates::code).anyMatch(code -> code == state);
+    }
+
+    @JsonIgnore
+    public String getCorrelationId() {
+        return dataRequest.getId();
     }
 
     @Override
@@ -320,6 +333,7 @@ public class TransferProcess extends StatefulEntity<TransferProcess> {
                 .contentDataAddress(contentDataAddress)
                 .deprovisionedResources(deprovisionedResources)
                 .properties(properties)
+                .callbackAddresses(callbackAddresses)
                 .type(type);
         return copy(builder);
     }
@@ -355,11 +369,18 @@ public class TransferProcess extends StatefulEntity<TransferProcess> {
     }
 
     private void transition(TransferProcessStates end, TransferProcessStates... starts) {
-        if (end.code() < state) {
-            return; //we cannot transition "back"
-        }
+        transition(end, (state) -> Arrays.stream(starts).anyMatch(s -> s == state));
+    }
 
-        if (Arrays.stream(starts).noneMatch(s -> s.code() == state)) {
+    /**
+     * Transition to a given end state if the passed predicate test correctly. Increases the
+     * state count if transitioned to the same state and updates the state timestamp.
+     *
+     * @param end          The desired state.
+     * @param canTransitTo Tells if the negotiation can transit to that state.
+     */
+    private void transition(TransferProcessStates end, Predicate<TransferProcessStates> canTransitTo) {
+        if (!canTransitTo.test(TransferProcessStates.from(state))) {
             throw new IllegalStateException(format("Cannot transition from state %s to %s", TransferProcessStates.from(state), TransferProcessStates.from(end.code())));
         }
         transitionTo(end.code());
@@ -416,6 +437,11 @@ public class TransferProcess extends StatefulEntity<TransferProcess> {
             return this;
         }
 
+        public Builder callbackAddresses(List<CallbackAddress> callbackAddresses) {
+            entity.callbackAddresses = callbackAddresses;
+            return this;
+        }
+
         @Override
         public Builder self() {
             return this;
@@ -423,6 +449,8 @@ public class TransferProcess extends StatefulEntity<TransferProcess> {
 
         @Override
         public TransferProcess build() {
+            super.build();
+
             if (entity.resourceManifest != null) {
                 entity.resourceManifest.setTransferProcessId(entity.id);
             }
@@ -434,7 +462,16 @@ public class TransferProcess extends StatefulEntity<TransferProcess> {
             if (entity.dataRequest != null) {
                 entity.dataRequest.associateWithProcessId(entity.id);
             }
-            return super.build();
+
+            if (entity.state == 0) {
+                entity.transitionTo(INITIAL.code());
+            }
+
+            if (entity.callbackAddresses == null) {
+                entity.callbackAddresses = new ArrayList<>();
+            }
+
+            return entity;
         }
 
     }

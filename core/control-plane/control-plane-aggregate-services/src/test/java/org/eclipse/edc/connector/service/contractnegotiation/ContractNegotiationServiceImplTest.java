@@ -15,18 +15,19 @@
 package org.eclipse.edc.connector.service.contractnegotiation;
 
 import org.eclipse.edc.connector.contract.spi.negotiation.ConsumerContractNegotiationManager;
+import org.eclipse.edc.connector.contract.spi.negotiation.ProviderContractNegotiationManager;
 import org.eclipse.edc.connector.contract.spi.negotiation.store.ContractNegotiationStore;
 import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreement;
 import org.eclipse.edc.connector.contract.spi.types.command.CancelNegotiationCommand;
+import org.eclipse.edc.connector.contract.spi.types.command.ContractNegotiationCommand;
 import org.eclipse.edc.connector.contract.spi.types.command.DeclineNegotiationCommand;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiation;
-import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractOfferRequest;
-import org.eclipse.edc.connector.contract.spi.types.negotiation.command.ContractNegotiationCommand;
+import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractRequest;
+import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractRequestData;
 import org.eclipse.edc.connector.contract.spi.types.offer.ContractOffer;
 import org.eclipse.edc.policy.model.Policy;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.eclipse.edc.spi.response.StatusResult;
-import org.eclipse.edc.spi.types.domain.asset.Asset;
 import org.eclipse.edc.transaction.spi.NoopTransactionContext;
 import org.eclipse.edc.transaction.spi.TransactionContext;
 import org.jetbrains.annotations.NotNull;
@@ -35,14 +36,11 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentMatcher;
 
-import java.time.ZonedDateTime;
 import java.util.UUID;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationStates.CONFIRMED;
 import static org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationStates.REQUESTED;
-import static org.eclipse.edc.service.spi.result.ServiceFailure.Reason.CONFLICT;
 import static org.eclipse.edc.service.spi.result.ServiceFailure.Reason.NOT_FOUND;
 import static org.mockito.AdditionalMatchers.and;
 import static org.mockito.ArgumentMatchers.any;
@@ -57,14 +55,15 @@ import static org.mockito.Mockito.when;
 class ContractNegotiationServiceImplTest {
 
     private final ContractNegotiationStore store = mock(ContractNegotiationStore.class);
-    private final ConsumerContractNegotiationManager manager = mock(ConsumerContractNegotiationManager.class);
+    private final ConsumerContractNegotiationManager consumerManager = mock(ConsumerContractNegotiationManager.class);
+    private final ProviderContractNegotiationManager providerManager = mock(ProviderContractNegotiationManager.class);
     private final TransactionContext transactionContext = new NoopTransactionContext();
-    private final ContractNegotiationServiceImpl service = new ContractNegotiationServiceImpl(store, manager, transactionContext);
+    private final ContractNegotiationServiceImpl service = new ContractNegotiationServiceImpl(store, consumerManager, transactionContext);
 
     @Test
     void findById_filtersById() {
         var negotiation = createContractNegotiation("negotiationId");
-        when(store.find("negotiationId")).thenReturn(negotiation);
+        when(store.findById("negotiationId")).thenReturn(negotiation);
 
         var result = service.findbyId("negotiationId");
 
@@ -73,7 +72,7 @@ class ContractNegotiationServiceImplTest {
 
     @Test
     void findById_returnsNullIfNotFound() {
-        when(store.find("negotiationId")).thenReturn(null);
+        when(store.findById("negotiationId")).thenReturn(null);
 
         var result = service.findbyId("negotiationId");
 
@@ -94,7 +93,7 @@ class ContractNegotiationServiceImplTest {
     @ParameterizedTest
     @ValueSource(strings = {
             "contractAgreement.contractStartDate.begin=123455", //invalid path
-            "contractOffers.policy.uid=some-id", //invalid path
+            "contractOffers.policy.unexistent=some-id", //invalid path
             "contractOffers.policy.assetid=some-id", //wrong case
             "contractOffers.policy.=some-id", //incomplete path
     })
@@ -108,7 +107,6 @@ class ContractNegotiationServiceImplTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
-            "contractAgreement.contractStartDate=123455",
             "contractAgreement.assetId=test-asset",
             "contractAgreement.policy.assignee=123455",
     })
@@ -125,16 +123,16 @@ class ContractNegotiationServiceImplTest {
         var negotiation = createContractNegotiationBuilder("negotiationId")
                 .state(REQUESTED.code())
                 .build();
-        when(store.find("negotiationId")).thenReturn(negotiation);
+        when(store.findById("negotiationId")).thenReturn(negotiation);
 
         var result = service.getState("negotiationId");
 
-        assertThat(result).isEqualTo("REQUESTED");
+        assertThat(result).isEqualTo(REQUESTED.name());
     }
 
     @Test
     void getState_returnsNullIfNegotiationDoesNotExist() {
-        when(store.find("negotiationId")).thenReturn(null);
+        when(store.findById("negotiationId")).thenReturn(null);
 
         var result = service.getState("negotiationId");
 
@@ -147,33 +145,33 @@ class ContractNegotiationServiceImplTest {
         var negotiation = createContractNegotiation("negotiationId");
         negotiation.setContractAgreement(contractAgreement);
 
-        when(store.find("negotiationId")).thenReturn(negotiation);
+        when(store.findById("negotiationId")).thenReturn(negotiation);
 
         var result = service.getForNegotiation("negotiationId");
 
         assertThat(result).matches(it -> it.getId().equals("agreementId"));
-        verify(store).find(any());
+        verify(store).findById(any());
         verifyNoMoreInteractions(store);
     }
 
     @Test
     void getForNegotiation_negotiationNotFound() {
-        when(store.find("negotiationId")).thenReturn(null);
+        when(store.findById("negotiationId")).thenReturn(null);
         var result = service.getForNegotiation("negotiationId");
         assertThat(result).isNull();
-        verify(store).find(any());
+        verify(store).findById(any());
         verifyNoMoreInteractions(store);
     }
 
     @Test
     void getForNegotiation_negotiationNoAgreement() {
         var negotiation = createContractNegotiation("negotiationId");
-        when(store.find("negotiationId")).thenReturn(negotiation);
+        when(store.findById("negotiationId")).thenReturn(negotiation);
 
         var result = service.getForNegotiation("negotiationId");
 
         assertThat(result).isNull();
-        verify(store).find(any());
+        verify(store).findById(any());
         verifyNoMoreInteractions(store);
     }
 
@@ -189,19 +187,15 @@ class ContractNegotiationServiceImplTest {
     @Test
     void initiateNegotiation_callsManager() {
         var contractNegotiation = createContractNegotiation("negotiationId");
-        when(manager.initiate(isA(ContractOfferRequest.class))).thenReturn(StatusResult.success(contractNegotiation));
-        var request = ContractOfferRequest.Builder.newInstance()
+        when(consumerManager.initiate(isA(ContractRequest.class))).thenReturn(StatusResult.success(contractNegotiation));
+        var requestData = ContractRequestData.Builder.newInstance()
                 .connectorId("connectorId")
-                .connectorAddress("address")
+                .counterPartyAddress("address")
                 .protocol("protocol")
-                .contractOffer(ContractOffer.Builder.newInstance()
-                        .id(UUID.randomUUID().toString())
-                        .policy(Policy.Builder.newInstance().build())
-                        .asset(Asset.Builder.newInstance().id("test-asset").build())
-                        .contractStart(ZonedDateTime.now())
-                        .contractEnd(ZonedDateTime.now())
-                        .build())
+                .contractOffer(createContractOffer())
                 .build();
+
+        var request = ContractRequest.Builder.newInstance().requestData(requestData).build();
 
         var result = service.initiateNegotiation(request);
 
@@ -211,59 +205,47 @@ class ContractNegotiationServiceImplTest {
     @Test
     void cancel_shouldCancelNegotiationIfItCanBeCanceled() {
         var negotiation = createContractNegotiation("negotiationId");
-        when(store.find("negotiationId")).thenReturn(negotiation);
+        when(store.findById("negotiationId")).thenReturn(negotiation);
 
         var result = service.cancel("negotiationId");
 
         assertThat(result.succeeded()).isTrue();
         assertThat(result.getContent()).matches(it -> it.getId().equals("negotiationId"));
-        verify(manager).enqueueCommand(argThat(isCancelNegotiationCommandWithNegotiationId("negotiationId")));
+        verify(consumerManager).enqueueCommand(argThat(isCancelNegotiationCommandWithNegotiationId("negotiationId")));
     }
 
     @Test
     void cancel_shouldNotCancelNegationIfItDoesNotExist() {
-        when(store.find("negotiationId")).thenReturn(null);
+        when(store.findById("negotiationId")).thenReturn(null);
 
         var result = service.cancel("negotiationId");
 
         assertThat(result.succeeded()).isFalse();
         assertThat(result.reason()).isEqualTo(NOT_FOUND);
-        verifyNoInteractions(manager);
+        verifyNoInteractions(consumerManager);
     }
 
     @Test
     void decline_shouldSucceedIfManagerIsBeingAbleToDeclineIt() {
         var negotiation = createContractNegotiationBuilder("negotiationId").state(REQUESTED.code()).build();
-        when(store.find("negotiationId")).thenReturn(negotiation);
+        when(store.findById("negotiationId")).thenReturn(negotiation);
 
         var result = service.decline("negotiationId");
 
         assertThat(result.succeeded()).isTrue();
         assertThat(result.getContent()).matches(it -> it.getId().equals("negotiationId"));
-        verify(manager).enqueueCommand(and(isA(DeclineNegotiationCommand.class), argThat(it -> "negotiationId".equals(it.getNegotiationId()))));
+        verify(consumerManager).enqueueCommand(and(isA(DeclineNegotiationCommand.class), argThat(it -> "negotiationId".equals(it.getNegotiationId()))));
     }
 
     @Test
     void decline_shouldNotCancelNegationIfItDoesNotExist() {
-        when(store.find("negotiationId")).thenReturn(null);
+        when(store.findById("negotiationId")).thenReturn(null);
 
         var result = service.decline("negotiationId");
 
         assertThat(result.succeeded()).isFalse();
         assertThat(result.reason()).isEqualTo(NOT_FOUND);
-        verifyNoInteractions(manager);
-    }
-
-    @Test
-    void decline_shouldFailIfCannotBeDeclined() {
-        var negotiation = createContractNegotiationBuilder("negotiationId").state(CONFIRMED.code()).build();
-        when(store.find("negotiationId")).thenReturn(negotiation);
-
-        var result = service.decline("negotiationId");
-
-        assertThat(result.failed()).isTrue();
-        assertThat(result.reason()).isEqualTo(CONFLICT);
-        verifyNoInteractions(manager);
+        verifyNoInteractions(consumerManager);
     }
 
     @NotNull
@@ -279,8 +261,8 @@ class ContractNegotiationServiceImplTest {
     private ContractAgreement createContractAgreement(String agreementId) {
         return ContractAgreement.Builder.newInstance()
                 .id(agreementId)
-                .providerAgentId(UUID.randomUUID().toString())
-                .consumerAgentId(UUID.randomUUID().toString())
+                .providerId(UUID.randomUUID().toString())
+                .consumerId(UUID.randomUUID().toString())
                 .assetId(UUID.randomUUID().toString())
                 .policy(Policy.Builder.newInstance().build())
                 .build();
@@ -292,5 +274,13 @@ class ContractNegotiationServiceImplTest {
                 .counterPartyId(UUID.randomUUID().toString())
                 .counterPartyAddress("address")
                 .protocol("protocol");
+    }
+
+    private ContractOffer createContractOffer() {
+        return ContractOffer.Builder.newInstance()
+                .id(UUID.randomUUID().toString())
+                .policy(Policy.Builder.newInstance().build())
+                .assetId("test-asset")
+                .build();
     }
 }

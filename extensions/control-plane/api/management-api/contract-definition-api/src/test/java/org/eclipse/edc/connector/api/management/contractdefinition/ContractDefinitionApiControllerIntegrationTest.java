@@ -25,6 +25,8 @@ import org.eclipse.edc.connector.contract.spi.types.offer.ContractDefinition;
 import org.eclipse.edc.junit.annotations.ApiTest;
 import org.eclipse.edc.junit.extensions.EdcExtension;
 import org.eclipse.edc.spi.asset.AssetSelectorExpression;
+import org.eclipse.edc.spi.protocol.ProtocolWebhook;
+import org.eclipse.edc.spi.query.Criterion;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.eclipse.edc.spi.query.SortOrder;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,7 +36,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 import static io.restassured.RestAssured.given;
 import static io.restassured.http.ContentType.JSON;
@@ -42,6 +43,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.eclipse.edc.junit.testfixtures.TestUtils.getFreePort;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
+import static org.mockito.Mockito.mock;
 
 @ApiTest
 @ExtendWith(EdcExtension.class)
@@ -52,6 +54,7 @@ class ContractDefinitionApiControllerIntegrationTest {
 
     @BeforeEach
     void setUp(EdcExtension extension) {
+        extension.registerServiceMock(ProtocolWebhook.class, mock(ProtocolWebhook.class));
         extension.setConfiguration(Map.of(
                 "web.http.port", String.valueOf(getFreePort()),
                 "web.http.path", "/api",
@@ -63,7 +66,7 @@ class ContractDefinitionApiControllerIntegrationTest {
 
     @Test
     void getAllContractDefs(ContractDefinitionStore store) {
-        store.accept(createContractDefinition("definitionId"));
+        store.save(createContractDefinition("definitionId"));
 
         baseRequest()
                 .get("/contractdefinitions")
@@ -75,7 +78,7 @@ class ContractDefinitionApiControllerIntegrationTest {
 
     @Test
     void getAllContractDefs_withPaging(ContractDefinitionStore store) {
-        store.accept(createContractDefinition("definitionId"));
+        store.save(createContractDefinition("definitionId"));
 
         baseRequest()
                 .get("/contractdefinitions?offset=0&limit=15&sort=ASC")
@@ -95,7 +98,7 @@ class ContractDefinitionApiControllerIntegrationTest {
 
     @Test
     void queryAllContractDefs(ContractDefinitionStore store) {
-        store.accept(createContractDefinition("definitionId"));
+        store.save(createContractDefinition("definitionId"));
 
         baseRequest()
                 .contentType(JSON)
@@ -108,7 +111,7 @@ class ContractDefinitionApiControllerIntegrationTest {
 
     @Test
     void queryAllContractDefs_withPaging(ContractDefinitionStore store) {
-        store.accept(createContractDefinition("definitionId"));
+        store.save(createContractDefinition("definitionId"));
 
         baseRequest()
                 .contentType(JSON)
@@ -134,7 +137,7 @@ class ContractDefinitionApiControllerIntegrationTest {
 
     @Test
     void getSingleContractDef(ContractDefinitionStore store) {
-        store.accept(createContractDefinition("definitionId"));
+        store.save(createContractDefinition("definitionId"));
 
         baseRequest()
                 .get("/contractdefinitions/definitionId")
@@ -187,7 +190,7 @@ class ContractDefinitionApiControllerIntegrationTest {
 
     @Test
     void postContractDefinition_alreadyExists(ContractDefinitionStore store) {
-        store.accept(createContractDefinition("definitionId"));
+        store.save(createContractDefinition("definitionId"));
         var dto = createDto("definitionId");
 
         baseRequest()
@@ -201,7 +204,7 @@ class ContractDefinitionApiControllerIntegrationTest {
 
     @Test
     void deleteContractDefinition(ContractDefinitionStore store) {
-        store.accept(createContractDefinition("definitionId"));
+        store.save(createContractDefinition("definitionId"));
 
         baseRequest()
                 .contentType(JSON)
@@ -220,6 +223,56 @@ class ContractDefinitionApiControllerIntegrationTest {
                 .statusCode(404);
     }
 
+    @Test
+    void updateContractDefinition_whenExists(ContractDefinitionStore store) {
+
+        var cd = createContractDefinition("definitionId");
+        store.save(cd);
+
+        var dto = updateDto();
+
+        baseRequest()
+                .body(dto)
+                .contentType(JSON)
+                .put("/contractdefinitions/definitionId")
+                .then()
+                .statusCode(204);
+
+
+        assertThat(store.findAll(QuerySpec.max()))
+                .hasSize(1)
+                .allSatisfy((contractDefinition) -> {
+                    var assetSelector = AssetSelectorExpression.Builder.newInstance()
+                            .criteria(List.of(new Criterion("updatedLeft", "=", "updatedRight")))
+                            .build();
+
+                    var contractDefinitionUpdated = ContractDefinition.Builder.newInstance()
+                            .id("definitionId")
+                            .accessPolicyId(dto.getAccessPolicyId())
+                            .contractPolicyId(dto.getContractPolicyId())
+                            .selectorExpression(assetSelector)
+                            .createdAt(contractDefinition.getCreatedAt())
+                            .build();
+                    assertThat(contractDefinition).usingRecursiveComparison().isEqualTo(contractDefinitionUpdated);
+                });
+    }
+
+    @Test
+    void updateContractDefinition_whenNotExists(ContractDefinitionStore store) {
+
+        var dto = updateDto();
+
+        baseRequest()
+                .body(dto)
+                .contentType(JSON)
+                .put("/contractdefinitions/definitionId")
+                .then()
+                .statusCode(404);
+
+
+        assertThat(store.findAll(QuerySpec.max())).hasSize(0);
+    }
+
     private ContractDefinitionRequestDto createDto(String definitionId) {
         return ContractDefinitionRequestDto.Builder.newInstance()
                 .id(definitionId)
@@ -229,13 +282,21 @@ class ContractDefinitionApiControllerIntegrationTest {
                 .build();
     }
 
+    private ContractDefinitionRequestDto updateDto() {
+        return ContractDefinitionRequestDto.Builder.newInstance()
+                .contractPolicyId(UUID.randomUUID().toString())
+                .accessPolicyId(UUID.randomUUID().toString())
+                .criteria(List.of(CriterionDto.Builder.newInstance().operandLeft("updatedLeft").operator("=").operandRight("updatedRight").build()))
+                .build();
+    }
+
+
     private ContractDefinition createContractDefinition(String id) {
         return ContractDefinition.Builder.newInstance()
                 .id(id)
                 .accessPolicyId(UUID.randomUUID().toString())
                 .contractPolicyId(UUID.randomUUID().toString())
                 .selectorExpression(AssetSelectorExpression.SELECT_ALL)
-                .validity(TimeUnit.HOURS.toSeconds(1))
                 .build();
     }
 

@@ -27,15 +27,11 @@ dependencies {
     implementation(libs.jakarta.rsApi)
     implementation(libs.jersey.multipart)
 
+    testImplementation(project(":core:control-plane:catalog-core"))
     testImplementation(project(":core:control-plane:control-plane-core"))
+    testImplementation(project(":core:data-plane-selector:data-plane-selector-core"))
     testImplementation(project(":data-protocols:ids:ids-api-multipart-endpoint-v1"))
     testImplementation(project(":core:common:junit"))
 }
 
-publishing {
-    publications {
-        create<MavenPublication>(project.name) {
-            from(components["java"])
-        }
-    }
-}
+

@@ -16,11 +16,12 @@
 plugins {
     `java-library`
     id("application")
-    id("com.github.johnrengelman.shadow") version "7.1.2"
+    alias(libs.plugins.shadow)
 }
 
 dependencies {
     implementation(project(":core:control-plane:control-plane-core"))
+    implementation(project(":core:data-plane-selector:data-plane-selector-core"))
 
     implementation(project(":extensions:common:api:api-observability"))
 
@@ -45,4 +46,8 @@ application {
 tasks.withType<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar> {
     mergeServiceFiles()
     archiveFileName.set("consumer.jar")
+}
+
+edcBuild {
+    publish.set(false)
 }

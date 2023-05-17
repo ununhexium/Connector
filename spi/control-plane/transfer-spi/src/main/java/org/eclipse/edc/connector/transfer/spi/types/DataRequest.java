@@ -20,7 +20,6 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonPOJOBuilder;
 import org.eclipse.edc.spi.types.domain.DataAddress;
 import org.eclipse.edc.spi.types.domain.Polymorphic;
-import org.eclipse.edc.spi.types.domain.message.RemoteMessage;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -30,7 +29,7 @@ import java.util.Map;
  */
 @JsonTypeName("dataspaceconnector:datarequest")
 @JsonDeserialize(builder = DataRequest.Builder.class)
-public class DataRequest implements RemoteMessage, Polymorphic {
+public class DataRequest implements Polymorphic {
     private String id;
     private String processId;
     private String connectorAddress;
@@ -42,11 +41,6 @@ public class DataRequest implements RemoteMessage, Polymorphic {
 
     private boolean managedResources = true;
     private Map<String, String> properties = new HashMap<>();
-    private TransferType transferType;
-
-    private DataRequest() {
-        transferType = new TransferType();
-    }
 
     /**
      * The unique request id. Request ids are provided by the originating consumer and must be unique.
@@ -72,7 +66,6 @@ public class DataRequest implements RemoteMessage, Polymorphic {
     /**
      * The protocol over which the data request is sent to the provider connector.
      */
-    @Override
     public String getProtocol() {
         return protocol;
     }
@@ -80,7 +73,6 @@ public class DataRequest implements RemoteMessage, Polymorphic {
     /**
      * The protocol-specific address of the other connector.
      */
-    @Override
     public String getConnectorAddress() {
         return connectorAddress;
     }
@@ -133,10 +125,6 @@ public class DataRequest implements RemoteMessage, Polymorphic {
 
     public void updateDestination(DataAddress dataAddress) {
         dataDestination = dataAddress;
-    }
-
-    public TransferType getTransferType() {
-        return transferType;
     }
 
     @JsonPOJOBuilder(withPrefix = "")
@@ -217,16 +205,6 @@ public class DataRequest implements RemoteMessage, Polymorphic {
                 throw new IllegalArgumentException("A data destination or type must be specified");
             }
             return request;
-        }
-
-        public Builder transferType(TransferType transferType) {
-            request.transferType = transferType;
-            return this;
-        }
-
-        private Builder dataAddress(DataAddress dataAddress) {
-            request.dataDestination = dataAddress;
-            return this;
         }
 
     }

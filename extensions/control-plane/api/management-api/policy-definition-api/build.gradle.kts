@@ -22,17 +22,21 @@ dependencies {
     api(project(":spi:control-plane:contract-spi"))
     api(project(":spi:control-plane:control-plane-spi"))
     api(project(":spi:control-plane:policy-spi"))
+    api(project(":spi:common:json-ld-spi"))
     api(project(":spi:common:transaction-spi"))
+    api(project(":spi:common:policy-model"))
     implementation(project(":core:common:util"))
-    implementation(project(":spi:common:policy-model"))
     implementation(project(":extensions:common:api:api-core"))
     implementation(project(":extensions:common:api:management-api-configuration"))
+    implementation(project(":extensions:common:http:jersey-core"))
 
     implementation(libs.jakarta.rsApi)
 
     testImplementation(project(":core:control-plane:control-plane-core"))
+    testImplementation(project(":core:data-plane-selector:data-plane-selector-core"))
     testImplementation(project(":extensions:common:http"))
     testImplementation(project(":extensions:common:transaction:transaction-local"))
+    testImplementation(testFixtures(project(":extensions:common:http:jersey-core")))
     testImplementation(project(":core:common:junit"))
     testImplementation(libs.awaitility)
     testImplementation(libs.restAssured)
@@ -44,10 +48,4 @@ edcBuild {
     }
 }
 
-publishing {
-    publications {
-        create<MavenPublication>(project.name) {
-            from(components["java"])
-        }
-    }
-}
+

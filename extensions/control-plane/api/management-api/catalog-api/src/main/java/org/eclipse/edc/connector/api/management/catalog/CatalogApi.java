@@ -29,7 +29,7 @@ import org.eclipse.edc.catalog.spi.Catalog;
 import org.eclipse.edc.connector.api.management.catalog.model.CatalogRequestDto;
 
 @OpenAPIDefinition
-@Tag(name = "Catalog")
+@Tag(name = "Catalog (deprecated)")
 public interface CatalogApi {
 
     String PROVIDER_URL_NOT_NULL_MESSAGE = "providerUrl must not be null";

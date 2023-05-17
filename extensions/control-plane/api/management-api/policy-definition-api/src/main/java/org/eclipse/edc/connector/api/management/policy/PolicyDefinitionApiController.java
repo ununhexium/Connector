@@ -21,21 +21,24 @@ import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
+import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import org.eclipse.edc.api.model.IdResponseDto;
 import org.eclipse.edc.api.query.QuerySpecDto;
-import org.eclipse.edc.api.transformer.DtoTransformerRegistry;
 import org.eclipse.edc.connector.api.management.policy.model.PolicyDefinitionRequestDto;
 import org.eclipse.edc.connector.api.management.policy.model.PolicyDefinitionResponseDto;
+import org.eclipse.edc.connector.api.management.policy.model.PolicyDefinitionUpdateDto;
+import org.eclipse.edc.connector.api.management.policy.model.PolicyDefinitionUpdateWrapperDto;
 import org.eclipse.edc.connector.policy.spi.PolicyDefinition;
 import org.eclipse.edc.connector.spi.policydefinition.PolicyDefinitionService;
 import org.eclipse.edc.policy.model.Policy;
 import org.eclipse.edc.spi.monitor.Monitor;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.eclipse.edc.spi.result.Result;
+import org.eclipse.edc.transform.spi.TypeTransformerRegistry;
 import org.eclipse.edc.web.spi.exception.InvalidRequestException;
 import org.eclipse.edc.web.spi.exception.ObjectNotFoundException;
 
@@ -50,13 +53,14 @@ import static org.eclipse.edc.web.spi.exception.ServiceResultHandler.exceptionMa
 @Produces({ MediaType.APPLICATION_JSON })
 @Consumes({ MediaType.APPLICATION_JSON })
 @Path("/policydefinitions")
+@Deprecated(since = "milestone9")
 public class PolicyDefinitionApiController implements PolicyDefinitionApi {
 
     private final Monitor monitor;
     private final PolicyDefinitionService policyDefinitionService;
-    private final DtoTransformerRegistry transformerRegistry;
+    private final TypeTransformerRegistry transformerRegistry;
 
-    public PolicyDefinitionApiController(Monitor monitor, PolicyDefinitionService policyDefinitionService, DtoTransformerRegistry transformerRegistry) {
+    public PolicyDefinitionApiController(Monitor monitor, PolicyDefinitionService policyDefinitionService, TypeTransformerRegistry transformerRegistry) {
         this.monitor = monitor;
         this.policyDefinitionService = policyDefinitionService;
         this.transformerRegistry = transformerRegistry;
@@ -91,7 +95,7 @@ public class PolicyDefinitionApiController implements PolicyDefinitionApi {
 
     @POST
     @Override
-    public IdResponseDto createPolicy(PolicyDefinitionRequestDto requestDto) {
+    public IdResponseDto createPolicy(@Valid PolicyDefinitionRequestDto requestDto) {
         var transformResult = transformerRegistry.transform(requestDto, PolicyDefinition.class);
         if (transformResult.failed()) {
             throw new InvalidRequestException(transformResult.getFailureMessages());
@@ -116,6 +120,23 @@ public class PolicyDefinitionApiController implements PolicyDefinitionApi {
         monitor.debug(format("Attempting to delete policy with id %s", id));
         policyDefinitionService.deleteById(id).orElseThrow(exceptionMapper(PolicyDefinition.class, id));
         monitor.debug(format("Policy deleted %s", id));
+    }
+
+    @PUT
+    @Path("{policyId}")
+    @Override
+    public void updatePolicy(@PathParam("policyId") String policyId, @Valid PolicyDefinitionUpdateDto updatedPolicyDefinition) {
+        var wrapper = PolicyDefinitionUpdateWrapperDto.Builder.newInstance()
+                .policyId(policyId)
+                .updateRequest(updatedPolicyDefinition)
+                .build();
+        var transformResult = transformerRegistry.transform(wrapper, PolicyDefinition.class);
+        if (transformResult.failed()) {
+            throw new InvalidRequestException(transformResult.getFailureMessages());
+        }
+
+        policyDefinitionService.update(transformResult.getContent())
+                .orElseThrow(exceptionMapper(PolicyDefinition.class, policyId));
     }
 
     private List<PolicyDefinitionResponseDto> queryPolicies(QuerySpecDto querySpecDto) {

@@ -15,40 +15,43 @@
 package org.eclipse.edc.event.cloud.http;
 
 import org.eclipse.edc.spi.event.Event;
-import org.eclipse.edc.spi.event.EventPayload;
 
-class TestEvent extends Event<TestEvent.Payload> {
+class TestEvent extends Event {
+    private String data;
 
-    public static class Payload extends EventPayload {
-        private String data;
-
-        public String getData() {
-            return data;
-        }
-
-        public void setData(String data) {
-            this.data = data;
-        }
+    public String getData() {
+        return data;
     }
 
-    public static class Builder extends Event.Builder<TestEvent, Payload, Builder> {
+    public void setData(String data) {
+        this.data = data;
+    }
+
+    @Override
+    public String name() {
+        return "test";
+    }
+
+
+    public static class Builder {
+
+        private final TestEvent event;
+
+        private Builder() {
+            event = new TestEvent();
+        }
 
         public static Builder newInstance() {
             return new Builder();
         }
 
-        private Builder() {
-            super(new TestEvent(), new Payload());
-        }
-
         public Builder data(String data) {
-            this.event.payload.data = data;
+            event.data = data;
             return this;
         }
 
-        @Override
-        protected void validate() {
-
+        public TestEvent build() {
+            return event;
         }
     }
 

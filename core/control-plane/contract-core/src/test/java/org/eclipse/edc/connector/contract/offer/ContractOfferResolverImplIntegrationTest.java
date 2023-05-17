@@ -15,7 +15,7 @@
 
 package org.eclipse.edc.connector.contract.offer;
 
-import org.eclipse.edc.connector.contract.spi.offer.ContractDefinitionService;
+import org.eclipse.edc.connector.contract.spi.offer.ContractDefinitionResolver;
 import org.eclipse.edc.connector.contract.spi.offer.ContractOfferQuery;
 import org.eclipse.edc.connector.contract.spi.offer.ContractOfferResolver;
 import org.eclipse.edc.connector.contract.spi.types.offer.ContractDefinition;
@@ -36,6 +36,11 @@ import org.eclipse.edc.spi.types.domain.asset.Asset;
 import org.eclipse.edc.spi.types.domain.asset.AssetEntry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtensionContext;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.ArgumentsProvider;
+import org.junit.jupiter.params.provider.ArgumentsSource;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -44,6 +49,8 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static java.lang.Math.max;
+import static java.lang.Math.min;
 import static java.time.ZoneOffset.UTC;
 import static java.util.Collections.emptyMap;
 import static java.util.stream.IntStream.range;
@@ -61,10 +68,11 @@ import static org.mockito.Mockito.when;
  * This could be seen as se second part of the {@code ContractOfferServiceImplTest}, using the in-mem asset index
  */
 class ContractOfferResolverImplIntegrationTest {
+    private static final String PARTICIPANT_ID = "urn:connector:provider";
 
     private final Instant now = Instant.now();
     private final Clock clock = Clock.fixed(now, UTC);
-    private final ContractDefinitionService contractDefinitionService = mock(ContractDefinitionService.class);
+    private final ContractDefinitionResolver contractDefinitionResolver = mock(ContractDefinitionResolver.class);
     private final ParticipantAgentService agentService = mock(ParticipantAgentService.class);
     private final PolicyDefinitionStore policyStore = mock(PolicyDefinitionStore.class);
     private final Monitor monitor = mock(Monitor.class);
@@ -74,7 +82,7 @@ class ContractOfferResolverImplIntegrationTest {
     @BeforeEach
     void setUp() {
         assetIndex = new InMemoryAssetIndex();
-        contractOfferResolver = new ContractOfferResolverImpl(agentService, contractDefinitionService, assetIndex, policyStore, clock, monitor);
+        contractOfferResolver = new ContractOfferResolverImpl(PARTICIPANT_ID, agentService, contractDefinitionResolver, assetIndex, policyStore, clock, monitor);
     }
 
     @Test
@@ -92,7 +100,7 @@ class ContractOfferResolverImplIntegrationTest {
         var def3 = getContractDefBuilder("def3").selectorExpression(selectorFrom(assets3)).build();
 
         when(agentService.createFor(isA(ClaimToken.class))).thenReturn(new ParticipantAgent(emptyMap(), emptyMap()));
-        when(contractDefinitionService.definitionsFor(isA(ParticipantAgent.class))).thenAnswer(i -> Stream.of(def1, def2, def3));
+        when(contractDefinitionResolver.definitionsFor(isA(ParticipantAgent.class))).thenAnswer(i -> Stream.of(def1, def2, def3));
 
         when(policyStore.findById(any())).thenReturn(PolicyDefinition.Builder.newInstance().policy(Policy.Builder.newInstance().build()).build());
 
@@ -103,8 +111,33 @@ class ContractOfferResolverImplIntegrationTest {
 
         assertThat(contractOfferResolver.queryContractOffers(query)).hasSize(to - from);
         verify(agentService).createFor(isA(ClaimToken.class));
-        verify(contractDefinitionService, times(1)).definitionsFor(isA(ParticipantAgent.class));
+        verify(contractDefinitionResolver, times(1)).definitionsFor(isA(ParticipantAgent.class));
         verify(policyStore).findById("contract");
+    }
+
+    @ParameterizedTest
+    @ArgumentsSource(RangeProvider.class)
+    void should_return_offers_subset_when_across_multiple_contract_definitions(int from, int to) {
+
+        var assets1 = range(0, 10).mapToObj(i -> createAsset("asset-" + i).build()).collect(Collectors.toList());
+        var assets2 = range(10, 20).mapToObj(i -> createAsset("asset-" + i).build()).collect(Collectors.toList());
+        var maximumRange = max(0, (assets1.size() + assets2.size()) - from);
+        var requestedRange = to - from;
+
+        store(assets1);
+        store(assets2);
+
+        var contractDefinition1 = getContractDefBuilder("contract-definition-")
+                .selectorExpression(selectorFrom(assets1)).build();
+        var contractDefinition2 = getContractDefBuilder("contract-definition-")
+                .selectorExpression(selectorFrom(assets2)).build();
+
+        when(agentService.createFor(isA(ClaimToken.class))).thenReturn(new ParticipantAgent(emptyMap(), emptyMap()));
+        when(contractDefinitionResolver.definitionsFor(isA(ParticipantAgent.class))).thenAnswer(i -> Stream.of(contractDefinition1, contractDefinition2));
+        when(policyStore.findById(any())).thenReturn(PolicyDefinition.Builder.newInstance().policy(Policy.Builder.newInstance().build()).build());
+
+        var query = ContractOfferQuery.builder().range(new Range(from, to)).claimToken(ClaimToken.Builder.newInstance().build()).build();
+        assertThat(contractOfferResolver.queryContractOffers(query)).hasSize(min(requestedRange, maximumRange));
     }
 
     @Test
@@ -119,7 +152,7 @@ class ContractOfferResolverImplIntegrationTest {
         var def2 = getContractDefBuilder("def2").selectorExpression(selectorFrom(assets2)).build();
 
         when(agentService.createFor(isA(ClaimToken.class))).thenReturn(new ParticipantAgent(emptyMap(), emptyMap()));
-        when(contractDefinitionService.definitionsFor(isA(ParticipantAgent.class))).thenAnswer(i -> Stream.of(def1, def2));
+        when(contractDefinitionResolver.definitionsFor(isA(ParticipantAgent.class))).thenAnswer(i -> Stream.of(def1, def2));
         when(policyStore.findById(any())).thenReturn(PolicyDefinition.Builder.newInstance().policy(Policy.Builder.newInstance().build()).build());
 
         var from = 14;
@@ -129,7 +162,7 @@ class ContractOfferResolverImplIntegrationTest {
         // 4 definitions, 10 assets each = 40 offers total -> offset 20 ==> result = 20
         assertThat(contractOfferResolver.queryContractOffers(query)).hasSize(4);
         verify(agentService).createFor(isA(ClaimToken.class));
-        verify(contractDefinitionService).definitionsFor(isA(ParticipantAgent.class));
+        verify(contractDefinitionResolver).definitionsFor(isA(ParticipantAgent.class));
         verify(policyStore, atLeastOnce()).findById("contract");
     }
 
@@ -139,7 +172,7 @@ class ContractOfferResolverImplIntegrationTest {
                 .build());
 
         when(agentService.createFor(isA(ClaimToken.class))).thenReturn(new ParticipantAgent(emptyMap(), emptyMap()));
-        when(contractDefinitionService.definitionsFor(isA(ParticipantAgent.class))).thenAnswer(i -> contractDefinition);
+        when(contractDefinitionResolver.definitionsFor(isA(ParticipantAgent.class))).thenAnswer(i -> contractDefinition);
 
         when(policyStore.findById(any())).thenReturn(PolicyDefinition.Builder.newInstance().policy(Policy.Builder.newInstance().build()).build());
 
@@ -150,13 +183,13 @@ class ContractOfferResolverImplIntegrationTest {
         // 2 definitions, 10 assets each = 20 offers total -> offset of 25 is outside
         assertThat(contractOfferResolver.queryContractOffers(query)).isEmpty();
         verify(agentService).createFor(isA(ClaimToken.class));
-        verify(contractDefinitionService).definitionsFor(isA(ParticipantAgent.class));
+        verify(contractDefinitionResolver).definitionsFor(isA(ParticipantAgent.class));
         verify(policyStore, never()).findById("contract");
     }
 
     private void store(Collection<Asset> assets) {
         assets.stream().map(a -> new AssetEntry(a, DataAddress.Builder.newInstance().type("test-type").build()))
-                .forEach(assetIndex::accept);
+                .forEach(assetIndex::create);
     }
 
     private AssetSelectorExpression selectorFrom(Collection<Asset> assets1) {
@@ -170,12 +203,24 @@ class ContractOfferResolverImplIntegrationTest {
                 .id(id)
                 .accessPolicyId("access")
                 .contractPolicyId("contract")
-                .selectorExpression(AssetSelectorExpression.SELECT_ALL)
-                .validity(100);
+                .selectorExpression(AssetSelectorExpression.SELECT_ALL);
     }
 
     private Asset.Builder createAsset(String id) {
         return Asset.Builder.newInstance().id(id).name("test asset " + id);
     }
 
+    static class RangeProvider implements ArgumentsProvider {
+        @Override
+        public Stream<? extends Arguments> provideArguments(ExtensionContext context) {
+            return Stream.of(
+                    Arguments.of(0, 12),
+                    Arguments.of(8, 14),
+                    Arguments.of(0, 999),
+                    Arguments.of(4, 888),
+                    Arguments.of(3, 20),
+                    Arguments.of(23, 25)
+            );
+        }
+    }
 }

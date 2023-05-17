@@ -14,10 +14,13 @@
 
 package org.eclipse.edc.connector.service.asset;
 
+import org.eclipse.edc.connector.asset.spi.event.AssetCreated;
+import org.eclipse.edc.connector.asset.spi.event.AssetDeleted;
+import org.eclipse.edc.connector.asset.spi.event.AssetEvent;
+import org.eclipse.edc.connector.asset.spi.event.AssetUpdated;
+import org.eclipse.edc.connector.asset.spi.observe.AssetListener;
+import org.eclipse.edc.spi.event.EventEnvelope;
 import org.eclipse.edc.spi.event.EventRouter;
-import org.eclipse.edc.spi.event.asset.AssetCreated;
-import org.eclipse.edc.spi.event.asset.AssetDeleted;
-import org.eclipse.edc.spi.observe.asset.AssetListener;
 import org.eclipse.edc.spi.types.domain.asset.Asset;
 
 import java.time.Clock;
@@ -38,19 +41,34 @@ public class AssetEventListener implements AssetListener {
     public void created(Asset asset) {
         var event = AssetCreated.Builder.newInstance()
                 .assetId(asset.getId())
-                .at(clock.millis())
                 .build();
 
-        eventRouter.publish(event);
+        publish(event);
     }
 
     @Override
     public void deleted(Asset asset) {
         var event = AssetDeleted.Builder.newInstance()
                 .assetId(asset.getId())
-                .at(clock.millis())
                 .build();
 
-        eventRouter.publish(event);
+        publish(event);
+    }
+
+    @Override
+    public void updated(Asset asset) {
+        var event = AssetUpdated.Builder.newInstance()
+                .assetId(asset.getId())
+                .build();
+
+        publish(event);
+    }
+
+    private void publish(AssetEvent event) {
+        var envelope = EventEnvelope.Builder.newInstance()
+                .payload(event)
+                .at(clock.millis())
+                .build();
+        eventRouter.publish(envelope);
     }
 }

@@ -22,7 +22,6 @@ dependencies {
     api(project(":spi:common:web-spi"))
     implementation(project(":core:common:util"))
     implementation(project(":extensions:common:api:management-api-configuration"))
-    testImplementation(project(":data-protocols:ids"))
 
     implementation(libs.jakarta.rsApi)
     testImplementation(project(":core:common:junit"))
@@ -34,10 +33,4 @@ edcBuild {
     }
 }
 
-publishing {
-    publications {
-        create<MavenPublication>(project.name) {
-            from(components["java"])
-        }
-    }
-}
+

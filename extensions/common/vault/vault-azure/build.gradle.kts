@@ -25,17 +25,11 @@ dependencies {
     implementation(libs.azure.identity)
     implementation(libs.jakarta.rsApi)
 
-    testImplementation("com.microsoft.azure:azure-mgmt-resources:1.41.4")
+    testImplementation(libs.azure.mgmt.resources)
     testImplementation(libs.azure.resourcemanager)
     testImplementation(libs.azure.resourcemanager.keyvault)
 
     testImplementation(libs.mockito.inline)
 }
 
-publishing {
-    publications {
-        create<MavenPublication>(project.name) {
-            from(components["java"])
-        }
-    }
-}
+

@@ -22,7 +22,7 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Binds and sends remote messages using a {@link RemoteMessageDispatcher}.
  * The registry may support multiple protocols and communication patterns, for example HTTP-based and classic message-oriented variants. Consequently, some protocols may be
- * non-blocking, others my be synchronous request-response.
+ * non-blocking, others may be synchronous request-response.
  */
 @ExtensionPoint
 public interface RemoteMessageDispatcherRegistry {
@@ -37,9 +37,8 @@ public interface RemoteMessageDispatcherRegistry {
      *
      * @param responseType the expected response type
      * @param message      the message
-     * @param context      the message context
      * @return a future that can be used to retrieve the response when the operation has completed
      */
-    <T> CompletableFuture<T> send(Class<T> responseType, RemoteMessage message, MessageContext context);
+    <T> CompletableFuture<T> send(Class<T> responseType, RemoteMessage message);
 
 }

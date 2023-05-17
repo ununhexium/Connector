@@ -16,18 +16,20 @@ package org.eclipse.edc.connector.api.management.transferprocess;
 
 import org.eclipse.edc.api.model.IdResponseDto;
 import org.eclipse.edc.api.query.QuerySpecDto;
-import org.eclipse.edc.api.transformer.DtoTransformerRegistry;
+import org.eclipse.edc.connector.api.management.transferprocess.model.TerminateTransferDto;
 import org.eclipse.edc.connector.api.management.transferprocess.model.TransferProcessDto;
 import org.eclipse.edc.connector.api.management.transferprocess.model.TransferRequestDto;
 import org.eclipse.edc.connector.spi.transferprocess.TransferProcessService;
 import org.eclipse.edc.connector.transfer.spi.types.DataRequest;
 import org.eclipse.edc.connector.transfer.spi.types.TransferProcess;
+import org.eclipse.edc.connector.transfer.spi.types.TransferRequest;
 import org.eclipse.edc.service.spi.result.ServiceResult;
 import org.eclipse.edc.spi.EdcException;
 import org.eclipse.edc.spi.monitor.Monitor;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.eclipse.edc.spi.result.Result;
 import org.eclipse.edc.spi.types.domain.DataAddress;
+import org.eclipse.edc.transform.spi.TypeTransformerRegistry;
 import org.eclipse.edc.web.spi.exception.InvalidRequestException;
 import org.eclipse.edc.web.spi.exception.ObjectConflictException;
 import org.eclipse.edc.web.spi.exception.ObjectNotFoundException;
@@ -56,7 +58,7 @@ import static org.mockito.Mockito.when;
 
 class TransferProcessApiControllerTest {
     private final TransferProcessService service = mock(TransferProcessService.class);
-    private final DtoTransformerRegistry transformerRegistry = mock(DtoTransformerRegistry.class);
+    private final TypeTransformerRegistry transformerRegistry = mock(TypeTransformerRegistry.class);
     private TransferProcessApiController controller;
 
     @BeforeEach
@@ -210,7 +212,7 @@ class TransferProcessApiControllerTest {
     void cancelTransfer() {
         var transferProcess = transferProcess();
 
-        when(service.cancel(transferProcess.getId())).thenReturn(ServiceResult.success(transferProcess));
+        when(service.terminate(eq(transferProcess.getId()), any())).thenReturn(ServiceResult.success(transferProcess));
 
         controller.cancelTransferProcess(transferProcess.getId());
     }
@@ -219,7 +221,7 @@ class TransferProcessApiControllerTest {
     void cancelTransfer_conflict() {
         var transferProcess = transferProcess();
 
-        when(service.cancel(transferProcess.getId())).thenReturn(ServiceResult.conflict("conflict"));
+        when(service.terminate(eq(transferProcess.getId()), any())).thenReturn(ServiceResult.conflict("conflict"));
 
         assertThatThrownBy(() -> controller.cancelTransferProcess(transferProcess.getId())).isInstanceOf(ObjectConflictException.class);
     }
@@ -228,34 +230,64 @@ class TransferProcessApiControllerTest {
     void cancelTransfer_NotFound() {
         var transferProcess = transferProcess();
 
-        when(service.cancel(transferProcess.getId())).thenReturn(ServiceResult.notFound("not found"));
+        when(service.terminate(eq(transferProcess.getId()), any())).thenReturn(ServiceResult.notFound("not found"));
 
         assertThatThrownBy(() -> controller.cancelTransferProcess(transferProcess.getId())).isInstanceOf(ObjectNotFoundException.class);
     }
 
     @Test
+    void terminateTransfer() {
+        var transferProcess = transferProcess();
+
+        when(service.terminate(eq(transferProcess.getId()), any())).thenReturn(ServiceResult.success(transferProcess));
+
+        controller.terminateTransferProcess(transferProcess.getId(), TerminateTransferDto.Builder.newInstance().build());
+    }
+
+    @Test
+    void terminateTransfer_conflict() {
+        var transferProcess = transferProcess();
+
+        when(service.terminate(eq(transferProcess.getId()), any())).thenReturn(ServiceResult.conflict("conflict"));
+
+        assertThatThrownBy(() -> controller.terminateTransferProcess(transferProcess.getId(), TerminateTransferDto.Builder.newInstance().build())).isInstanceOf(ObjectConflictException.class);
+    }
+
+    @Test
+    void terminateTransfer_NotFound() {
+        var transferProcess = transferProcess();
+
+        when(service.terminate(eq(transferProcess.getId()), any())).thenReturn(ServiceResult.notFound("not found"));
+
+        assertThatThrownBy(() -> controller.terminateTransferProcess(transferProcess.getId(), TerminateTransferDto.Builder.newInstance().build())).isInstanceOf(ObjectNotFoundException.class);
+    }
+
+    @Test
     void initiateTransfer() {
-        var transferReq = transferRequestDto();
-        String processId = "processId";
-        DataRequest request = dataRequest(transferReq);
-        when(transformerRegistry.transform(isA(TransferRequestDto.class), eq(DataRequest.class))).thenReturn(Result.success(request));
-        when(service.initiateTransfer(any())).thenReturn(ServiceResult.success(processId));
+        var transferReqDto = transferRequestDto();
+        var processId = "processId";
+        var tr = transferRequest(transferReqDto);
+        var dr = tr.getDataRequest();
+        var transferProcess = TransferProcess.Builder.newInstance().id(processId).build();
 
-        var result = controller.initiateTransfer(transferReq);
+        when(transformerRegistry.transform(isA(TransferRequestDto.class), eq(TransferRequest.class))).thenReturn(Result.success(tr));
+        when(service.initiateTransfer(any())).thenReturn(ServiceResult.success(transferProcess));
 
-        var dataRequestCaptor = ArgumentCaptor.forClass(DataRequest.class);
+        var result = controller.initiateTransfer(transferReqDto);
+
+        var dataRequestCaptor = ArgumentCaptor.forClass(TransferRequest.class);
         verify(service).initiateTransfer(dataRequestCaptor.capture());
-        DataRequest dataRequest = dataRequestCaptor.getValue();
-        assertThat(dataRequest.getAssetId()).isEqualTo(request.getAssetId());
-        assertThat(dataRequest.getConnectorAddress()).isEqualTo(request.getConnectorAddress());
-        assertThat(dataRequest.getConnectorId()).isEqualTo(request.getConnectorId());
-        assertThat(dataRequest.getDataDestination()).isEqualTo(request.getDataDestination());
-        assertThat(dataRequest.getDestinationType()).isEqualTo(request.getDataDestination().getType());
-        assertThat(dataRequest.getContractId()).isEqualTo(request.getContractId());
-        assertThat(dataRequest.getProtocol()).isEqualTo(request.getProtocol());
-        assertThat(dataRequest.getProperties()).isEqualTo(request.getProperties());
-        assertThat(dataRequest.getTransferType()).isEqualTo(request.getTransferType());
-        assertThat(dataRequest.isManagedResources()).isEqualTo(request.isManagedResources());
+        TransferRequest transferRequest = dataRequestCaptor.getValue();
+        DataRequest dataRequest = transferRequest.getDataRequest();
+        assertThat(dataRequest.getAssetId()).isEqualTo(dr.getAssetId());
+        assertThat(dataRequest.getConnectorAddress()).isEqualTo(dr.getConnectorAddress());
+        assertThat(dataRequest.getConnectorId()).isEqualTo(dr.getConnectorId());
+        assertThat(dataRequest.getDataDestination()).isEqualTo(dr.getDataDestination());
+        assertThat(dataRequest.getDestinationType()).isEqualTo(dr.getDataDestination().getType());
+        assertThat(dataRequest.getContractId()).isEqualTo(dr.getContractId());
+        assertThat(dataRequest.getProtocol()).isEqualTo(dr.getProtocol());
+        assertThat(dataRequest.getProperties()).isEqualTo(dr.getProperties());
+        assertThat(dataRequest.isManagedResources()).isEqualTo(dr.isManagedResources());
 
         assertThat(result.getId()).isEqualTo(processId);
         assertThat(result).isInstanceOf(IdResponseDto.class);
@@ -265,15 +297,15 @@ class TransferProcessApiControllerTest {
 
     @Test
     void initiateTransfer_failureTransformingRequest() {
-        when(transformerRegistry.transform(isA(TransferRequestDto.class), eq(DataRequest.class))).thenReturn(Result.failure("failure"));
+        when(transformerRegistry.transform(isA(TransferRequestDto.class), eq(TransferRequest.class))).thenReturn(Result.failure("failure"));
 
         assertThatThrownBy(() -> controller.initiateTransfer(transferRequestDto())).isInstanceOf(InvalidRequestException.class);
     }
 
     @Test
     void initiateTransfer_failure() {
-        var dataRequest = dataRequest();
-        when(transformerRegistry.transform(isA(TransferRequestDto.class), eq(DataRequest.class))).thenReturn(Result.success(dataRequest));
+        var transferRequest = transferRequest();
+        when(transformerRegistry.transform(isA(TransferRequestDto.class), eq(TransferRequest.class))).thenReturn(Result.success(transferRequest));
         when(service.initiateTransfer(any())).thenReturn(ServiceResult.conflict("failure"));
 
         assertThatThrownBy(() -> controller.initiateTransfer(transferRequestDto())).isInstanceOf(EdcException.class);
@@ -282,7 +314,7 @@ class TransferProcessApiControllerTest {
     @ParameterizedTest
     @ArgumentsSource(InvalidRequestParams.class)
     void initiateTransfer_invalidRequest(String connectorAddress, String contractId, String assetId, String protocol, DataAddress destination) {
-        when(transformerRegistry.transform(isA(TransferRequestDto.class), eq(DataRequest.class))).thenReturn(Result.failure("failure"));
+        when(transformerRegistry.transform(isA(TransferRequestDto.class), eq(TransferRequest.class))).thenReturn(Result.failure("failure"));
         var rq = TransferRequestDto.Builder.newInstance()
                 .connectorAddress(connectorAddress)
                 .contractId(contractId)
@@ -311,6 +343,19 @@ class TransferProcessApiControllerTest {
                 .build();
     }
 
+    private TransferRequest transferRequest() {
+        return TransferRequest.Builder.newInstance()
+                .dataRequest(dataRequest())
+                .build();
+    }
+
+    private TransferRequest transferRequest(TransferRequestDto dto) {
+        return TransferRequest.Builder.newInstance()
+                .dataRequest(dataRequest(dto))
+                .build();
+    }
+
+
     private TransferProcessDto transferProcessDto(TransferProcess transferProcess) {
         return TransferProcessDto.Builder.newInstance().id(transferProcess.getId()).build();
     }
@@ -330,7 +375,6 @@ class TransferProcessApiControllerTest {
                 .dataDestination(dto.getDataDestination())
                 .connectorAddress(dto.getConnectorAddress())
                 .contractId(dto.getContractId())
-                .transferType(dto.getTransferType())
                 .destinationType(dto.getDataDestination().getType())
                 .properties(dto.getProperties())
                 .managedResources(dto.isManagedResources())

@@ -14,14 +14,18 @@
 
 package org.eclipse.edc.connector.service.policydefinition;
 
+import org.eclipse.edc.connector.dataplane.selector.spi.store.DataPlaneInstanceStore;
 import org.eclipse.edc.connector.policy.spi.PolicyDefinition;
+import org.eclipse.edc.connector.policy.spi.event.PolicyDefinitionCreated;
+import org.eclipse.edc.connector.policy.spi.event.PolicyDefinitionDeleted;
+import org.eclipse.edc.connector.policy.spi.event.PolicyDefinitionEvent;
+import org.eclipse.edc.connector.policy.spi.event.PolicyDefinitionUpdated;
 import org.eclipse.edc.connector.spi.policydefinition.PolicyDefinitionService;
 import org.eclipse.edc.junit.extensions.EdcExtension;
 import org.eclipse.edc.policy.model.Policy;
 import org.eclipse.edc.spi.event.EventRouter;
 import org.eclipse.edc.spi.event.EventSubscriber;
-import org.eclipse.edc.spi.event.policydefinition.PolicyDefinitionCreated;
-import org.eclipse.edc.spi.event.policydefinition.PolicyDefinitionDeleted;
+import org.eclipse.edc.spi.protocol.ProtocolWebhook;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,9 +33,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import java.util.Map;
 
 import static org.awaitility.Awaitility.await;
+import static org.eclipse.edc.junit.matchers.EventEnvelopeMatcher.isEnvelopeOf;
 import static org.eclipse.edc.junit.testfixtures.TestUtils.getFreePort;
-import static org.mockito.ArgumentMatchers.isA;
-import static org.mockito.Mockito.doAnswer;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
@@ -42,6 +46,8 @@ public class PolicyDefinitionEventDispatchTest {
 
     @BeforeEach
     void setUp(EdcExtension extension) {
+        extension.registerServiceMock(ProtocolWebhook.class, mock(ProtocolWebhook.class));
+        extension.registerServiceMock(DataPlaneInstanceStore.class, mock(DataPlaneInstanceStore.class));
         extension.setConfiguration(Map.of(
                 "web.http.port", String.valueOf(getFreePort()),
                 "web.http.path", "/api")
@@ -49,24 +55,25 @@ public class PolicyDefinitionEventDispatchTest {
     }
 
     @Test
-    void shouldDispatchEventOnPolicyDefinitionCreationAndDeletion(PolicyDefinitionService service, EventRouter eventRouter) throws InterruptedException {
-
-        doAnswer(i -> null).when(eventSubscriber).on(isA(PolicyDefinitionCreated.class));
-
-        doAnswer(i -> null).when(eventSubscriber).on(isA(PolicyDefinitionDeleted.class));
-
-        eventRouter.register(eventSubscriber);
+    void shouldDispatchEventOnPolicyDefinitionCreationAndDeletionAndUpdate(PolicyDefinitionService service, EventRouter eventRouter) {
+        eventRouter.register(PolicyDefinitionEvent.class, eventSubscriber);
         var policyDefinition = PolicyDefinition.Builder.newInstance().policy(Policy.Builder.newInstance().build()).build();
 
         service.create(policyDefinition);
         await().untilAsserted(() -> {
-            verify(eventSubscriber).on(isA(PolicyDefinitionCreated.class));
+            verify(eventSubscriber).on(argThat(isEnvelopeOf(PolicyDefinitionCreated.class)));
+        });
+
+        service.update(policyDefinition);
+        await().untilAsserted(() -> {
+            verify(eventSubscriber).on(argThat(isEnvelopeOf(PolicyDefinitionUpdated.class)));
         });
 
         service.deleteById(policyDefinition.getUid());
         await().untilAsserted(() -> {
-            verify(eventSubscriber).on(isA(PolicyDefinitionDeleted.class));
+            verify(eventSubscriber).on(argThat(isEnvelopeOf(PolicyDefinitionDeleted.class)));
 
         });
     }
+
 }
