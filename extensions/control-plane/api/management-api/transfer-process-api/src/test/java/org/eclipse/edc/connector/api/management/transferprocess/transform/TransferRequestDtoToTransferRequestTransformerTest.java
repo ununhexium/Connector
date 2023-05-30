@@ -15,12 +15,12 @@
 
 package org.eclipse.edc.connector.api.management.transferprocess.transform;
 
-import org.eclipse.edc.api.model.CallbackAddressDto;
 import org.eclipse.edc.api.transformer.DtoTransformer;
 import org.eclipse.edc.connector.api.management.transferprocess.model.TransferRequestDto;
 import org.eclipse.edc.connector.transfer.spi.types.DataRequest;
 import org.eclipse.edc.connector.transfer.spi.types.TransferRequest;
 import org.eclipse.edc.spi.types.domain.DataAddress;
+import org.eclipse.edc.spi.types.domain.callback.CallbackAddress;
 import org.eclipse.edc.transform.spi.TransformerContext;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
@@ -74,6 +74,8 @@ class TransferRequestDtoToTransferRequestTransformerTest {
         assertThat(dataRequest.isManagedResources()).isEqualTo(transferReq.isManagedResources());
 
         assertThat(transferRequest.getCallbackAddresses()).hasSize(transferReq.getCallbackAddresses().size());
+        assertThat(transferRequest.getPrivateProperties()).isEqualTo(transferReq.getPrivateProperties());
+
     }
 
     @NotNull
@@ -85,8 +87,9 @@ class TransferRequestDtoToTransferRequestTransformerTest {
                 .protocol("test-protocol")
                 .dataDestination(DataAddress.Builder.newInstance().type("test-type").build())
                 .connectorId(UUID.randomUUID().toString())
-                .callbackAddresses(List.of(CallbackAddressDto.Builder.newInstance().uri("local://test").build()))
-                .properties(Map.of("key1", "value1"));
+                .callbackAddresses(List.of(CallbackAddress.Builder.newInstance().uri("local://test").build()))
+                .properties(Map.of("key1", "value1"))
+                .privateProperties(Map.of("privateKey", "privateValue"));
     }
 
 }

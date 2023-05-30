@@ -16,33 +16,45 @@ package org.eclipse.edc.test.e2e.managementapi;
 
 import io.restassured.specification.RequestSpecification;
 import jakarta.json.Json;
+import jakarta.json.JsonArrayBuilder;
 import org.eclipse.edc.connector.transfer.spi.store.TransferProcessStore;
 import org.eclipse.edc.connector.transfer.spi.types.DataRequest;
 import org.eclipse.edc.connector.transfer.spi.types.TransferProcess;
 import org.eclipse.edc.junit.annotations.EndToEndTest;
 import org.eclipse.edc.spi.types.domain.DataAddress;
+import org.eclipse.edc.spi.types.domain.callback.CallbackAddress;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.UUID;
 
 import static io.restassured.RestAssured.given;
 import static io.restassured.http.ContentType.JSON;
+import static jakarta.json.Json.createObjectBuilder;
+import static java.util.Collections.emptySet;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.COMPLETED;
+import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.CONTEXT;
 import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.ID;
 import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.TYPE;
 import static org.eclipse.edc.spi.CoreConstants.EDC_NAMESPACE;
+import static org.eclipse.edc.spi.CoreConstants.EDC_PREFIX;
+import static org.eclipse.edc.spi.types.domain.callback.CallbackAddress.EVENTS;
+import static org.eclipse.edc.spi.types.domain.callback.CallbackAddress.IS_TRANSACTIONAL;
+import static org.eclipse.edc.spi.types.domain.callback.CallbackAddress.URI;
 import static org.hamcrest.CoreMatchers.anyOf;
 import static org.hamcrest.Matchers.is;
 
 @EndToEndTest
 public class TransferProcessApiEndToEndTest extends BaseManagementApiEndToEndTest {
 
+    public static final String BASE_PATH = "/management/v2/transferprocesses";
+
     @Test
     void getAll() {
         getStore().updateOrCreate(createTransferProcess("tp1"));
         getStore().updateOrCreate(createTransferProcess("tp2"));
-        var requestBody = Json.createObjectBuilder().build();
+        var requestBody = createObjectBuilder().build();
 
         baseRequest()
                 .contentType(JSON)
@@ -83,18 +95,20 @@ public class TransferProcessApiEndToEndTest extends BaseManagementApiEndToEndTes
 
     @Test
     void create() {
-        var requestBody = Json.createObjectBuilder()
-                .add(TYPE, EDC_NAMESPACE + "TransferRequestDto")
-                .add(EDC_NAMESPACE + "dataDestination", Json.createObjectBuilder()
-                        .add(TYPE, EDC_NAMESPACE + "DataAddress")
-                        .add(EDC_NAMESPACE + "type", "HttpData")
-                        .add(EDC_NAMESPACE + "properties", Json.createObjectBuilder()
-                                .add(EDC_NAMESPACE + "baseUrl", "http://any")
+        var requestBody = createObjectBuilder()
+                .add(CONTEXT, createObjectBuilder().add(EDC_PREFIX, EDC_NAMESPACE))
+                .add(TYPE, "TransferRequestDto")
+                .add("dataDestination", createObjectBuilder()
+                        .add(TYPE, "DataAddress")
+                        .add("type", "HttpData")
+                        .add("properties", createObjectBuilder()
+                                .add("baseUrl", "http://any")
                                 .build())
                         .build()
                 )
-                .add(EDC_NAMESPACE + "protocol", "dataspace-protocol-http")
-                .add(EDC_NAMESPACE + "assetId", "assetId")
+                .add("callbackAddresses", createCallbackAddress())
+                .add("protocol", "dataspace-protocol-http")
+                .add("assetId", "assetId")
                 .build();
 
         var id = baseRequest()
@@ -127,7 +141,7 @@ public class TransferProcessApiEndToEndTest extends BaseManagementApiEndToEndTes
 
         baseRequest()
                 .contentType(JSON)
-                .body(Json.createObjectBuilder().build())
+                .body(createObjectBuilder().build())
                 .post("/" + id + "/terminate")
                 .then()
                 .statusCode(204);
@@ -144,6 +158,7 @@ public class TransferProcessApiEndToEndTest extends BaseManagementApiEndToEndTes
     private TransferProcess.Builder createTransferProcessBuilder(String id) {
         return TransferProcess.Builder.newInstance()
                 .id(id)
+                .callbackAddresses(List.of(CallbackAddress.Builder.newInstance().uri("http://any").events(emptySet()).build()))
                 .dataRequest(DataRequest.Builder.newInstance()
                         .id(UUID.randomUUID().toString())
                         .dataDestination(DataAddress.Builder.newInstance()
@@ -154,9 +169,18 @@ public class TransferProcessApiEndToEndTest extends BaseManagementApiEndToEndTes
                         .build());
     }
 
+    private JsonArrayBuilder createCallbackAddress() {
+        var builder = Json.createArrayBuilder();
+        return builder.add(createObjectBuilder()
+                .add(IS_TRANSACTIONAL, false)
+                .add(URI, "http://test.local/")
+                .add(EVENTS, Json.createArrayBuilder().build()));
+    }
+
     private RequestSpecification baseRequest() {
         return given()
-                .baseUri("http://localhost:" + PORT + "/management/v2/transferprocesses")
+                .port(PORT)
+                .basePath(BASE_PATH)
                 .when();
     }
 }

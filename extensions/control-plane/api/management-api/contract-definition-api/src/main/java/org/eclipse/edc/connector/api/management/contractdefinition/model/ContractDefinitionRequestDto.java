@@ -16,25 +16,28 @@ package org.eclipse.edc.connector.api.management.contractdefinition.model;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonPOJOBuilder;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotNull;
+import org.eclipse.edc.api.model.BaseDto;
 import org.eclipse.edc.api.model.CriterionDto;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.ID;
 import static org.eclipse.edc.spi.CoreConstants.EDC_NAMESPACE;
 
-public class ContractDefinitionRequestDto {
+public class ContractDefinitionRequestDto extends BaseDto {
 
     // constants for JSON-LD transformation
     public static final String CONTRACT_DEFINITION_TYPE = EDC_NAMESPACE + "ContractDefinition";
     public static final String CONTRACT_DEFINITION_ACCESSPOLICY_ID = EDC_NAMESPACE + "accessPolicyId";
     public static final String CONTRACT_DEFINITION_CONTRACTPOLICY_ID = EDC_NAMESPACE + "contractPolicyId";
-    public static final String CONTRACT_DEFINITION_CRITERIA = EDC_NAMESPACE + "criteria";
+    public static final String CONTRACT_DEFINITION_ASSETS_SELECTOR = EDC_NAMESPACE + "assetsSelector";
     /**
      * Default validity is set to one year.
      */
@@ -43,10 +46,11 @@ public class ContractDefinitionRequestDto {
     @NotNull(message = "contractPolicyId cannot be null")
     protected String contractPolicyId;
     @Valid
-    @NotNull(message = "criteria cannot be null")
-    protected List<CriterionDto> criteria = new ArrayList<>();
+    @NotNull(message = "assetsSelector cannot be null")
+    protected List<CriterionDto> assetsSelector = new ArrayList<>();
 
     //this cannot be non-null, because that would break backwards compatibility with the old API
+    @JsonProperty(value = ID)
     protected String id;
 
     protected ContractDefinitionRequestDto() {
@@ -60,8 +64,8 @@ public class ContractDefinitionRequestDto {
         return contractPolicyId;
     }
 
-    public List<CriterionDto> getCriteria() {
-        return criteria;
+    public List<CriterionDto> getAssetsSelector() {
+        return assetsSelector;
     }
 
     @AssertTrue(message = "id must be either be null or not blank, and it cannot contain the ':' character")
@@ -101,8 +105,8 @@ public class ContractDefinitionRequestDto {
             return self();
         }
 
-        public Builder criteria(List<CriterionDto> criteria) {
-            dto.criteria = criteria;
+        public Builder assetsSelector(List<CriterionDto> criteria) {
+            dto.assetsSelector = criteria;
             return self();
         }
 

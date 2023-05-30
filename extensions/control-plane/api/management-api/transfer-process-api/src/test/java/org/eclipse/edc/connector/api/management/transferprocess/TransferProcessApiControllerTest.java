@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2022 Microsoft Corporation
+ *  Copyright (c) 2023 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)
  *
  *  This program and the accompanying materials are made available under the
  *  terms of the Apache License, Version 2.0 which is available at
@@ -8,14 +8,16 @@
  *  SPDX-License-Identifier: Apache-2.0
  *
  *  Contributors:
- *       Microsoft Corporation - Initial implementation
+ *       Bayerische Motoren Werke Aktiengesellschaft (BMW AG) - initial API and implementation
  *
  */
 
 package org.eclipse.edc.connector.api.management.transferprocess;
 
+import jakarta.json.Json;
+import jakarta.json.JsonObject;
 import org.eclipse.edc.api.model.IdResponseDto;
-import org.eclipse.edc.api.query.QuerySpecDto;
+import org.eclipse.edc.api.model.QuerySpecDto;
 import org.eclipse.edc.connector.api.management.transferprocess.model.TerminateTransferDto;
 import org.eclipse.edc.connector.api.management.transferprocess.model.TransferProcessDto;
 import org.eclipse.edc.connector.api.management.transferprocess.model.TransferRequestDto;
@@ -23,385 +25,415 @@ import org.eclipse.edc.connector.spi.transferprocess.TransferProcessService;
 import org.eclipse.edc.connector.transfer.spi.types.DataRequest;
 import org.eclipse.edc.connector.transfer.spi.types.TransferProcess;
 import org.eclipse.edc.connector.transfer.spi.types.TransferRequest;
+import org.eclipse.edc.jsonld.spi.JsonLd;
+import org.eclipse.edc.junit.annotations.ApiTest;
 import org.eclipse.edc.service.spi.result.ServiceResult;
-import org.eclipse.edc.spi.EdcException;
-import org.eclipse.edc.spi.monitor.Monitor;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.eclipse.edc.spi.result.Result;
 import org.eclipse.edc.spi.types.domain.DataAddress;
 import org.eclipse.edc.transform.spi.TypeTransformerRegistry;
-import org.eclipse.edc.web.spi.exception.InvalidRequestException;
-import org.eclipse.edc.web.spi.exception.ObjectConflictException;
-import org.eclipse.edc.web.spi.exception.ObjectNotFoundException;
-import org.junit.jupiter.api.BeforeEach;
+import org.eclipse.edc.web.jersey.testfixtures.RestControllerTestBase;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtensionContext;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.ArgumentsProvider;
-import org.junit.jupiter.params.provider.ArgumentsSource;
-import org.mockito.ArgumentCaptor;
 
-import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Stream;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static io.restassured.RestAssured.given;
+import static io.restassured.http.ContentType.JSON;
+import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.ID;
+import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.isA;
+import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-class TransferProcessApiControllerTest {
-    private final TransferProcessService service = mock(TransferProcessService.class);
+@ApiTest
+class TransferProcessApiControllerTest extends RestControllerTestBase {
+
     private final TypeTransformerRegistry transformerRegistry = mock(TypeTransformerRegistry.class);
-    private TransferProcessApiController controller;
+    private final JsonLd jsonLd = mock(JsonLd.class);
+    private final TransferProcessService service = mock(TransferProcessService.class);
 
-    @BeforeEach
-    void setup() {
-        var monitor = mock(Monitor.class);
-        controller = new TransferProcessApiController(monitor, service, transformerRegistry);
+    @Test
+    void get_shouldReturnTransferProcess() {
+        var transferProcess = createTransferProcess().id("id").build();
+        var dto = TransferProcessDto.Builder.newInstance().id("id").createdAt(1234).build();
+        var expandedBody = Json.createObjectBuilder().add("id", "id").add("createdAt", 1234).build();
+        var responseBody = Json.createObjectBuilder().add("id", "id").add("createdAt", 1234).build();
+        when(service.findById(any())).thenReturn(transferProcess);
+        when(transformerRegistry.transform(any(), eq(TransferProcessDto.class))).thenReturn(Result.success(dto));
+        when(transformerRegistry.transform(any(), eq(JsonObject.class))).thenReturn(Result.success(expandedBody));
+        when(jsonLd.compact(any())).thenReturn(Result.success(responseBody));
+
+        given()
+                .port(port)
+                .get("/v2/transferprocesses/id")
+                .then()
+                .statusCode(200)
+                .contentType(JSON)
+                .body("id", is("id"))
+                .body("createdAt", is(1234));
+        verify(service).findById("id");
+        verify(transformerRegistry).transform(transferProcess, TransferProcessDto.class);
+        verify(transformerRegistry).transform(dto, JsonObject.class);
+        verify(jsonLd).compact(expandedBody);
     }
 
     @Test
-    void getAll() {
-        var transferProcess = transferProcess();
-        var dto = transferProcessDto(transferProcess);
-        when(transformerRegistry.transform(isA(TransferProcess.class), eq(TransferProcessDto.class))).thenReturn(Result.success(dto));
-        when(transformerRegistry.transform(isA(QuerySpecDto.class), eq(QuerySpec.class)))
-                .thenReturn(Result.success(QuerySpec.Builder.newInstance().offset(10).build()));
-        var querySpec = QuerySpecDto.Builder.newInstance().build();
+    void get_shouldReturnNotFound_whenNotFound() {
+        when(service.findById(any())).thenReturn(null);
+
+        given()
+                .port(port)
+                .get("/v2/transferprocesses/id")
+                .then()
+                .statusCode(404)
+                .contentType(JSON);
+        verifyNoInteractions(transformerRegistry);
+    }
+
+    @Test
+    void get_shouldReturnNotFound_whenTransformFails() {
+        when(service.findById(any())).thenReturn(createTransferProcess().build());
+        when(transformerRegistry.transform(any(), any())).thenReturn(Result.failure("error"));
+
+        given()
+                .port(port)
+                .get("/v2/transferprocesses/id")
+                .then()
+                .statusCode(404)
+                .contentType(JSON);
+    }
+
+    @Test
+    void getState_shouldReturnTheState() {
+        when(service.getState(any())).thenReturn("INITIAL");
+        var expanded = Json.createObjectBuilder().build();
+        var compacted = Json.createObjectBuilder().add("state", "INITIAL").build();
+        when(transformerRegistry.transform(any(), eq(JsonObject.class))).thenReturn(Result.success(expanded));
+        when(jsonLd.compact(any())).thenReturn(Result.success(compacted));
+
+        given()
+                .port(port)
+                .get("/v2/transferprocesses/id/state")
+                .then()
+                .statusCode(200)
+                .contentType(JSON)
+                .body("state", is("INITIAL"));
+        verify(service).getState("id");
+    }
+
+    @Test
+    void getState_shouldReturnNotFound_whenTransferProcessIsNotFound() {
+        when(service.getState(any())).thenReturn(null);
+
+        given()
+                .port(port)
+                .get("/v2/transferprocesses/id/state")
+                .then()
+                .statusCode(404);
+        verify(service).getState("id");
+        verifyNoInteractions(transformerRegistry, jsonLd);
+    }
+
+    @Test
+    void query_shouldReturnQueriedTransferProcesses() {
+        var querySpec = QuerySpec.none();
+        var querySpecDto = QuerySpecDto.Builder.newInstance().build();
+        var expandedRequestBody = Json.createObjectBuilder().build();
+        var transferProcess = createTransferProcess().id("id").build();
+        var dto = TransferProcessDto.Builder.newInstance().id("id").createdAt(1234).build();
+        var expandedResponseBody = Json.createObjectBuilder().add("id", "id").add("createdAt", 1234).build();
+        var responseBody = Json.createObjectBuilder().add("id", "id").add("createdAt", 1234).build();
+        when(jsonLd.expand(any())).thenReturn(Result.success(expandedRequestBody));
+        when(transformerRegistry.transform(any(), eq(QuerySpecDto.class))).thenReturn(Result.success(querySpecDto));
+        when(transformerRegistry.transform(any(), eq(QuerySpec.class))).thenReturn(Result.success(querySpec));
         when(service.query(any())).thenReturn(ServiceResult.success(Stream.of(transferProcess)));
+        when(transformerRegistry.transform(any(), eq(TransferProcessDto.class))).thenReturn(Result.success(dto));
+        when(transformerRegistry.transform(any(), eq(JsonObject.class))).thenReturn(Result.success(expandedResponseBody));
+        when(jsonLd.compact(any())).thenReturn(Result.success(responseBody));
+        var requestBody = Json.createObjectBuilder().build();
 
-        var transferProcesses = controller.getAllTransferProcesses(querySpec);
-
-        assertThat(transferProcesses).containsExactly(dto);
-        verify(service).query(argThat(s -> s.getOffset() == 10));
-        verify(transformerRegistry).transform(isA(QuerySpecDto.class), eq(QuerySpec.class));
+        given()
+                .port(port)
+                .body(requestBody)
+                .contentType(JSON)
+                .post("/v2/transferprocesses/request")
+                .then()
+                .statusCode(200)
+                .contentType(JSON)
+                .body("size()", is(1))
+                .body("[0].id", is("id"))
+                .body("[0].createdAt", is(1234));
+        verify(jsonLd).expand(any());
+        verify(transformerRegistry).transform(expandedRequestBody, QuerySpecDto.class);
+        verify(transformerRegistry).transform(querySpecDto, QuerySpec.class);
+        verify(service).query(querySpec);
+        verify(transformerRegistry).transform(transferProcess, TransferProcessDto.class);
+        verify(transformerRegistry).transform(dto, JsonObject.class);
+        verify(jsonLd).compact(responseBody);
     }
 
     @Test
-    void getAll_filtersOutFailedTransforms() {
-        var transferProcess = transferProcess();
-        when(transformerRegistry.transform(isA(QuerySpecDto.class), eq(QuerySpec.class)))
-                .thenReturn(Result.success(QuerySpec.Builder.newInstance().offset(10).build()));
-        when(transformerRegistry.transform(isA(TransferProcess.class), eq(TransferProcessDto.class))).thenReturn(Result.failure("failure"));
+    void query_shouldNotReturnError_whenEmptyBody() {
+        var querySpec = QuerySpec.none();
+        when(service.query(any())).thenReturn(ServiceResult.success(Stream.empty()));
+
+        given()
+                .port(port)
+                .contentType(JSON)
+                .post("/v2/transferprocesses/request")
+                .then()
+                .statusCode(200)
+                .contentType(JSON)
+                .body("size()", is(0));
+
+        verify(service).query(querySpec);
+    }
+
+    @Test
+    void query_shouldReturn400_whenQuerySpecTransformFails() {
+        var expandedRequestBody = Json.createObjectBuilder().build();
+        when(jsonLd.expand(any())).thenReturn(Result.success(expandedRequestBody));
+        when(transformerRegistry.transform(any(), eq(QuerySpecDto.class))).thenReturn(Result.failure("error"));
+        var requestBody = Json.createObjectBuilder().build();
+
+        given()
+                .port(port)
+                .body(requestBody)
+                .contentType(JSON)
+                .post("/v2/transferprocesses/request")
+                .then()
+                .statusCode(400);
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void query_shouldReturnBadRequest_whenServiceReturnsBadRequest() {
+        var querySpec = QuerySpec.none();
+        var querySpecDto = QuerySpecDto.Builder.newInstance().build();
+        var expandedRequestBody = Json.createObjectBuilder().build();
+        when(jsonLd.expand(any())).thenReturn(Result.success(expandedRequestBody));
+        when(transformerRegistry.transform(any(), eq(QuerySpecDto.class))).thenReturn(Result.success(querySpecDto));
+        when(transformerRegistry.transform(any(), eq(QuerySpec.class))).thenReturn(Result.success(querySpec));
+        when(service.query(any())).thenReturn(ServiceResult.badRequest("error"));
+        var requestBody = Json.createObjectBuilder().build();
+
+        given()
+                .port(port)
+                .body(requestBody)
+                .contentType(JSON)
+                .post("/v2/transferprocesses/request")
+                .then()
+                .statusCode(400)
+                .contentType(JSON);
+    }
+
+    @Test
+    void query_shouldFilterOutResults_whenTransformFails() {
+        var querySpec = QuerySpec.none();
+        var querySpecDto = QuerySpecDto.Builder.newInstance().build();
+        var expandedRequestBody = Json.createObjectBuilder().build();
+        var transferProcess = createTransferProcess().id("id").build();
+        when(jsonLd.expand(any())).thenReturn(Result.success(expandedRequestBody));
+        when(transformerRegistry.transform(any(), eq(QuerySpecDto.class))).thenReturn(Result.success(querySpecDto));
+        when(transformerRegistry.transform(any(), eq(QuerySpec.class))).thenReturn(Result.success(querySpec));
         when(service.query(any())).thenReturn(ServiceResult.success(Stream.of(transferProcess)));
+        when(transformerRegistry.transform(any(), eq(TransferProcessDto.class))).thenReturn(Result.failure("error"));
+        var requestBody = Json.createObjectBuilder().build();
 
-        var transferProcesses = controller.getAllTransferProcesses(QuerySpecDto.Builder.newInstance().build());
-
-        assertThat(transferProcesses).isEmpty();
+        given()
+                .port(port)
+                .body(requestBody)
+                .contentType(JSON)
+                .post("/v2/transferprocesses/request")
+                .then()
+                .statusCode(200)
+                .contentType(JSON)
+                .body("size()", is(0));
     }
 
     @Test
-    void getAll_throwsExceptionIfQuerySpecTransformFails() {
-        when(transformerRegistry.transform(isA(QuerySpecDto.class), eq(QuerySpec.class)))
-                .thenReturn(Result.failure("Cannot transform"));
+    void initiate_shouldReturnId() {
+        var dto = TransferRequestDto.Builder.newInstance().build();
+        var transferRequest = TransferRequest.Builder.newInstance().dataRequest(createDataRequest()).build();
+        var transferProcess = createTransferProcess().id("id").build();
+        var expandedOutput = Json.createObjectBuilder().build();
+        var responseBody = Json.createObjectBuilder().add(ID, "transferProcessId").build();
+        when(jsonLd.expand(any())).thenReturn(Result.success(Json.createObjectBuilder().build()));
+        when(transformerRegistry.transform(any(), eq(TransferRequestDto.class))).thenReturn(Result.success(dto));
+        when(transformerRegistry.transform(any(), eq(TransferRequest.class))).thenReturn(Result.success(transferRequest));
+        when(service.initiateTransfer(any())).thenReturn(ServiceResult.success(transferProcess));
+        when(transformerRegistry.transform(any(), eq(JsonObject.class))).thenReturn(Result.success(expandedOutput));
+        when(jsonLd.compact(any())).thenReturn(Result.success(responseBody));
+        var requestBody = Json.createObjectBuilder().build();
 
-        assertThatThrownBy(() -> controller.getAllTransferProcesses(QuerySpecDto.Builder.newInstance().build())).isInstanceOf(InvalidRequestException.class);
+        given()
+                .port(port)
+                .body(requestBody)
+                .contentType(JSON)
+                .post("/v2/transferprocesses")
+                .then()
+                .statusCode(200)
+                .contentType(JSON)
+                .body(ID, is("transferProcessId"));
+        verify(jsonLd).expand(isA(JsonObject.class));
+        verify(transformerRegistry).transform(isA(JsonObject.class), eq(TransferRequestDto.class));
+        verify(transformerRegistry).transform(dto, TransferRequest.class);
+        verify(service).initiateTransfer(transferRequest);
+        verify(transformerRegistry).transform(isA(IdResponseDto.class), eq(JsonObject.class));
+        verify(jsonLd).compact(expandedOutput);
     }
 
     @Test
-    void queryAll() {
-        var transferProcess = transferProcess();
-        var dto = transferProcessDto(transferProcess);
-        when(transformerRegistry.transform(isA(TransferProcess.class), eq(TransferProcessDto.class))).thenReturn(Result.success(dto));
-        when(transformerRegistry.transform(isA(QuerySpecDto.class), eq(QuerySpec.class)))
-                .thenReturn(Result.success(QuerySpec.Builder.newInstance().offset(10).build()));
-        var querySpec = QuerySpecDto.Builder.newInstance().build();
-        when(service.query(any())).thenReturn(ServiceResult.success(Stream.of(transferProcess)));
+    void initiate_shouldReturnBadRequest_whenTransformationFails() {
+        when(jsonLd.expand(any())).thenReturn(Result.success(Json.createObjectBuilder().build()));
+        when(transformerRegistry.transform(any(), any())).thenReturn(Result.failure("error"));
+        var requestBody = Json.createObjectBuilder().build();
 
-        var transferProcesses = controller.queryAllTransferProcesses(querySpec);
-
-        assertThat(transferProcesses).containsExactly(dto);
-        verify(service).query(argThat(s -> s.getOffset() == 10));
-        verify(transformerRegistry).transform(isA(QuerySpecDto.class), eq(QuerySpec.class));
+        given()
+                .port(port)
+                .body(requestBody)
+                .contentType(JSON)
+                .post("/v2/transferprocesses")
+                .then()
+                .statusCode(400)
+                .contentType(JSON);
+        verifyNoInteractions(service);
     }
 
     @Test
-    void queryAll_filtersOutFailedTransforms() {
-        var transferProcess = transferProcess();
-        when(transformerRegistry.transform(isA(QuerySpecDto.class), eq(QuerySpec.class)))
-                .thenReturn(Result.success(QuerySpec.Builder.newInstance().offset(10).build()));
-        when(transformerRegistry.transform(isA(TransferProcess.class), eq(TransferProcessDto.class))).thenReturn(Result.failure("failure"));
-        when(service.query(any())).thenReturn(ServiceResult.success(Stream.of(transferProcess)));
+    void initiate_shouldReturnConflict_whenItAlreadyExists() {
+        var dto = TransferRequestDto.Builder.newInstance().build();
+        var transferRequest = TransferRequest.Builder.newInstance().dataRequest(createDataRequest()).build();
+        when(jsonLd.expand(any())).thenReturn(Result.success(Json.createObjectBuilder().build()));
+        when(transformerRegistry.transform(any(), eq(TransferRequestDto.class))).thenReturn(Result.success(dto));
+        when(transformerRegistry.transform(any(), eq(TransferRequest.class))).thenReturn(Result.success(transferRequest));
+        when(service.initiateTransfer(any())).thenReturn(ServiceResult.conflict("already exists"));
+        var requestBody = Json.createObjectBuilder().build();
 
-        var transferProcesses = controller.queryAllTransferProcesses(QuerySpecDto.Builder.newInstance().build());
-
-        assertThat(transferProcesses).isEmpty();
-    }
-
-    @Test
-    void queryAll_throwsExceptionIfQuerySpecTransformFails() {
-        when(transformerRegistry.transform(isA(QuerySpecDto.class), eq(QuerySpec.class)))
-                .thenReturn(Result.failure("Cannot transform"));
-
-        assertThatThrownBy(() -> controller.queryAllTransferProcesses(QuerySpecDto.Builder.newInstance().build())).isInstanceOf(InvalidRequestException.class);
-    }
-
-    @Test
-    void getById() {
-        String id = "tp-id";
-        var transferProcess = transferProcess(id);
-        TransferProcessDto dto = transferProcessDto(transferProcess);
-
-        when(transformerRegistry.transform(isA(TransferProcess.class), eq(TransferProcessDto.class))).thenReturn(Result.success(dto));
-        when(service.findById(id)).thenReturn(transferProcess);
-
-        assertThat(controller.getTransferProcess(id)).isEqualTo(dto);
-    }
-
-    @Test
-    void getById_notFound() {
-        String id = "tp-id";
-        when(service.findById(id)).thenReturn(null);
-
-        assertThatThrownBy(() -> controller.getTransferProcess(id)).isInstanceOf(ObjectNotFoundException.class);
-    }
-
-    @Test
-    void getStateById() {
-        String id = "tp-id";
-
-        when(service.getState(id)).thenReturn("PROVISIONING");
-
-        assertThat(controller.getTransferProcessState(id).getState()).isEqualTo("PROVISIONING");
-    }
-
-    @Test
-    void getStateById_notFound() {
-        String id = "tp-id";
-
-        when(service.getState(id)).thenReturn(null);
-
-        assertThatThrownBy(() -> controller.getTransferProcessState(id)).isInstanceOf(ObjectNotFoundException.class);
+        given()
+                .port(port)
+                .body(requestBody)
+                .contentType(JSON)
+                .post("/v2/transferprocesses")
+                .then()
+                .statusCode(409)
+                .contentType(JSON);
     }
 
     @Test
     void deprovision() {
-        var transferProcess = transferProcess();
+        var transferProcess = createTransferProcess().build();
+        when(service.deprovision(any())).thenReturn(ServiceResult.success(transferProcess));
 
-        when(service.deprovision(transferProcess.getId())).thenReturn(ServiceResult.success(transferProcess));
-
-        controller.deprovisionTransferProcess(transferProcess.getId());
+        given()
+                .port(port)
+                .contentType(JSON)
+                .post("/v2/transferprocesses/id/deprovision")
+                .then()
+                .statusCode(204);
+        verify(service).deprovision("id");
     }
 
     @Test
     void deprovision_conflict() {
-        var transferProcess = transferProcess();
+        when(service.deprovision(any())).thenReturn(ServiceResult.conflict("conflict"));
 
-        when(service.deprovision(transferProcess.getId())).thenReturn(ServiceResult.conflict("conflict"));
-
-        assertThatThrownBy(() -> controller.deprovisionTransferProcess(transferProcess.getId())).isInstanceOf(ObjectConflictException.class);
+        given()
+                .port(port)
+                .contentType(JSON)
+                .post("/v2/transferprocesses/id/deprovision")
+                .then()
+                .statusCode(409);
     }
 
     @Test
     void deprovision_NotFound() {
-        var transferProcess = transferProcess();
+        when(service.deprovision(any())).thenReturn(ServiceResult.notFound("not found"));
 
-        when(service.deprovision(transferProcess.getId())).thenReturn(ServiceResult.notFound("not found"));
-
-        assertThatThrownBy(() -> controller.deprovisionTransferProcess(transferProcess.getId())).isInstanceOf(ObjectNotFoundException.class);
+        given()
+                .port(port)
+                .contentType(JSON)
+                .post("/v2/transferprocesses/id/deprovision")
+                .then()
+                .statusCode(404);
     }
 
     @Test
-    void cancelTransfer() {
-        var transferProcess = transferProcess();
+    void terminate() {
+        var transferProcess = createTransferProcess().build();
+        var expanded = Json.createObjectBuilder().build();
+        var dto = TerminateTransferDto.Builder.newInstance().reason("anyReason").build();
+        when(jsonLd.expand(any())).thenReturn(Result.success(expanded));
+        when(transformerRegistry.transform(any(), eq(TerminateTransferDto.class))).thenReturn(Result.success(dto));
+        when(service.terminate(any(), any())).thenReturn(ServiceResult.success(transferProcess));
 
-        when(service.terminate(eq(transferProcess.getId()), any())).thenReturn(ServiceResult.success(transferProcess));
-
-        controller.cancelTransferProcess(transferProcess.getId());
+        given()
+                .port(port)
+                .contentType(JSON)
+                .body(Json.createObjectBuilder().build())
+                .post("/v2/transferprocesses/id/terminate")
+                .then()
+                .statusCode(204);
+        verify(jsonLd).expand(any());
+        verify(transformerRegistry).transform(expanded, TerminateTransferDto.class);
+        verify(service).terminate("id", "anyReason");
     }
 
     @Test
-    void cancelTransfer_conflict() {
-        var transferProcess = transferProcess();
+    void terminate_shouldReturnBadRequest_whenTransformFail() {
+        when(jsonLd.expand(any())).thenReturn(Result.success(Json.createObjectBuilder().build()));
+        when(transformerRegistry.transform(any(), eq(TerminateTransferDto.class))).thenReturn(Result.failure("failure"));
 
-        when(service.terminate(eq(transferProcess.getId()), any())).thenReturn(ServiceResult.conflict("conflict"));
-
-        assertThatThrownBy(() -> controller.cancelTransferProcess(transferProcess.getId())).isInstanceOf(ObjectConflictException.class);
+        given()
+                .port(port)
+                .contentType(JSON)
+                .body(Json.createObjectBuilder().build())
+                .post("/v2/transferprocesses/id/terminate")
+                .then()
+                .statusCode(400);
+        verifyNoInteractions(service);
     }
 
     @Test
-    void cancelTransfer_NotFound() {
-        var transferProcess = transferProcess();
+    void terminate_shouldReturnConflict_whenServiceReturnsConflict() {
+        var expanded = Json.createObjectBuilder().build();
+        var dto = TerminateTransferDto.Builder.newInstance().reason("anyReason").build();
+        when(jsonLd.expand(any())).thenReturn(Result.success(expanded));
+        when(transformerRegistry.transform(any(), eq(TerminateTransferDto.class))).thenReturn(Result.success(dto));
+        when(service.terminate(any(), any())).thenReturn(ServiceResult.conflict("conflict"));
 
-        when(service.terminate(eq(transferProcess.getId()), any())).thenReturn(ServiceResult.notFound("not found"));
-
-        assertThatThrownBy(() -> controller.cancelTransferProcess(transferProcess.getId())).isInstanceOf(ObjectNotFoundException.class);
+        given()
+                .port(port)
+                .contentType(JSON)
+                .post("/v2/transferprocesses/id/terminate")
+                .then()
+                .statusCode(409);
     }
 
-    @Test
-    void terminateTransfer() {
-        var transferProcess = transferProcess();
-
-        when(service.terminate(eq(transferProcess.getId()), any())).thenReturn(ServiceResult.success(transferProcess));
-
-        controller.terminateTransferProcess(transferProcess.getId(), TerminateTransferDto.Builder.newInstance().build());
+    @Override
+    protected Object controller() {
+        return new TransferProcessApiController(monitor, service, transformerRegistry, jsonLd);
     }
 
-    @Test
-    void terminateTransfer_conflict() {
-        var transferProcess = transferProcess();
-
-        when(service.terminate(eq(transferProcess.getId()), any())).thenReturn(ServiceResult.conflict("conflict"));
-
-        assertThatThrownBy(() -> controller.terminateTransferProcess(transferProcess.getId(), TerminateTransferDto.Builder.newInstance().build())).isInstanceOf(ObjectConflictException.class);
+    @NotNull
+    private TransferProcess.Builder createTransferProcess() {
+        return TransferProcess.Builder.newInstance().id(UUID.randomUUID().toString());
     }
 
-    @Test
-    void terminateTransfer_NotFound() {
-        var transferProcess = transferProcess();
-
-        when(service.terminate(eq(transferProcess.getId()), any())).thenReturn(ServiceResult.notFound("not found"));
-
-        assertThatThrownBy(() -> controller.terminateTransferProcess(transferProcess.getId(), TerminateTransferDto.Builder.newInstance().build())).isInstanceOf(ObjectNotFoundException.class);
-    }
-
-    @Test
-    void initiateTransfer() {
-        var transferReqDto = transferRequestDto();
-        var processId = "processId";
-        var tr = transferRequest(transferReqDto);
-        var dr = tr.getDataRequest();
-        var transferProcess = TransferProcess.Builder.newInstance().id(processId).build();
-
-        when(transformerRegistry.transform(isA(TransferRequestDto.class), eq(TransferRequest.class))).thenReturn(Result.success(tr));
-        when(service.initiateTransfer(any())).thenReturn(ServiceResult.success(transferProcess));
-
-        var result = controller.initiateTransfer(transferReqDto);
-
-        var dataRequestCaptor = ArgumentCaptor.forClass(TransferRequest.class);
-        verify(service).initiateTransfer(dataRequestCaptor.capture());
-        TransferRequest transferRequest = dataRequestCaptor.getValue();
-        DataRequest dataRequest = transferRequest.getDataRequest();
-        assertThat(dataRequest.getAssetId()).isEqualTo(dr.getAssetId());
-        assertThat(dataRequest.getConnectorAddress()).isEqualTo(dr.getConnectorAddress());
-        assertThat(dataRequest.getConnectorId()).isEqualTo(dr.getConnectorId());
-        assertThat(dataRequest.getDataDestination()).isEqualTo(dr.getDataDestination());
-        assertThat(dataRequest.getDestinationType()).isEqualTo(dr.getDataDestination().getType());
-        assertThat(dataRequest.getContractId()).isEqualTo(dr.getContractId());
-        assertThat(dataRequest.getProtocol()).isEqualTo(dr.getProtocol());
-        assertThat(dataRequest.getProperties()).isEqualTo(dr.getProperties());
-        assertThat(dataRequest.isManagedResources()).isEqualTo(dr.isManagedResources());
-
-        assertThat(result.getId()).isEqualTo(processId);
-        assertThat(result).isInstanceOf(IdResponseDto.class);
-        assertThat(result.getId()).isNotEmpty();
-        assertThat(result.getCreatedAt()).isNotEqualTo(0L);
-    }
-
-    @Test
-    void initiateTransfer_failureTransformingRequest() {
-        when(transformerRegistry.transform(isA(TransferRequestDto.class), eq(TransferRequest.class))).thenReturn(Result.failure("failure"));
-
-        assertThatThrownBy(() -> controller.initiateTransfer(transferRequestDto())).isInstanceOf(InvalidRequestException.class);
-    }
-
-    @Test
-    void initiateTransfer_failure() {
-        var transferRequest = transferRequest();
-        when(transformerRegistry.transform(isA(TransferRequestDto.class), eq(TransferRequest.class))).thenReturn(Result.success(transferRequest));
-        when(service.initiateTransfer(any())).thenReturn(ServiceResult.conflict("failure"));
-
-        assertThatThrownBy(() -> controller.initiateTransfer(transferRequestDto())).isInstanceOf(EdcException.class);
-    }
-
-    @ParameterizedTest
-    @ArgumentsSource(InvalidRequestParams.class)
-    void initiateTransfer_invalidRequest(String connectorAddress, String contractId, String assetId, String protocol, DataAddress destination) {
-        when(transformerRegistry.transform(isA(TransferRequestDto.class), eq(TransferRequest.class))).thenReturn(Result.failure("failure"));
-        var rq = TransferRequestDto.Builder.newInstance()
-                .connectorAddress(connectorAddress)
-                .contractId(contractId)
-                .protocol(protocol)
-                .dataDestination(destination)
-                .assetId(assetId)
-                .build();
-        assertThatThrownBy(() -> controller.initiateTransfer(rq)).isInstanceOfAny(InvalidRequestException.class);
-    }
-
-    private TransferRequestDto transferRequestDto() {
-        return TransferRequestDto.Builder.newInstance()
-                .assetId("assetId")
-                .connectorAddress("http://some-contract")
-                .contractId("some-contract")
-                .protocol("test-asset")
-                .dataDestination(DataAddress.Builder.newInstance().type("test-type").build())
-                .connectorId("connectorId")
-                .properties(Map.of("prop", "value"))
-                .build();
-    }
-
-    private DataRequest dataRequest() {
+    private DataRequest createDataRequest() {
         return DataRequest.Builder.newInstance()
-                .dataDestination(DataAddress.Builder.newInstance().type("dataaddress-type").build())
+                .id(UUID.randomUUID().toString())
+                .dataDestination(DataAddress.Builder.newInstance()
+                        .type("type")
+                        .build())
+                .protocol("dataspace-protocol-http")
+                .processId(UUID.randomUUID().toString())
                 .build();
-    }
-
-    private TransferRequest transferRequest() {
-        return TransferRequest.Builder.newInstance()
-                .dataRequest(dataRequest())
-                .build();
-    }
-
-    private TransferRequest transferRequest(TransferRequestDto dto) {
-        return TransferRequest.Builder.newInstance()
-                .dataRequest(dataRequest(dto))
-                .build();
-    }
-
-
-    private TransferProcessDto transferProcessDto(TransferProcess transferProcess) {
-        return TransferProcessDto.Builder.newInstance().id(transferProcess.getId()).build();
-    }
-
-    private TransferProcess transferProcess() {
-        return transferProcess(UUID.randomUUID().toString());
-    }
-
-    private TransferProcess transferProcess(String id) {
-        return TransferProcess.Builder.newInstance().id(id).build();
-    }
-
-    private DataRequest dataRequest(TransferRequestDto dto) {
-        return DataRequest.Builder.newInstance()
-                .assetId(dto.getAssetId())
-                .connectorId(dto.getConnectorId())
-                .dataDestination(dto.getDataDestination())
-                .connectorAddress(dto.getConnectorAddress())
-                .contractId(dto.getContractId())
-                .destinationType(dto.getDataDestination().getType())
-                .properties(dto.getProperties())
-                .managedResources(dto.isManagedResources())
-                .protocol(dto.getProtocol())
-                .dataDestination(dto.getDataDestination())
-                .build();
-    }
-
-    private static class InvalidRequestParams implements ArgumentsProvider {
-
-        @Override
-        public Stream<? extends Arguments> provideArguments(ExtensionContext context) {
-            return Stream.of(
-                    Arguments.of(null, "some-contract", "test-asset", "ids-multipart", DataAddress.Builder.newInstance().type("test-type").build()),
-                    Arguments.of("", "some-contract", "test-asset", "ids-multipart", DataAddress.Builder.newInstance().type("test-type").build()),
-                    Arguments.of("  ", "some-contract", "test-asset", "ids-multipart", DataAddress.Builder.newInstance().type("test-type").build()),
-                    Arguments.of("http://someurl", null, "test-asset", "ids-multipart", DataAddress.Builder.newInstance().type("test-type").build()),
-                    Arguments.of("http://someurl", "", "test-asset", "ids-multipart", DataAddress.Builder.newInstance().type("test-type").build()),
-                    Arguments.of("http://someurl", "  ", "test-asset", "ids-multipart", DataAddress.Builder.newInstance().type("test-type").build()),
-                    Arguments.of("http://someurl", "some-contract", "test-asset", null, DataAddress.Builder.newInstance().type("test-type").build()),
-                    Arguments.of("http://someurl", "some-contract", "test-asset", "", DataAddress.Builder.newInstance().type("test-type").build()),
-                    Arguments.of("http://someurl", "some-contract", "test-asset", "  ", DataAddress.Builder.newInstance().type("test-type").build()),
-                    Arguments.of("http://someurl", "some-contract", "test-asset", "ids-multipart", null),
-                    Arguments.of("http://someurl", "some-contract", null, "ids-multipart", DataAddress.Builder.newInstance().type("test-type").build()),
-                    Arguments.of("http://someurl", "some-contract", "", "ids-multipart", DataAddress.Builder.newInstance().type("test-type").build()),
-                    Arguments.of("http://someurl", "some-contract", "  ", "ids-multipart", DataAddress.Builder.newInstance().type("test-type").build())
-            );
-        }
     }
 }

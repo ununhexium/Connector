@@ -17,9 +17,9 @@ package org.eclipse.edc.connector.api.management.transferprocess.model;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonPOJOBuilder;
-import org.eclipse.edc.api.model.CallbackAddressDto;
 import org.eclipse.edc.api.model.DataAddressDto;
 import org.eclipse.edc.api.model.MutableDto;
+import org.eclipse.edc.spi.types.domain.callback.CallbackAddress;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -41,7 +41,6 @@ public class TransferProcessDto extends MutableDto {
     public static final String EDC_TRANSFER_PROCESS_DTO_DATA_DESTINATION = EDC_NAMESPACE + "dataDestination";
     public static final String EDC_TRANSFER_PROCESS_DTO_CALLBACK_ADDRESSES = EDC_NAMESPACE + "callbackAddresses";
 
-    private String id;
     private String type;
     private String state;
     private Long stateTimestamp;
@@ -49,13 +48,9 @@ public class TransferProcessDto extends MutableDto {
     private DataRequestDto dataRequest;
     private DataAddressDto dataDestination;
     private Map<String, String> properties = new HashMap<>();
-    private List<CallbackAddressDto> callbackAddresses = new ArrayList<>();
+    private List<CallbackAddress> callbackAddresses = new ArrayList<>();
 
     private TransferProcessDto() {
-    }
-
-    public String getId() {
-        return id;
     }
 
     public String getType() {
@@ -82,7 +77,7 @@ public class TransferProcessDto extends MutableDto {
         return dataRequest;
     }
 
-    public List<CallbackAddressDto> getCallbackAddresses() {
+    public List<CallbackAddress> getCallbackAddresses() {
         return callbackAddresses;
     }
 
@@ -100,11 +95,6 @@ public class TransferProcessDto extends MutableDto {
         @JsonCreator
         public static Builder newInstance() {
             return new Builder();
-        }
-
-        public Builder id(String id) {
-            dto.id = id;
-            return this;
         }
 
         public Builder type(String type) {
@@ -142,7 +132,7 @@ public class TransferProcessDto extends MutableDto {
             return this;
         }
 
-        public Builder callbackAddresses(List<CallbackAddressDto> callbackAddresses) {
+        public Builder callbackAddresses(List<CallbackAddress> callbackAddresses) {
             dto.callbackAddresses = callbackAddresses;
             return this;
         }

@@ -9,6 +9,7 @@
  *
  *  Contributors:
  *       Microsoft Corporation - initial API and implementation
+ *       SAP SE - bugfix (pass correct lease id for deletion)
  *
  */
 
@@ -16,6 +17,7 @@ package org.eclipse.edc.sql.lease;
 
 
 import org.eclipse.edc.spi.persistence.LeaseContext;
+import org.eclipse.edc.sql.QueryExecutor;
 import org.eclipse.edc.transaction.spi.TransactionContext;
 import org.jetbrains.annotations.Nullable;
 
@@ -26,9 +28,6 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.UUID;
-
-import static org.eclipse.edc.sql.SqlQueryExecutor.executeQuery;
-import static org.eclipse.edc.sql.SqlQueryExecutor.executeQuerySingle;
 
 /**
  * SQL-based implementation of the LeaseContext.
@@ -43,15 +42,16 @@ public class SqlLeaseContext implements LeaseContext {
     private final Connection connection;
     private final Clock clock;
     private final Duration leaseDuration;
+    private final QueryExecutor queryExecutor;
 
-
-    SqlLeaseContext(TransactionContext trxContext, LeaseStatements statements, String leaseHolder, Clock clock, Duration leaseDuration, Connection connection) {
+    SqlLeaseContext(TransactionContext trxContext, LeaseStatements statements, String leaseHolder, Clock clock, Duration leaseDuration, Connection connection, QueryExecutor queryExecutor) {
         this.trxContext = trxContext;
         this.statements = statements;
         this.leaseHolder = leaseHolder;
         this.clock = clock;
         this.leaseDuration = leaseDuration;
         this.connection = connection;
+        this.queryExecutor = queryExecutor;
     }
 
     @Override
@@ -66,7 +66,7 @@ public class SqlLeaseContext implements LeaseContext {
                 }
 
                 var stmt = statements.getDeleteLeaseTemplate();
-                executeQuery(connection, stmt, l.getLeaseId());
+                queryExecutor.execute(connection, stmt, l.getLeaseId());
             }
         });
     }
@@ -83,18 +83,20 @@ public class SqlLeaseContext implements LeaseContext {
             }
 
             //clean out old lease if present
-            var deleteStmt = statements.getDeleteLeaseTemplate();
-            executeQuery(connection, deleteStmt, entityId);
+            if (lease != null) {
+                var deleteStmt = statements.getDeleteLeaseTemplate();
+                queryExecutor.execute(connection, deleteStmt, lease.getLeaseId());
+            }
 
             // create new lease in DB
             var id = UUID.randomUUID().toString();
             var duration = leaseDuration != null ? leaseDuration.toMillis() : DEFAULT_LEASE_DURATION;
             var stmt = statements.getInsertLeaseTemplate();
-            executeQuery(connection, stmt, id, leaseHolder, now, duration);
+            queryExecutor.execute(connection, stmt, id, leaseHolder, now, duration);
 
             //update entity with lease -> effectively lease entity
             var updStmt = statements.getUpdateLeaseTemplate();
-            executeQuery(connection, updStmt, id, entityId);
+            queryExecutor.execute(connection, updStmt, id, entityId);
 
         });
     }
@@ -107,7 +109,7 @@ public class SqlLeaseContext implements LeaseContext {
      */
     public @Nullable SqlLease getLease(String entityId) {
         var stmt = statements.getFindLeaseByEntityTemplate();
-        return executeQuerySingle(connection, false, this::mapLease, stmt, entityId);
+        return queryExecutor.single(connection, false, this::mapLease, stmt, entityId);
     }
 
     private SqlLease mapLease(ResultSet resultSet) throws SQLException {

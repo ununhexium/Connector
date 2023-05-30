@@ -17,6 +17,7 @@ package org.eclipse.edc.api.query;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
+import org.eclipse.edc.api.model.QuerySpecDto;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -54,15 +55,6 @@ class QuerySpecDtoValidationTest {
     @Test
     void offsetShouldBeGreaterOrEqualThanZero() {
         var querySpec = QuerySpecDto.Builder.newInstance().offset(-1).build();
-
-        var result = validator.validate(querySpec);
-
-        assertThat(result).isNotEmpty();
-    }
-
-    @Test
-    void filterShouldNotBeBlank() {
-        var querySpec = QuerySpecDto.Builder.newInstance().filter("  ").build();
 
         var result = validator.validate(querySpec);
 

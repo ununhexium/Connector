@@ -18,14 +18,17 @@
 package org.eclipse.edc.connector.store.sql.contractdefinition;
 
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.eclipse.edc.connector.contract.spi.offer.store.ContractDefinitionStore;
 import org.eclipse.edc.connector.contract.spi.types.offer.ContractDefinition;
 import org.eclipse.edc.connector.store.sql.contractdefinition.schema.ContractDefinitionStatements;
 import org.eclipse.edc.spi.asset.AssetSelectorExpression;
 import org.eclipse.edc.spi.persistence.EdcPersistenceException;
+import org.eclipse.edc.spi.query.Criterion;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.eclipse.edc.spi.result.StoreResult;
+import org.eclipse.edc.sql.QueryExecutor;
 import org.eclipse.edc.sql.store.AbstractSqlStore;
 import org.eclipse.edc.transaction.datasource.spi.DataSourceRegistry;
 import org.eclipse.edc.transaction.spi.TransactionContext;
@@ -34,19 +37,22 @@ import org.jetbrains.annotations.NotNull;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.List;
 import java.util.Objects;
 import java.util.stream.Stream;
 
 import static java.lang.String.format;
-import static org.eclipse.edc.sql.SqlQueryExecutor.executeQuery;
-import static org.eclipse.edc.sql.SqlQueryExecutor.executeQuerySingle;
 
 public class SqlContractDefinitionStore extends AbstractSqlStore implements ContractDefinitionStore {
 
+    public static final TypeReference<List<Criterion>> CRITERION_LIST = new TypeReference<>() {
+    };
     private final ContractDefinitionStatements statements;
 
-    public SqlContractDefinitionStore(DataSourceRegistry dataSourceRegistry, String dataSourceName, TransactionContext transactionContext, ContractDefinitionStatements statements, ObjectMapper objectMapper) {
-        super(dataSourceRegistry, dataSourceName, transactionContext, objectMapper);
+    public SqlContractDefinitionStore(DataSourceRegistry dataSourceRegistry, String dataSourceName,
+                                      TransactionContext transactionContext, ContractDefinitionStatements statements,
+                                      ObjectMapper objectMapper, QueryExecutor queryExecutor) {
+        super(dataSourceRegistry, dataSourceName, transactionContext, objectMapper, queryExecutor);
         this.statements = statements;
     }
 
@@ -57,7 +63,7 @@ public class SqlContractDefinitionStore extends AbstractSqlStore implements Cont
 
             try {
                 var queryStmt = statements.createQuery(spec);
-                return executeQuery(getConnection(), true, this::mapResultSet, queryStmt.getQueryAsString(), queryStmt.getParameters());
+                return queryExecutor.query(getConnection(), true, this::mapResultSet, queryStmt.getQueryAsString(), queryStmt.getParameters());
             } catch (SQLException exception) {
                 throw new EdcPersistenceException(exception);
             }
@@ -117,7 +123,7 @@ public class SqlContractDefinitionStore extends AbstractSqlStore implements Cont
             try (var connection = getConnection()) {
                 var entity = findById(connection, id);
                 if (entity != null) {
-                    executeQuery(connection, statements.getDeleteByIdTemplate(), id);
+                    queryExecutor.execute(connection, statements.getDeleteByIdTemplate(), id);
                     return StoreResult.success(entity);
                 } else {
                     return StoreResult.notFound(format(CONTRACT_DEFINITION_NOT_FOUND, id));
@@ -131,42 +137,48 @@ public class SqlContractDefinitionStore extends AbstractSqlStore implements Cont
     }
 
     private ContractDefinition mapResultSet(ResultSet resultSet) throws Exception {
+        List<Criterion> assetsSelector;
+        try {
+            assetsSelector = fromJson(resultSet.getString(statements.getAssetsSelectorColumn()), CRITERION_LIST);
+        } catch (EdcPersistenceException e) {
+            // this fallback is to avoid breaking changes as json fields cannot be migrated.
+            assetsSelector = fromJson(resultSet.getString(statements.getAssetsSelectorColumn()), AssetSelectorExpression.class).getCriteria();
+        }
+
         return ContractDefinition.Builder.newInstance()
                 .id(resultSet.getString(statements.getIdColumn()))
                 .createdAt(resultSet.getLong(statements.getCreatedAtColumn()))
                 .accessPolicyId(resultSet.getString(statements.getAccessPolicyIdColumn()))
                 .contractPolicyId(resultSet.getString(statements.getContractPolicyIdColumn()))
-                .selectorExpression(fromJson(resultSet.getString(statements.getSelectorExpressionColumn()), AssetSelectorExpression.class))
+                .assetsSelector(assetsSelector)
                 .build();
     }
 
     private void insertInternal(Connection connection, ContractDefinition definition) {
         transactionContext.execute(() -> {
-            executeQuery(connection, statements.getInsertTemplate(),
+            queryExecutor.execute(connection, statements.getInsertTemplate(),
                     definition.getId(),
                     definition.getAccessPolicyId(),
                     definition.getContractPolicyId(),
-                    toJson(definition.getSelectorExpression()),
+                    toJson(definition.getAssetsSelector()),
                     definition.getCreatedAt());
         });
     }
 
     private void updateInternal(Connection connection, ContractDefinition definition) {
         Objects.requireNonNull(definition);
-        executeQuery(connection, statements.getUpdateTemplate(),
+        queryExecutor.execute(connection, statements.getUpdateTemplate(),
                 definition.getId(),
                 definition.getAccessPolicyId(),
                 definition.getContractPolicyId(),
-                toJson(definition.getSelectorExpression()),
+                toJson(definition.getAssetsSelector()),
                 definition.getCreatedAt(),
                 definition.getId());
-
     }
-
 
     private boolean existsById(Connection connection, String definitionId) {
         var sql = statements.getCountTemplate();
-        try (var stream = executeQuery(connection, false, this::mapCount, sql, definitionId)) {
+        try (var stream = queryExecutor.query(connection, false, this::mapCount, sql, definitionId)) {
             return stream.findFirst().orElse(0L) > 0;
         }
     }
@@ -177,7 +189,7 @@ public class SqlContractDefinitionStore extends AbstractSqlStore implements Cont
 
     private ContractDefinition findById(Connection connection, String id) {
         var sql = statements.getFindByTemplate();
-        return executeQuerySingle(connection, false, this::mapResultSet, sql, id);
+        return queryExecutor.single(connection, false, this::mapResultSet, sql, id);
     }
 
 }

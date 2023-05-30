@@ -20,6 +20,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonPOJOBuilder;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -43,6 +44,7 @@ public class DataAddress {
     public static final String TYPE = EDC_NAMESPACE + SIMPLE_TYPE;
     public static final String SIMPLE_KEY_NAME = "keyName";
     public static final String KEY_NAME = EDC_NAMESPACE + "keyName";
+    public static final String SECRET = EDC_NAMESPACE + "secret";
     protected final Map<String, String> properties = new HashMap<>();
 
     protected DataAddress() {
@@ -59,16 +61,17 @@ public class DataAddress {
         properties.put(TYPE, type);
     }
 
+    @Nullable
     public String getProperty(String key) {
         return getProperty(key, null);
     }
 
+    @Nullable
     public String getProperty(String key, String defaultValue) {
         var value = Optional.ofNullable(properties.get(EDC_NAMESPACE + key)).orElseGet(() -> properties.get(key));
         if (value != null) {
             return value;
         }
-
         return defaultValue;
     }
 
@@ -94,7 +97,7 @@ public class DataAddress {
      */
     @JsonIgnore
     public boolean hasProperty(String key) {
-        return properties.containsKey(key);
+        return getProperty(key) != null;
     }
 
     @JsonPOJOBuilder(withPrefix = "")

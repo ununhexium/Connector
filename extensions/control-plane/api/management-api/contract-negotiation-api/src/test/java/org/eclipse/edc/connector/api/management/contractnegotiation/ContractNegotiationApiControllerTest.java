@@ -16,279 +16,478 @@
 
 package org.eclipse.edc.connector.api.management.contractnegotiation;
 
-import org.eclipse.edc.api.model.CallbackAddressDto;
+import io.restassured.specification.RequestSpecification;
+import jakarta.json.Json;
+import jakarta.json.JsonObject;
 import org.eclipse.edc.api.model.IdResponseDto;
-import org.eclipse.edc.api.query.QuerySpecDto;
+import org.eclipse.edc.api.model.QuerySpecDto;
 import org.eclipse.edc.connector.api.management.contractnegotiation.model.ContractAgreementDto;
 import org.eclipse.edc.connector.api.management.contractnegotiation.model.ContractNegotiationDto;
 import org.eclipse.edc.connector.api.management.contractnegotiation.model.NegotiationInitiateRequestDto;
+import org.eclipse.edc.connector.api.management.contractnegotiation.model.NegotiationState;
 import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreement;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiation;
+import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationStates;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractRequest;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractRequestData;
 import org.eclipse.edc.connector.contract.spi.types.offer.ContractOffer;
 import org.eclipse.edc.connector.spi.contractnegotiation.ContractNegotiationService;
+import org.eclipse.edc.jsonld.TitaniumJsonLd;
+import org.eclipse.edc.jsonld.spi.JsonLd;
 import org.eclipse.edc.policy.model.Policy;
 import org.eclipse.edc.service.spi.result.ServiceResult;
-import org.eclipse.edc.spi.monitor.Monitor;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.eclipse.edc.spi.result.Result;
+import org.eclipse.edc.spi.types.domain.callback.CallbackAddress;
 import org.eclipse.edc.transform.spi.TypeTransformerRegistry;
-import org.eclipse.edc.web.spi.exception.InvalidRequestException;
-import org.eclipse.edc.web.spi.exception.ObjectConflictException;
-import org.eclipse.edc.web.spi.exception.ObjectNotFoundException;
+import org.eclipse.edc.web.jersey.testfixtures.RestControllerTestBase;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtensionContext;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.ArgumentsProvider;
-import org.junit.jupiter.params.provider.ArgumentsSource;
 
 import java.util.List;
-import java.util.UUID;
 import java.util.stream.Stream;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationStates.REQUESTED;
+import static io.restassured.RestAssured.given;
+import static io.restassured.http.ContentType.JSON;
+import static java.util.UUID.randomUUID;
+import static org.eclipse.edc.api.model.IdResponseDto.EDC_ID_RESPONSE_DTO_TYPE;
+import static org.eclipse.edc.connector.api.management.contractnegotiation.model.NegotiationState.NEGOTIATION_STATE_STATE;
+import static org.eclipse.edc.connector.api.management.contractnegotiation.model.NegotiationState.NEGOTIATION_STATE_TYPE;
+import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.ID;
+import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.TYPE;
+import static org.eclipse.edc.spi.CoreConstants.EDC_NAMESPACE;
+import static org.eclipse.edc.spi.CoreConstants.EDC_PREFIX;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.notNullValue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
-class ContractNegotiationApiControllerTest {
+class ContractNegotiationApiControllerTest extends RestControllerTestBase {
     private final ContractNegotiationService service = mock(ContractNegotiationService.class);
     private final TypeTransformerRegistry transformerRegistry = mock(TypeTransformerRegistry.class);
-    private ContractNegotiationApiController controller;
+    private final JsonLd jsonLd = new TitaniumJsonLd(monitor);
 
     @BeforeEach
-    void setup() {
-        var monitor = mock(Monitor.class);
-        controller = new ContractNegotiationApiController(monitor, service, transformerRegistry);
+    public void setup() {
+        jsonLd.registerNamespace(EDC_PREFIX, EDC_NAMESPACE);
     }
 
     @Test
-    void getAll() {
-        var contractNegotiation = createContractNegotiation("negotiationId");
-        when(service.query(any())).thenReturn(ServiceResult.success(Stream.of(contractNegotiation)));
-        var dto = ContractNegotiationDto.Builder.newInstance().id(contractNegotiation.getId()).build();
-        when(transformerRegistry.transform(any(), eq(ContractNegotiationDto.class))).thenReturn(Result.success(dto));
-        when(transformerRegistry.transform(isA(QuerySpecDto.class), eq(QuerySpec.class)))
-                .thenReturn(Result.success(QuerySpec.Builder.newInstance().offset(10).build()));
-        var querySpec = QuerySpecDto.Builder.newInstance().build();
+    void getAllContractNegotiations() {
 
-        var negotiations = controller.getNegotiations(querySpec);
 
-        assertThat(negotiations).hasSize(1).first().matches(d -> d.getId().equals(contractNegotiation.getId()));
-        verify(service).query(argThat(s -> s.getOffset() == 10));
-        verify(transformerRegistry).transform(contractNegotiation, ContractNegotiationDto.class);
-        verify(transformerRegistry).transform(isA(QuerySpecDto.class), eq(QuerySpec.class));
+        when(service.query(any(QuerySpec.class))).thenReturn(ServiceResult.success(Stream.of(
+                createContractNegotiation("cn1"),
+                createContractNegotiation("cn2")
+        )));
+        var responseBody = Json.createObjectBuilder().add(ID, "cn").build();
+
+        when(transformerRegistry.transform(any(ContractNegotiation.class), eq(ContractNegotiationDto.class)))
+                .thenReturn(Result.success(createContractNegotiationDto().build()));
+        when(transformerRegistry.transform(any(ContractNegotiationDto.class), eq(JsonObject.class)))
+                .thenReturn(Result.success(responseBody));
+
+        baseRequest()
+                .contentType(JSON)
+                .post("/request")
+                .then()
+                .statusCode(200)
+                .contentType(JSON)
+                .body("size()", is(2));
+
+        verify(service).query(any(QuerySpec.class));
+        verify(transformerRegistry, times(2)).transform(any(ContractNegotiation.class), eq(ContractNegotiationDto.class));
+        verify(transformerRegistry, times(2)).transform(any(ContractNegotiationDto.class), eq(JsonObject.class));
     }
 
     @Test
-    void getAll_filtersOutFailedTransforms() {
-        var contractNegotiation = createContractNegotiation("negotiationId");
-        when(service.query(any())).thenReturn(ServiceResult.success(Stream.of(contractNegotiation)));
-        when(transformerRegistry.transform(isA(ContractNegotiation.class), eq(ContractNegotiationDto.class)))
-                .thenReturn(Result.failure("failure"));
-        when(transformerRegistry.transform(isA(QuerySpecDto.class), eq(QuerySpec.class)))
-                .thenReturn(Result.success(QuerySpec.Builder.newInstance().offset(10).build()));
+    void getAllContractNegotiations_queryTransformationFails() {
 
-        var negotiations = controller.getNegotiations(QuerySpecDto.Builder.newInstance().build());
+        when(service.query(any(QuerySpec.class))).thenReturn(ServiceResult.success(Stream.of(
+                createContractNegotiation("cn1"),
+                createContractNegotiation("cn2")
+        )));
+        when(transformerRegistry.transform(any(JsonObject.class), eq(QuerySpecDto.class))).thenReturn(Result.success(QuerySpecDto.Builder.newInstance().build()));
+        when(transformerRegistry.transform(any(QuerySpecDto.class), eq(QuerySpec.class))).thenReturn(Result.failure("test-failure"));
 
-        assertThat(negotiations).hasSize(0);
-        verify(transformerRegistry).transform(contractNegotiation, ContractNegotiationDto.class);
+        var requestBody = Json.createObjectBuilder().build();
+        baseRequest()
+                .contentType(JSON)
+                .body(requestBody)
+                .post("/request")
+                .then()
+                .statusCode(400);
+
+        verify(transformerRegistry).transform(any(JsonObject.class), eq(QuerySpecDto.class));
+        verify(transformerRegistry).transform(any(QuerySpecDto.class), eq(QuerySpec.class));
+        verifyNoInteractions(service);
+        verifyNoMoreInteractions(transformerRegistry);
     }
 
     @Test
-    void getAll_throwsExceptionIfQuerySpecTransformFails() {
-        when(transformerRegistry.transform(isA(QuerySpecDto.class), eq(QuerySpec.class)))
-                .thenReturn(Result.failure("Cannot transform"));
+    void getAllContractNegotiations_dtoTransformationFails() {
 
-        assertThatThrownBy(() -> controller.getNegotiations(QuerySpecDto.Builder.newInstance().build())).isInstanceOf(InvalidRequestException.class);
+        when(service.query(any(QuerySpec.class))).thenReturn(ServiceResult.success(Stream.of(
+                createContractNegotiation("cn1"),
+                createContractNegotiation("cn2")
+        )));
+        when(transformerRegistry.transform(any(ContractNegotiation.class), eq(ContractNegotiationDto.class)))
+                .thenReturn(Result.failure("test-failure"));
+
+        baseRequest()
+                .contentType(JSON)
+                .post("/request")
+                .then()
+                .statusCode(200)
+                .contentType(JSON)
+                .body("size()", is(0));
+
+        verify(transformerRegistry, times(2)).transform(any(ContractNegotiation.class), eq(ContractNegotiationDto.class));
+        verify(service).query(any(QuerySpec.class));
+        verifyNoMoreInteractions(transformerRegistry);
     }
 
     @Test
-    void getContractNegotiation_found() {
-        var contractNegotiation = createContractNegotiation("negotiationId");
-        when(service.findbyId("negotiationId")).thenReturn(contractNegotiation);
-        var dto = ContractNegotiationDto.Builder.newInstance().id(contractNegotiation.getId()).build();
-        when(transformerRegistry.transform(isA(ContractNegotiation.class), eq(ContractNegotiationDto.class))).thenReturn(Result.success(dto));
+    void getAllContractNegotiations_singleFailure_shouldLogError() {
 
-        var retrieved = controller.getNegotiation("negotiationId");
+        when(service.query(any(QuerySpec.class))).thenReturn(ServiceResult.success(Stream.of(
+                createContractNegotiation("cn1"),
+                createContractNegotiation("cn2")
+        )));
+        when(transformerRegistry.transform(any(ContractNegotiation.class), eq(ContractNegotiationDto.class)))
+                .thenReturn(Result.success(createContractNegotiationDto().build()));
+        when(transformerRegistry.transform(any(ContractNegotiationDto.class), eq(JsonObject.class)))
+                .thenReturn(Result.success(Json.createObjectBuilder().build()))
+                .thenReturn(Result.failure("test-failure"));
 
-        assertThat(retrieved).isNotNull();
+        baseRequest()
+                .contentType(JSON)
+                .post("/request")
+                .then()
+                .statusCode(200)
+                .contentType(JSON)
+                .body("size()", is(1));
+
+        verify(service).query(any(QuerySpec.class));
+        verify(transformerRegistry, times(2)).transform(any(ContractNegotiation.class), eq(ContractNegotiationDto.class));
+        verify(transformerRegistry, times(2)).transform(any(ContractNegotiationDto.class), eq(JsonObject.class));
+        verify(monitor).warning(contains("test-failure"));
     }
 
     @Test
-    void getContractNegotiation_notFound() {
-        when(service.findbyId("negotiationId")).thenReturn(null);
+    void getAllContractNegotiations_jsonObjectTransformationFails() {
 
-        assertThatThrownBy(() -> controller.getNegotiation("nonExistingId"))
-                .isInstanceOf(ObjectNotFoundException.class)
-                .hasMessage("Object of type ContractNegotiation with ID=nonExistingId was not found");
+        when(service.query(any(QuerySpec.class))).thenReturn(ServiceResult.success(Stream.of(
+                createContractNegotiation("cn1"),
+                createContractNegotiation("cn2")
+        )));
+        when(transformerRegistry.transform(any(JsonObject.class), eq(QuerySpecDto.class))).thenReturn(Result.success(QuerySpecDto.Builder.newInstance().build()));
+        when(transformerRegistry.transform(any(QuerySpecDto.class), eq(QuerySpec.class))).thenReturn(Result.success(QuerySpec.none()));
+        when(transformerRegistry.transform(any(ContractNegotiation.class), eq(ContractNegotiationDto.class)))
+                .thenReturn(Result.success(createContractNegotiationDto().build()));
+        when(transformerRegistry.transform(any(ContractNegotiationDto.class), eq(JsonObject.class)))
+                .thenReturn(Result.failure("test-failure"));
+
+        var requestBody = Json.createObjectBuilder().build();
+        baseRequest()
+                .contentType(JSON)
+                .body(requestBody)
+                .post("/request")
+                .then()
+                .statusCode(200)
+                .contentType(JSON)
+                .body("size()", is(0));
+
+
+        verify(service).query(any(QuerySpec.class));
+        verify(transformerRegistry).transform(any(JsonObject.class), eq(QuerySpecDto.class));
+        verify(transformerRegistry).transform(any(QuerySpecDto.class), eq(QuerySpec.class));
+        verify(transformerRegistry, times(2)).transform(any(ContractNegotiation.class), eq(ContractNegotiationDto.class));
+        verify(transformerRegistry, times(2)).transform(any(ContractNegotiationDto.class), eq(JsonObject.class));
+    }
+
+    @Test
+    void getById() {
+        when(service.findbyId(anyString())).thenReturn(createContractNegotiation("cn1"));
+        when(transformerRegistry.transform(any(ContractNegotiation.class), eq(ContractNegotiationDto.class)))
+                .thenReturn(Result.success(createContractNegotiationDto().build()));
+        when(transformerRegistry.transform(any(ContractNegotiationDto.class), eq(JsonObject.class)))
+                .thenReturn(Result.success(Json.createObjectBuilder().build()));
+
+        baseRequest()
+                .get("/cn1")
+                .then()
+                .statusCode(200)
+                .contentType(JSON)
+                .body(notNullValue());
+
+        verify(service).findbyId(anyString());
+        verify(transformerRegistry).transform(any(ContractNegotiation.class), eq(ContractNegotiationDto.class));
+        verify(transformerRegistry).transform(any(ContractNegotiationDto.class), eq(JsonObject.class));
+    }
+
+    @Test
+    void getById_notFound() {
+        when(service.findbyId(anyString())).thenReturn(null);
+
+        baseRequest()
+                .get("/cn1")
+                .then()
+                .statusCode(404)
+                .contentType(JSON)
+                .body(notNullValue());
+
+        verify(service).findbyId(anyString());
         verifyNoInteractions(transformerRegistry);
     }
 
     @Test
-    void getContractNegotiation_notFoundIfTransformationFails() {
-        var contractNegotiation = createContractNegotiation("negotiationId");
-        when(service.findbyId("negotiationId")).thenReturn(contractNegotiation);
-        when(transformerRegistry.transform(isA(ContractNegotiation.class), eq(ContractNegotiationDto.class))).thenReturn(Result.failure("failure"));
+    void getById_transformationFails() {
+        when(service.findbyId(eq("cn1"))).thenReturn(createContractNegotiation("cn1"));
+        when(transformerRegistry.transform(any(ContractNegotiation.class), eq(ContractNegotiationDto.class)))
+                .thenReturn(Result.success(createContractNegotiationDto().build()));
+        when(transformerRegistry.transform(any(ContractNegotiationDto.class), eq(JsonObject.class)))
+                .thenReturn(Result.failure("test-failure"));
 
-        assertThatThrownBy(() -> controller.getNegotiation("nonExistingId"))
-                .isInstanceOf(ObjectNotFoundException.class)
-                .hasMessage("Object of type ContractNegotiation with ID=nonExistingId was not found");
+        baseRequest()
+                .get("/cn1")
+                .then()
+                .statusCode(400)
+                .contentType(JSON)
+                .body(notNullValue());
+
+        verify(service).findbyId(anyString());
+        verify(transformerRegistry).transform(any(ContractNegotiation.class), eq(ContractNegotiationDto.class));
+        verify(transformerRegistry).transform(any(ContractNegotiationDto.class), eq(JsonObject.class));
     }
 
-    @Test
-    void getContractNegotiationState_found() {
-        when(service.getState("negotiationId")).thenReturn("REQUESTED");
-
-        var state = controller.getNegotiationState("negotiationId");
-
-        assertThat(state.getState()).isEqualTo(REQUESTED.name());
-    }
 
     @Test
-    void getContractNegotiationState_notFound() {
-        when(service.getState("negotiationId")).thenReturn(null);
-
-        assertThatThrownBy(() -> controller.getNegotiationState("nonExistingId"))
-                .isInstanceOf(ObjectNotFoundException.class)
-                .hasMessage("Object of type ContractNegotiation with ID=nonExistingId was not found");
-    }
-
-    @Test
-    void getAgreementForNegotiation() {
-        when(service.getForNegotiation("negotiationId")).thenReturn(createContractAgreement("negotiationId"));
-        var dto = ContractAgreementDto.Builder.newInstance().id("agreementId").build();
-        when(transformerRegistry.transform(isA(ContractAgreement.class), eq(ContractAgreementDto.class))).thenReturn(Result.success(dto));
-
-        var agreement = controller.getAgreementForNegotiation("negotiationId");
-
-        assertThat(agreement).isNotNull()
-                .extracting(ContractAgreementDto::getId)
-                .isEqualTo("agreementId");
-    }
-
-    @Test
-    void getAgreementForNegotiation_negotiationNotExist() {
-        when(service.getForNegotiation(any())).thenReturn(null);
-
-        assertThatThrownBy(() -> controller.getAgreementForNegotiation("negotiationId"))
-                .isInstanceOf(ObjectNotFoundException.class)
-                .hasMessage("Object of type ContractNegotiation with ID=negotiationId was not found");
-        verifyNoInteractions(transformerRegistry);
-    }
-
-    @Test
-    void initiateNegotiation() {
-        when(service.initiateNegotiation(isA(ContractRequest.class))).thenReturn(createContractNegotiation("negotiationId"));
-        var contractOfferRequest = createContractOfferRequest();
-        when(transformerRegistry.transform(isA(NegotiationInitiateRequestDto.class), eq(ContractRequest.class))).thenReturn(Result.success(contractOfferRequest));
-        var request = NegotiationInitiateRequestDto.Builder.newInstance()
-                .connectorId("connectorId")
-                .connectorAddress("callbackAddress")
-                .protocol("protocol")
-                .offer(TestFunctions.createOffer("offerId"))
-                .callbackAddresses(List.of(CallbackAddressDto.Builder.newInstance()
-                        .uri("local://test")
-                        .build()))
+    void getSingleContractNegotationState() {
+        var expanded = Json.createObjectBuilder()
+                .add(TYPE, NEGOTIATION_STATE_TYPE)
+                .add(NEGOTIATION_STATE_STATE, "REQUESTED")
                 .build();
 
-        var negotiationId = controller.initiateContractNegotiation(request);
+        when(service.getState(eq("cn1"))).thenReturn("REQUESTED");
+        when(transformerRegistry.transform(any(NegotiationState.class), eq(JsonObject.class))).thenReturn(Result.success(expanded));
 
-        assertThat(negotiationId.getId()).isEqualTo("negotiationId");
-        assertThat(negotiationId).isInstanceOf(IdResponseDto.class);
-        assertThat(negotiationId.getId()).isNotEmpty();
-        assertThat(negotiationId.getCreatedAt()).isNotZero();
+        baseRequest()
+                .get("/cn1/state")
+                .then()
+                .statusCode(200)
+                .contentType(JSON)
+                .body("'edc:state'", is("REQUESTED"));
+        verify(service).getState(eq("cn1"));
+        verify(transformerRegistry).transform(any(NegotiationState.class), eq(JsonObject.class));
+        verifyNoMoreInteractions(service, transformerRegistry);
     }
 
     @Test
-    void initiateNegotiation_illegalArgumentIfTransformationFails() {
-        when(service.initiateNegotiation(isA(ContractRequest.class))).thenReturn(createContractNegotiation("negotiationId"));
-        var request = NegotiationInitiateRequestDto.Builder.newInstance()
-                .connectorId("connectorId")
-                .connectorAddress("callbackAddress")
-                .protocol("protocol")
-                .offer(TestFunctions.createOffer("offerId"))
-                .build();
-        when(transformerRegistry.transform(any(), any())).thenReturn(Result.failure("failure"));
+    void getSingleContractNegotationAgreement() {
+        when(service.getForNegotiation(eq("cn1"))).thenReturn(createContractAgreement("cn1"));
+        when(transformerRegistry.transform(any(ContractAgreement.class), eq(ContractAgreementDto.class)))
+                .thenReturn(Result.success(ContractAgreementDto.Builder.newInstance().build()));
+        when(transformerRegistry.transform(any(ContractAgreementDto.class), eq(JsonObject.class)))
+                .thenReturn(Result.success(Json.createObjectBuilder().build()));
 
-        assertThatThrownBy(() -> controller.initiateContractNegotiation(request)).isInstanceOf(InvalidRequestException.class);
+        baseRequest()
+                .get("/cn1/agreement")
+                .then()
+                .statusCode(200)
+                .contentType(JSON)
+                .body(notNullValue());
+
+        verify(service).getForNegotiation(eq("cn1"));
+        verify(transformerRegistry).transform(any(ContractAgreement.class), eq(ContractAgreementDto.class));
+        verify(transformerRegistry).transform(any(ContractAgreementDto.class), eq(JsonObject.class));
+        verifyNoMoreInteractions(transformerRegistry, service);
     }
+
+    @Test
+    void getSingleContractNegotationAgreement_transformationFails() {
+
+        when(service.getForNegotiation(eq("cn1"))).thenReturn(createContractAgreement("cn1"));
+        when(transformerRegistry.transform(any(ContractAgreement.class), eq(ContractAgreementDto.class)))
+                .thenReturn(Result.failure("test-failure"));
+
+        baseRequest()
+                .get("/cn1/agreement")
+                .then()
+                .statusCode(500);
+
+        verify(service).getForNegotiation(eq("cn1"));
+        verify(transformerRegistry).transform(any(ContractAgreement.class), eq(ContractAgreementDto.class));
+        verifyNoMoreInteractions(transformerRegistry, service);
+    }
+
+    @Test
+    void getSingleContractNegotationAgreement_whenNoneFound() {
+        when(service.getForNegotiation(eq("cn1"))).thenReturn(null);
+
+        baseRequest()
+                .get("/cn1/agreement")
+                .then()
+                .statusCode(404)
+                .contentType(JSON)
+                .body(notNullValue());
+
+        verify(service).getForNegotiation(eq("cn1"));
+        verifyNoMoreInteractions(transformerRegistry, service);
+    }
+
+    @Test
+    void initiate() {
+
+        var contractNegotiation = createContractNegotiation("cn1");
+        var responseBody = Json.createObjectBuilder().add(TYPE, EDC_ID_RESPONSE_DTO_TYPE).add(ID, contractNegotiation.getId()).build();
+
+        when(transformerRegistry.transform(any(JsonObject.class), eq(NegotiationInitiateRequestDto.class))).thenReturn(Result.success(NegotiationInitiateRequestDto.Builder.newInstance().build()));
+        when(transformerRegistry.transform(any(NegotiationInitiateRequestDto.class), eq(ContractRequest.class))).thenReturn(Result.success(
+                ContractRequest.Builder.newInstance()
+                        .requestData(ContractRequestData.Builder.newInstance()
+                                .protocol("test-protocol")
+                                .counterPartyAddress("test-cb")
+                                .contractOffer(ContractOffer.Builder.newInstance()
+                                        .id("test-offer-id")
+                                        .assetId(randomUUID().toString())
+                                        .policy(Policy.Builder.newInstance().build())
+                                        .build())
+                                .build())
+                        .build()));
+
+        when(transformerRegistry.transform(any(), eq(JsonObject.class))).thenReturn(Result.success(responseBody));
+        when(service.initiateNegotiation(any(ContractRequest.class))).thenReturn(contractNegotiation);
+
+        when(transformerRegistry.transform(any(IdResponseDto.class), eq(JsonObject.class))).thenReturn(Result.success(responseBody));
+
+        baseRequest()
+                .contentType(JSON)
+                .body(Json.createObjectBuilder().build())
+                .post()
+                .then()
+                .statusCode(200)
+                .body(ID, is(contractNegotiation.getId()));
+
+        verify(service).initiateNegotiation(any());
+        verify(transformerRegistry).transform(any(JsonObject.class), eq(NegotiationInitiateRequestDto.class));
+        verify(transformerRegistry).transform(any(NegotiationInitiateRequestDto.class), eq(ContractRequest.class));
+        verify(transformerRegistry).transform(any(IdResponseDto.class), eq(JsonObject.class));
+        verifyNoMoreInteractions(transformerRegistry, service);
+    }
+
+    @Test
+    void initiate_invalidRequest() {
+        when(transformerRegistry.transform(any(JsonObject.class), eq(NegotiationInitiateRequestDto.class))).thenReturn(Result.failure("test-failure"));
+
+        baseRequest()
+                .contentType(JSON)
+                .body(Json.createObjectBuilder().build())
+                .post()
+                .then()
+                .statusCode(400);
+        verify(transformerRegistry).transform(any(JsonObject.class), eq(NegotiationInitiateRequestDto.class));
+        verifyNoMoreInteractions(transformerRegistry, service);
+    }
+
 
     @Test
     void cancel() {
-        var contractNegotiation = createContractNegotiation("negotiationId");
-        when(service.cancel("negotiationId")).thenReturn(ServiceResult.success(contractNegotiation));
+        when(service.cancel(eq("cn1"))).thenReturn(ServiceResult.success(createContractNegotiation("cn1")));
+        baseRequest()
+                .contentType(JSON)
+                .post("/cn1/cancel")
+                .then()
+                .statusCode(204);
+    }
 
-        controller.cancelNegotiation("negotiationId");
-
-        verify(service).cancel("negotiationId");
+    @Test
+    void cancel_failed() {
+        when(service.cancel(eq("cn1"))).thenReturn(ServiceResult.badRequest("test-failure"));
+        baseRequest()
+                .contentType(JSON)
+                .post("/cn1/cancel")
+                .then()
+                .statusCode(400);
     }
 
     @Test
     void cancel_notFound() {
-        when(service.cancel("negotiationId")).thenReturn(ServiceResult.notFound("not found"));
-
-        assertThatThrownBy(() -> controller.cancelNegotiation("negotiationId"))
-                .isInstanceOf(ObjectNotFoundException.class)
-                .hasMessage("Object of type ContractNegotiation with ID=negotiationId was not found");
+        when(service.cancel(eq("cn1"))).thenReturn(ServiceResult.notFound("test-failure"));
+        baseRequest()
+                .contentType(JSON)
+                .post("/cn1/cancel")
+                .then()
+                .statusCode(404);
     }
 
     @Test
-    void cancel_notPossible() {
-        when(service.cancel("negotiationId")).thenReturn(ServiceResult.conflict("conflict"));
-
-        assertThatThrownBy(() -> controller.cancelNegotiation("negotiationId")).isInstanceOf(ObjectConflictException.class);
+    void cancel_conflict() {
+        when(service.cancel(eq("cn1"))).thenReturn(ServiceResult.conflict("test-failure"));
+        baseRequest()
+                .contentType(JSON)
+                .post("/cn1/cancel")
+                .then()
+                .statusCode(409);
     }
 
     @Test
     void decline() {
-        var contractNegotiation = createContractNegotiation("negotiationId");
-        when(service.decline("negotiationId")).thenReturn(ServiceResult.success(contractNegotiation));
+        when(service.decline(eq("cn1"))).thenReturn(ServiceResult.success(createContractNegotiation("cn1")));
+        baseRequest()
+                .contentType(JSON)
+                .post("/cn1/decline")
+                .then()
+                .statusCode(204);
+    }
 
-        controller.declineNegotiation("negotiationId");
-
-        verify(service).decline("negotiationId");
+    @Test
+    void decline_failed() {
+        when(service.decline(eq("cn1"))).thenReturn(ServiceResult.badRequest("test-failure"));
+        baseRequest()
+                .contentType(JSON)
+                .post("/cn1/decline")
+                .then()
+                .statusCode(400);
     }
 
     @Test
     void decline_notFound() {
-        when(service.decline("negotiationId")).thenReturn(ServiceResult.notFound("not found"));
-
-        assertThatThrownBy(() -> controller.declineNegotiation("negotiationId"))
-                .isInstanceOf(ObjectNotFoundException.class)
-                .hasMessage("Object of type ContractNegotiation with ID=negotiationId was not found");
+        when(service.decline(eq("cn1"))).thenReturn(ServiceResult.notFound("test-failure"));
+        baseRequest()
+                .contentType(JSON)
+                .post("/cn1/decline")
+                .then()
+                .statusCode(404);
     }
 
     @Test
-    void decline_notPossible() {
-        when(service.decline("negotiationId")).thenReturn(ServiceResult.conflict("conflict"));
-
-        assertThatThrownBy(() -> controller.declineNegotiation("negotiationId")).isInstanceOf(ObjectConflictException.class);
+    void decline_conflict() {
+        when(service.decline(eq("cn1"))).thenReturn(ServiceResult.conflict("test-failure"));
+        baseRequest()
+                .contentType(JSON)
+                .post("/cn1/decline")
+                .then()
+                .statusCode(409);
     }
 
-    @ParameterizedTest
-    @ArgumentsSource(InvalidNegotiationParameters.class)
-    void initiateNegotiation_invalidRequestBody(String connectorAddress, String connectorId, String protocol, String offerId) {
-        when(transformerRegistry.transform(isA(NegotiationInitiateRequestDto.class), eq(ContractRequest.class))).thenReturn(Result.failure("error"));
+    @Override
+    protected Object controller() {
+        return new ContractNegotiationApiController(service, transformerRegistry, jsonLd, monitor);
+    }
 
-        var rq = NegotiationInitiateRequestDto.Builder.newInstance()
-                .connectorAddress(connectorAddress)
-                .connectorId(connectorId)
-                .protocol(protocol)
-                .offer(TestFunctions.createOffer(offerId))
-                .build();
-
-        assertThatThrownBy(() -> controller.initiateContractNegotiation(rq)).isInstanceOf(InvalidRequestException.class);
+    private RequestSpecification baseRequest() {
+        return given()
+                .baseUri("http://localhost:" + port + "/v2/contractnegotiations")
+                .when();
     }
 
     private ContractNegotiation createContractNegotiation(String negotiationId) {
@@ -299,54 +498,33 @@ class ContractNegotiationApiControllerTest {
     private ContractAgreement createContractAgreement(String negotiationId) {
         return ContractAgreement.Builder.newInstance()
                 .id(negotiationId)
-                .providerId(UUID.randomUUID().toString())
-                .consumerId(UUID.randomUUID().toString())
-                .assetId(UUID.randomUUID().toString())
+                .consumerId("test-consumer")
+                .providerId("test-provider")
+                .assetId(randomUUID().toString())
                 .policy(Policy.Builder.newInstance().build())
-                .build();
-    }
-
-    private ContractRequest createContractOfferRequest() {
-        var requestData = ContractRequestData.Builder.newInstance()
-                .protocol("protocol")
-                .connectorId("connectorId")
-                .counterPartyAddress("callbackAddress")
-                .contractOffer(ContractOffer.Builder.newInstance()
-                        .id(UUID.randomUUID().toString())
-                        .policy(Policy.Builder.newInstance().build())
-                        .assetId("test-asset")
-                        .build())
-                .build();
-        return ContractRequest.Builder.newInstance()
-                .requestData(requestData)
                 .build();
     }
 
     private ContractNegotiation.Builder createContractNegotiationBuilder(String negotiationId) {
         return ContractNegotiation.Builder.newInstance()
                 .id(negotiationId)
-                .counterPartyId(UUID.randomUUID().toString())
+                .counterPartyId(randomUUID().toString())
                 .counterPartyAddress("address")
+                .callbackAddresses(List.of(CallbackAddress.Builder.newInstance()
+                        .uri("local://test")
+                        .build()))
                 .protocol("protocol");
     }
 
-    private static class InvalidNegotiationParameters implements ArgumentsProvider {
+    private ContractNegotiationDto.Builder createContractNegotiationDto() {
+        return ContractNegotiationDto.Builder.newInstance()
+                .id("test-id")
+                .contractAgreementId("agreement-id")
+                .counterPartyAddress("test-counterparty")
+                .type(ContractNegotiation.Type.PROVIDER)
+                .protocol("test-protocol")
+                .callbackAddresses(List.of(new CallbackAddress()))
+                .state(ContractNegotiationStates.INITIAL.toString());
 
-        @Override
-        public Stream<? extends Arguments> provideArguments(ExtensionContext context) {
-            return Stream.of(Arguments.of(null, "consumer", "ids-multipart", "test-offer"),
-                    Arguments.of("", "consumer", "ids-multipart", "test-offer"),
-                    Arguments.of("  ", "consumer", "ids-multipart", "test-offer"),
-                    Arguments.of("http://some-connector", null, "ids-multipart", "test-offer"),
-                    Arguments.of("http://some-connector", "", "ids-multipart", "test-offer"),
-                    Arguments.of("http://some-connector", "  ", "ids-multipart", "test-offer"),
-                    Arguments.of("http://some-connector", "consumer", null, "test-offer"),
-                    Arguments.of("http://some-connector", "consumer", "", "test-offer"),
-                    Arguments.of("http://some-connector", "consumer", "   ", "test-offer"),
-                    Arguments.of("http://some-connector", "consumer", "ids-multipart", null),
-                    Arguments.of("http://some-connector", "consumer", "ids-multipart", ""),
-                    Arguments.of("http://some-connector", "consumer", "ids-multipart", "  ")
-            );
-        }
     }
 }

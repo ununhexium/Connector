@@ -16,14 +16,15 @@ package org.eclipse.edc.connector.api.management.contractnegotiation.model;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import org.eclipse.edc.api.model.CallbackAddressDto;
+import org.eclipse.edc.api.model.BaseDto;
+import org.eclipse.edc.spi.types.domain.callback.CallbackAddress;
 
 import java.util.ArrayList;
 import java.util.List;
 
 import static org.eclipse.edc.spi.CoreConstants.EDC_NAMESPACE;
 
-public class NegotiationInitiateRequestDto {
+public class NegotiationInitiateRequestDto extends BaseDto {
     public static final String TYPE = EDC_NAMESPACE + "NegotiationInitiateRequestDto";
     public static final String CONNECTOR_ADDRESS = EDC_NAMESPACE + "connectorAddress";
     public static final String PROTOCOL = EDC_NAMESPACE + "protocol";
@@ -39,7 +40,7 @@ public class NegotiationInitiateRequestDto {
     @NotBlank(message = "connectorAddress is mandatory")
     private String connectorAddress; // TODO change to callbackAddress
     @NotBlank(message = "protocol is mandatory")
-    private String protocol = "ids-multipart";
+    private String protocol;
     @NotBlank(message = "connectorId is mandatory")
     private String connectorId;
     @NotNull(message = "offer cannot be null")
@@ -47,7 +48,7 @@ public class NegotiationInitiateRequestDto {
     private String providerId;
     private String consumerId;
 
-    private List<CallbackAddressDto> callbackAddresses = new ArrayList<>();
+    private List<CallbackAddress> callbackAddresses = new ArrayList<>();
 
     private NegotiationInitiateRequestDto() {
 
@@ -78,7 +79,7 @@ public class NegotiationInitiateRequestDto {
         return providerId;
     }
 
-    public List<CallbackAddressDto> getCallbackAddresses() {
+    public List<CallbackAddress> getCallbackAddresses() {
         return callbackAddresses;
     }
 
@@ -123,7 +124,7 @@ public class NegotiationInitiateRequestDto {
             return this;
         }
 
-        public Builder callbackAddresses(List<CallbackAddressDto> callbackAddresses) {
+        public Builder callbackAddresses(List<CallbackAddress> callbackAddresses) {
             dto.callbackAddresses = callbackAddresses;
             return this;
         }

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2020 - 2022 Microsoft Corporation
+ *  Copyright (c) 2023 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)
  *
  *  This program and the accompanying materials are made available under the
  *  terms of the Apache License, Version 2.0 which is available at
@@ -8,273 +8,417 @@
  *  SPDX-License-Identifier: Apache-2.0
  *
  *  Contributors:
- *       Microsoft Corporation - initial API and implementation
+ *       Bayerische Motoren Werke Aktiengesellschaft (BMW AG) - initial API and implementation
  *
  */
 
 package org.eclipse.edc.connector.api.management.policy;
 
+import jakarta.json.Json;
+import jakarta.json.JsonObject;
 import org.eclipse.edc.api.model.IdResponseDto;
-import org.eclipse.edc.api.query.QuerySpecDto;
+import org.eclipse.edc.api.model.QuerySpecDto;
 import org.eclipse.edc.connector.api.management.policy.model.PolicyDefinitionRequestDto;
 import org.eclipse.edc.connector.api.management.policy.model.PolicyDefinitionResponseDto;
 import org.eclipse.edc.connector.api.management.policy.model.PolicyDefinitionUpdateDto;
 import org.eclipse.edc.connector.api.management.policy.model.PolicyDefinitionUpdateWrapperDto;
 import org.eclipse.edc.connector.policy.spi.PolicyDefinition;
 import org.eclipse.edc.connector.spi.policydefinition.PolicyDefinitionService;
+import org.eclipse.edc.jsonld.spi.JsonLd;
+import org.eclipse.edc.junit.annotations.ApiTest;
 import org.eclipse.edc.policy.model.Policy;
 import org.eclipse.edc.service.spi.result.ServiceResult;
-import org.eclipse.edc.spi.monitor.Monitor;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.eclipse.edc.spi.result.Result;
 import org.eclipse.edc.transform.spi.TypeTransformerRegistry;
-import org.eclipse.edc.web.spi.exception.InvalidRequestException;
-import org.eclipse.edc.web.spi.exception.ObjectConflictException;
-import org.eclipse.edc.web.spi.exception.ObjectNotFoundException;
-import org.junit.jupiter.api.BeforeEach;
+import org.eclipse.edc.web.jersey.testfixtures.RestControllerTestBase;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
 
-import java.util.UUID;
 import java.util.stream.Stream;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static io.restassured.RestAssured.given;
+import static io.restassured.http.ContentType.JSON;
+import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.CONTEXT;
+import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.TYPE;
+import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
-class PolicyDefinitionApiControllerTest {
+@ApiTest
+class PolicyDefinitionApiControllerTest extends RestControllerTestBase {
 
-    private final PolicyDefinitionService service = mock(PolicyDefinitionService.class);
     private final TypeTransformerRegistry transformerRegistry = mock(TypeTransformerRegistry.class);
-    private PolicyDefinitionApiController controller;
-
-    @BeforeEach
-    void setup() {
-        var monitor = mock(Monitor.class);
-        controller = new PolicyDefinitionApiController(monitor, service, transformerRegistry);
-    }
+    private final PolicyDefinitionService service = mock(PolicyDefinitionService.class);
+    private final JsonLd jsonLd = mock(JsonLd.class);
 
     @Test
-    void getPolicyById() {
-        when(service.findById("id")).thenReturn(TestFunctions.createPolicy("id"));
-        var responseDto = PolicyDefinitionResponseDto.Builder.newInstance().policy(Policy.Builder.newInstance().build()).build();
-        when(transformerRegistry.transform(isA(PolicyDefinition.class), eq(PolicyDefinitionResponseDto.class)))
-                .thenReturn(Result.success(responseDto));
-
-        var policyDto = controller.getPolicy("id");
-
-        assertThat(policyDto).isNotNull();
-    }
-
-    @Test
-    void getPolicyById_notExists() {
-        when(service.findById("id")).thenReturn(null);
-
-        assertThatThrownBy(() -> controller.getPolicy("id")).isInstanceOf(ObjectNotFoundException.class);
-    }
-
-    @Test
-    void getPolicy_notFoundIfTransformationFails() {
-        var policyDefinition = TestFunctions.createPolicy("id");
-        when(service.findById("definitionId")).thenReturn(policyDefinition);
-        when(transformerRegistry.transform(isA(PolicyDefinition.class), eq(PolicyDefinitionResponseDto.class))).thenReturn(Result.failure("failure"));
-
-        assertThatThrownBy(() -> controller.getPolicy("nonExistingId")).isInstanceOf(ObjectNotFoundException.class);
-    }
-
-
-    @Test
-    void getAllPolicies() {
-        when(service.query(any())).thenReturn(ServiceResult.success(Stream.of(TestFunctions.createPolicy("id"))));
-        when(transformerRegistry.transform(isA(QuerySpecDto.class), eq(QuerySpec.class)))
-                .thenReturn(Result.success(QuerySpec.Builder.newInstance().offset(10).build()));
-        var responseDto = PolicyDefinitionResponseDto.Builder.newInstance().policy(Policy.Builder.newInstance().build()).build();
-        when(transformerRegistry.transform(isA(PolicyDefinition.class), eq(PolicyDefinitionResponseDto.class)))
-                .thenReturn(Result.success(responseDto));
-        var querySpec = QuerySpecDto.Builder.newInstance().build();
-
-        var allPolicies = controller.getAllPolicies(querySpec);
-
-        assertThat(allPolicies).hasSize(1);
-        verify(service).query(argThat(s -> s.getOffset() == 10));
-        verify(transformerRegistry).transform(isA(QuerySpecDto.class), eq(QuerySpec.class));
-        verify(transformerRegistry).transform(isA(PolicyDefinition.class), eq(PolicyDefinitionResponseDto.class));
-    }
-
-    @Test
-    void getAll_filtersOutFailedTransforms() {
-        var policyDefinition = TestFunctions.createPolicy("id");
-        when(service.query(any())).thenReturn(ServiceResult.success(Stream.of(policyDefinition)));
-        when(transformerRegistry.transform(isA(QuerySpecDto.class), eq(QuerySpec.class)))
-                .thenReturn(Result.success(QuerySpec.Builder.newInstance().offset(10).build()));
-        when(transformerRegistry.transform(isA(PolicyDefinition.class), eq(PolicyDefinitionResponseDto.class)))
-                .thenReturn(Result.failure("failure"));
-
-        var allPolicyDefinitions = controller.getAllPolicies(QuerySpecDto.Builder.newInstance().build());
-
-        assertThat(allPolicyDefinitions).hasSize(0);
-        verify(transformerRegistry).transform(policyDefinition, PolicyDefinitionResponseDto.class);
-    }
-
-    @Test
-    void getAll_throwsExceptionIfQuerySpecTransformFails() {
-        when(transformerRegistry.transform(isA(QuerySpecDto.class), eq(QuerySpec.class)))
-                .thenReturn(Result.failure("Cannot transform"));
-
-        assertThatThrownBy(() -> controller.getAllPolicies(QuerySpecDto.Builder.newInstance().build())).isInstanceOf(InvalidRequestException.class);
-    }
-
-    @Test
-    void queryAllPolicies() {
-        when(service.query(any())).thenReturn(ServiceResult.success(Stream.of(TestFunctions.createPolicy("id"))));
-        when(transformerRegistry.transform(isA(QuerySpecDto.class), eq(QuerySpec.class)))
-                .thenReturn(Result.success(QuerySpec.Builder.newInstance().offset(10).build()));
-        var responseDto = PolicyDefinitionResponseDto.Builder.newInstance().policy(Policy.Builder.newInstance().build()).build();
-        when(transformerRegistry.transform(isA(PolicyDefinition.class), eq(PolicyDefinitionResponseDto.class)))
-                .thenReturn(Result.success(responseDto));
-        var querySpec = QuerySpecDto.Builder.newInstance().build();
-
-        var allPolicies = controller.queryAllPolicies(querySpec);
-
-        assertThat(allPolicies).hasSize(1);
-        verify(service).query(argThat(s -> s.getOffset() == 10));
-        verify(transformerRegistry).transform(isA(QuerySpecDto.class), eq(QuerySpec.class));
-        verify(transformerRegistry).transform(isA(PolicyDefinition.class), eq(PolicyDefinitionResponseDto.class));
-    }
-
-    @Test
-    void queryAll_filtersOutFailedTransforms() {
-        var policyDefinition = TestFunctions.createPolicy("id");
-        when(service.query(any())).thenReturn(ServiceResult.success(Stream.of(policyDefinition)));
-        when(transformerRegistry.transform(isA(QuerySpecDto.class), eq(QuerySpec.class)))
-                .thenReturn(Result.success(QuerySpec.Builder.newInstance().offset(10).build()));
-        when(transformerRegistry.transform(isA(PolicyDefinition.class), eq(PolicyDefinitionResponseDto.class)))
-                .thenReturn(Result.failure("failure"));
-
-        var allPolicyDefinitions = controller.queryAllPolicies(QuerySpecDto.Builder.newInstance().build());
-
-        assertThat(allPolicyDefinitions).hasSize(0);
-        verify(transformerRegistry).transform(policyDefinition, PolicyDefinitionResponseDto.class);
-    }
-
-    @Test
-    void queryAll_throwsExceptionIfQuerySpecTransformFails() {
-        when(transformerRegistry.transform(isA(QuerySpecDto.class), eq(QuerySpec.class)))
-                .thenReturn(Result.failure("Cannot transform"));
-
-        assertThatThrownBy(() -> controller.queryAllPolicies(QuerySpecDto.Builder.newInstance().build())).isInstanceOf(InvalidRequestException.class);
-    }
-
-    @Test
-    void createPolicy() {
-        var dto = PolicyDefinitionRequestDto.Builder.newInstance().policy(Policy.Builder.newInstance().build()).build();
-        var policyDefinition = TestFunctions.createPolicy("id");
-        when(transformerRegistry.transform(isA(PolicyDefinitionRequestDto.class), eq(PolicyDefinition.class))).thenReturn(Result.success(policyDefinition));
-        when(service.create(any())).thenReturn(ServiceResult.success(policyDefinition));
-
-        var policyDefinitionId = controller.createPolicy(dto);
-
-        assertThat(policyDefinitionId).isNotNull();
-        assertThat(policyDefinitionId).isInstanceOf(IdResponseDto.class);
-        assertThat(policyDefinitionId.getId()).isNotEmpty();
-        assertThat(policyDefinitionId.getCreatedAt()).isNotEqualTo(0L);
-
-        verify(service).create(isA(PolicyDefinition.class));
-    }
-
-    @Test
-    void createPolicy_returnExpectedId() {
-        var policyId = UUID.randomUUID().toString();
-        var dto = PolicyDefinitionRequestDto.Builder.newInstance().policy(Policy.Builder.newInstance().build()).build();
-
-        var policyDefinition = TestFunctions.createPolicy(policyId);
-
-        when(transformerRegistry.transform(isA(PolicyDefinitionRequestDto.class), eq(PolicyDefinition.class))).thenReturn(Result.success(policyDefinition));
-        when(service.create(any())).thenReturn(ServiceResult.success(policyDefinition));
-
-        var policyDefinitionId = controller.createPolicy(dto);
-        assertThat(policyDefinitionId).isNotNull();
-        assertThat(policyDefinitionId.getId()).isEqualTo(policyId);
-    }
-
-    @Test
-    void createPolicy_alreadyExists() {
-        var policy = Policy.Builder.newInstance().build();
-        var dto = PolicyDefinitionRequestDto.Builder.newInstance().policy(policy).build();
-        var policyDefinition = PolicyDefinition.Builder.newInstance()
-                .policy(policy)
-                .id("an Id")
+    void create_shouldReturnDefinitionId() {
+        var dto = PolicyDefinitionRequestDto.Builder.newInstance().build();
+        var policyDefinition = createPolicyDefinition().id("policyDefinitionId").createdAt(1234).build();
+        var response = Json.createObjectBuilder()
+                .add("id", policyDefinition.getId())
+                .add("createdAt", policyDefinition.getCreatedAt())
                 .build();
 
-        when(service.create(any())).thenReturn(ServiceResult.conflict("already exists"));
-        when(transformerRegistry.transform(isA(PolicyDefinitionRequestDto.class), eq(PolicyDefinition.class)))
-                .thenReturn(Result.success(policyDefinition));
+        when(jsonLd.expand(any())).thenReturn(Result.success(Json.createObjectBuilder().build()));
+        when(transformerRegistry.transform(any(), eq(PolicyDefinitionRequestDto.class))).thenReturn(Result.success(dto));
+        when(transformerRegistry.transform(any(), eq(PolicyDefinition.class))).thenReturn(Result.success(policyDefinition));
+        when(service.create(any())).thenReturn(ServiceResult.success(policyDefinition));
+        when(transformerRegistry.transform(any(IdResponseDto.class), eq(JsonObject.class))).thenReturn(Result.success(response));
+        when(jsonLd.compact(any())).thenReturn(Result.success(response));
 
-        assertThatThrownBy(() -> controller.createPolicy(dto)).isInstanceOf(ObjectConflictException.class);
+
+        var requestBody = Json.createObjectBuilder()
+                .add("policy", Json.createObjectBuilder()
+                        .add(CONTEXT, "context")
+                        .add(TYPE, "Set")
+                        .build())
+                .build();
+
+        given()
+                .port(port)
+                .body(requestBody)
+                .contentType(JSON)
+                .post("/v2/policydefinitions")
+                .then()
+                .statusCode(200)
+                .contentType(JSON)
+                .body("id", is("policyDefinitionId"))
+                .body("createdAt", is(1234));
+        verify(jsonLd).expand(isA(JsonObject.class));
+        verify(transformerRegistry).transform(isA(JsonObject.class), eq(PolicyDefinitionRequestDto.class));
+        verify(transformerRegistry).transform(dto, PolicyDefinition.class);
+        verify(service).create(policyDefinition);
     }
 
     @Test
-    void createPolicy_transformationFails() {
+    void create_shouldReturnBadRequest_whenTransformationFails() {
+        when(jsonLd.expand(any())).thenReturn(Result.success(Json.createObjectBuilder().build()));
+        when(transformerRegistry.transform(any(), any())).thenReturn(Result.failure("error"));
+        var requestBody = Json.createObjectBuilder()
+                .add("policy", Json.createObjectBuilder()
+                        .add(CONTEXT, "context")
+                        .add(TYPE, "Set")
+                        .build())
+                .build();
+
+        given()
+                .port(port)
+                .body(requestBody)
+                .contentType(JSON)
+                .post("/v2/policydefinitions")
+                .then()
+                .statusCode(400)
+                .contentType(JSON);
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void create_shouldReturnConflict_whenItAlreadyExists() {
         var dto = PolicyDefinitionRequestDto.Builder.newInstance().build();
-        when(transformerRegistry.transform(isA(PolicyDefinitionRequestDto.class), eq(PolicyDefinition.class))).thenReturn(Result.failure("failure"));
+        var policyDefinition = createPolicyDefinition().id("policyDefinitionId").createdAt(1234).build();
+        when(jsonLd.expand(any())).thenReturn(Result.success(Json.createObjectBuilder().build()));
+        when(transformerRegistry.transform(any(), eq(PolicyDefinitionRequestDto.class))).thenReturn(Result.success(dto));
+        when(transformerRegistry.transform(any(), eq(PolicyDefinition.class))).thenReturn(Result.success(policyDefinition));
+        when(service.create(any())).thenReturn(ServiceResult.conflict("already exists"));
+        var requestBody = Json.createObjectBuilder()
+                .add("policy", Json.createObjectBuilder()
+                        .add(CONTEXT, "context")
+                        .add(TYPE, "Set")
+                        .build())
+                .build();
 
-        assertThatThrownBy(() -> controller.createPolicy(dto)).isInstanceOf(InvalidRequestException.class);
+        given()
+                .port(port)
+                .body(requestBody)
+                .contentType(JSON)
+                .post("/v2/policydefinitions")
+                .then()
+                .statusCode(409)
+                .contentType(JSON);
     }
 
     @Test
-    void deletePolicy() {
-        when(service.deleteById("id")).thenReturn(ServiceResult.success(TestFunctions.createPolicy("id")));
-        controller.deletePolicy("id");
+    void delete_shouldCallService() {
+        var policyDefinition = createPolicyDefinition().build();
+        when(service.deleteById(any())).thenReturn(ServiceResult.success(policyDefinition));
+
+        given()
+                .port(port)
+                .delete("/v2/policydefinitions/id")
+                .then()
+                .statusCode(204);
+
         verify(service).deleteById("id");
     }
 
     @Test
-    void deletePolicy_notFound() {
-        when(service.deleteById("id")).thenReturn(ServiceResult.notFound("Not found"));
-        assertThatThrownBy(() -> controller.deletePolicy("id")).isInstanceOf(ObjectNotFoundException.class);
+    void delete_shouldReturnNotFound_whenNotFound() {
+        when(service.deleteById(any())).thenReturn(ServiceResult.notFound("not found"));
+
+        given()
+                .port(port)
+                .delete("/v2/policydefinitions/id")
+                .then()
+                .statusCode(404);
     }
 
     @Test
-    void deletePolicy_conflicts() {
-        when(service.deleteById("id")).thenReturn(ServiceResult.conflict("Conflicting"));
-        assertThatThrownBy(() -> controller.deletePolicy("id")).isInstanceOf(ObjectConflictException.class);
-    }
-
-
-    @Test
-    void updatePolicy_ifPolicyExists() {
-        var dto = PolicyDefinitionUpdateDto.Builder.newInstance().policy(Policy.Builder.newInstance().build()).build();
-        var policyDefinition = TestFunctions.createPolicy("id");
-        when(transformerRegistry.transform(isA(PolicyDefinitionUpdateWrapperDto.class), eq(PolicyDefinition.class))).thenReturn(Result.success(policyDefinition));
-        when(service.update(any())).thenReturn(ServiceResult.success(null));
-        when(service.findById(anyString())).thenReturn(policyDefinition);
-
-        controller.updatePolicy("test-policy-id", dto);
-        verify(service).update(isA(PolicyDefinition.class));
-    }
-
-    @Test
-    void updatePolicy_transformationFails() {
+    void update_shouldCallService() {
+        var policyDefinition = createPolicyDefinition().build();
         var dto = PolicyDefinitionUpdateDto.Builder.newInstance().build();
-        when(transformerRegistry.transform(isA(PolicyDefinitionUpdateWrapperDto.class), eq(PolicyDefinition.class))).thenReturn(Result.failure("failure"));
+        when(jsonLd.expand(any())).thenReturn(Result.success(Json.createObjectBuilder().build()));
+        when(transformerRegistry.transform(any(), eq(PolicyDefinitionUpdateDto.class))).thenReturn(Result.success(dto));
+        when(transformerRegistry.transform(any(), eq(PolicyDefinition.class))).thenReturn(Result.success(policyDefinition));
+        when(service.update(any())).thenReturn(ServiceResult.success(policyDefinition));
+        var requestBody = Json.createObjectBuilder()
+                .add("policy", Json.createObjectBuilder()
+                        .add(CONTEXT, "context")
+                        .add(TYPE, "Set")
+                        .build())
+                .build();
 
-        assertThatThrownBy(() -> controller.updatePolicy("test-policy-id", dto)).isInstanceOf(InvalidRequestException.class);
+        given()
+                .port(port)
+                .body(requestBody)
+                .contentType(JSON)
+                .put("/v2/policydefinitions/id")
+                .then()
+                .statusCode(204);
+        verify(jsonLd).expand(any());
+        verify(transformerRegistry).transform(isA(JsonObject.class), eq(PolicyDefinitionUpdateDto.class));
+        verify(transformerRegistry).transform(isA(PolicyDefinitionUpdateWrapperDto.class), eq(PolicyDefinition.class));
+        verify(service).update(policyDefinition);
     }
 
     @Test
-    void updatePolicy_ifPolicyNotExists() {
-        var dto = PolicyDefinitionUpdateDto.Builder.newInstance().policy(Policy.Builder.newInstance().build()).build();
-        var policyDefinition = TestFunctions.createPolicy("id");
-        when(transformerRegistry.transform(isA(PolicyDefinitionUpdateWrapperDto.class), eq(PolicyDefinition.class))).thenReturn(Result.success(policyDefinition));
-        when(service.update(any())).thenReturn(ServiceResult.success(null));
+    void update_shouldReturnBadRequest_whenTransformationFails() {
+        when(jsonLd.expand(any())).thenReturn(Result.success(Json.createObjectBuilder().build()));
+        when(transformerRegistry.transform(any(), any())).thenReturn(Result.failure("error"));
+        var requestBody = Json.createObjectBuilder()
+                .add("policy", Json.createObjectBuilder()
+                        .add(CONTEXT, "context")
+                        .add(TYPE, "Set")
+                        .build())
+                .build();
 
-        controller.updatePolicy("test-policy-id", dto);
-        verify(service).update(isA(PolicyDefinition.class));
+        given()
+                .port(port)
+                .body(requestBody)
+                .contentType(JSON)
+                .put("/v2/policydefinitions/id")
+                .then()
+                .statusCode(400);
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void update_shouldReturnNotFound_whenNotFound() {
+        var policyDefinition = createPolicyDefinition().build();
+        var dto = PolicyDefinitionUpdateDto.Builder.newInstance().build();
+        when(jsonLd.expand(any())).thenReturn(Result.success(Json.createObjectBuilder().build()));
+        when(transformerRegistry.transform(any(), eq(PolicyDefinitionUpdateDto.class))).thenReturn(Result.success(dto));
+        when(transformerRegistry.transform(any(), eq(PolicyDefinition.class))).thenReturn(Result.success(policyDefinition));
+        when(service.update(any())).thenReturn(ServiceResult.notFound("not found"));
+        var requestBody = Json.createObjectBuilder()
+                .add("policy", Json.createObjectBuilder()
+                        .add(CONTEXT, "context")
+                        .add(TYPE, "Set")
+                        .build())
+                .build();
+
+        given()
+                .port(port)
+                .body(requestBody)
+                .contentType(JSON)
+                .put("/v2/policydefinitions/id")
+                .then()
+                .statusCode(404);
+    }
+
+    @Test
+    void get_shouldReturnPolicyDefinition() {
+        var policyDefinition = createPolicyDefinition().build();
+        var dto = PolicyDefinitionResponseDto.Builder.newInstance().id("id").createdAt(1234).build();
+        var expandedBody = Json.createObjectBuilder().add("id", "id").add("createdAt", 1234).build();
+        var responseBody = Json.createObjectBuilder().add("id", "id").add("createdAt", 1234).build();
+        when(service.findById(any())).thenReturn(policyDefinition);
+        when(transformerRegistry.transform(any(), eq(PolicyDefinitionResponseDto.class))).thenReturn(Result.success(dto));
+        when(transformerRegistry.transform(any(), eq(JsonObject.class))).thenReturn(Result.success(expandedBody));
+        when(jsonLd.compact(any())).thenReturn(Result.success(responseBody));
+
+        given()
+                .port(port)
+                .get("/v2/policydefinitions/id")
+                .then()
+                .statusCode(200)
+                .contentType(JSON)
+                .body("id", is("id"))
+                .body("createdAt", is(1234));
+        verify(service).findById("id");
+        verify(transformerRegistry).transform(policyDefinition, PolicyDefinitionResponseDto.class);
+        verify(transformerRegistry).transform(dto, JsonObject.class);
+        verify(jsonLd).compact(expandedBody);
+    }
+
+    @Test
+    void get_shouldReturnNotFound_whenNotFound() {
+        when(service.findById(any())).thenReturn(null);
+
+        given()
+                .port(port)
+                .get("/v2/policydefinitions/id")
+                .then()
+                .statusCode(404)
+                .contentType(JSON);
+        verifyNoInteractions(transformerRegistry);
+    }
+
+    @Test
+    void get_shouldReturnNotFound_whenTransformFails() {
+        when(service.findById(any())).thenReturn(createPolicyDefinition().build());
+        when(transformerRegistry.transform(any(), any())).thenReturn(Result.failure("error"));
+
+        given()
+                .port(port)
+                .get("/v2/policydefinitions/id")
+                .then()
+                .statusCode(404)
+                .contentType(JSON);
+    }
+
+    @Test
+    void query_shouldReturnQueriedPolicyDefinitions() {
+        var querySpec = QuerySpec.none();
+        var policyDefinition = createPolicyDefinition().id("id").build();
+        var dto = PolicyDefinitionResponseDto.Builder.newInstance().id("id").createdAt(1234).build();
+        var expandedResponseBody = Json.createObjectBuilder().add("id", "id").add("createdAt", 1234).build();
+        var responseBody = Json.createObjectBuilder().add("id", "id").add("createdAt", 1234).build();
+        when(transformerRegistry.transform(any(JsonObject.class), eq(QuerySpecDto.class))).thenReturn(Result.success(QuerySpecDto.Builder.newInstance().build()));
+        when(transformerRegistry.transform(any(), eq(QuerySpec.class))).thenReturn(Result.success(querySpec));
+        when(service.query(any())).thenReturn(ServiceResult.success(Stream.of(policyDefinition)));
+        when(transformerRegistry.transform(any(), eq(PolicyDefinitionResponseDto.class))).thenReturn(Result.success(dto));
+        when(transformerRegistry.transform(any(), eq(JsonObject.class))).thenReturn(Result.success(expandedResponseBody));
+        when(jsonLd.expand(any())).thenReturn(Result.success(Json.createObjectBuilder().build()));
+        when(jsonLd.compact(any())).thenReturn(Result.success(responseBody));
+        var requestBody = Json.createObjectBuilder().build();
+
+        given()
+                .port(port)
+                .body(requestBody)
+                .contentType(JSON)
+                .post("/v2/policydefinitions/request")
+                .then()
+                .statusCode(200)
+                .contentType(JSON)
+                .body("size()", is(1))
+                .body("[0].id", is("id"))
+                .body("[0].createdAt", is(1234));
+        verify(transformerRegistry).transform(isA(QuerySpecDto.class), eq(QuerySpec.class));
+        verify(service).query(querySpec);
+        verify(transformerRegistry).transform(policyDefinition, PolicyDefinitionResponseDto.class);
+        verify(transformerRegistry).transform(dto, JsonObject.class);
+        verify(jsonLd).compact(responseBody);
+    }
+
+    @Test
+    void query_shouldReturn400_whenInvalidQuery() {
+        var requestBody = Json.createObjectBuilder()
+                .add("offset", -1)
+                .build();
+
+        when(jsonLd.expand(any())).thenReturn(Result.success(requestBody));
+        when(transformerRegistry.transform(any(JsonObject.class), eq(QuerySpecDto.class))).thenReturn(Result.failure("failure"));
+
+
+        given()
+                .port(port)
+                .body(requestBody)
+                .contentType(JSON)
+                .post("/v2/policydefinitions/request")
+                .then()
+                .statusCode(400);
+
+        verify(transformerRegistry).transform(any(JsonObject.class), eq(QuerySpecDto.class));
+        verifyNoInteractions(service);
+        verifyNoMoreInteractions(transformerRegistry);
+    }
+
+    @Test
+    void query_shouldReturnBadRequest_whenQuerySpecTransformFails() {
+        var requestBody = Json.createObjectBuilder().build();
+
+        when(jsonLd.expand(any())).thenReturn(Result.success(requestBody));
+        when(transformerRegistry.transform(any(JsonObject.class), eq(QuerySpecDto.class))).thenReturn(Result.success(QuerySpecDto.Builder.newInstance().build()));
+        when(transformerRegistry.transform(any(), eq(QuerySpec.class))).thenReturn(Result.failure("error"));
+
+        given()
+                .port(port)
+                .body(requestBody)
+                .contentType(JSON)
+                .post("/v2/policydefinitions/request")
+                .then()
+                .statusCode(400)
+                .contentType(JSON);
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void query_shouldReturnBadRequest_whenServiceReturnsBadRequest() {
+        var querySpec = QuerySpec.none();
+        when(transformerRegistry.transform(any(), eq(QuerySpec.class))).thenReturn(Result.success(querySpec));
+        when(service.query(any())).thenReturn(ServiceResult.badRequest("error"));
+        var requestBody = Json.createObjectBuilder().build();
+
+        given()
+                .port(port)
+                .body(requestBody)
+                .contentType(JSON)
+                .post("/v2/policydefinitions/request")
+                .then()
+                .statusCode(400)
+                .contentType(JSON);
+    }
+
+    @Test
+    void query_shouldFilterOutResults_whenTransformFails() {
+        var querySpec = QuerySpec.none();
+        var policyDefinition = createPolicyDefinition().id("id").build();
+        when(transformerRegistry.transform(any(), eq(QuerySpec.class))).thenReturn(Result.success(querySpec));
+        when(service.query(any())).thenReturn(ServiceResult.success(Stream.of(policyDefinition)));
+        when(transformerRegistry.transform(any(), eq(PolicyDefinitionResponseDto.class))).thenReturn(Result.failure("error"));
+        var requestBody = Json.createObjectBuilder().build();
+
+        given()
+                .port(port)
+                .body(requestBody)
+                .contentType(JSON)
+                .post("/v2/policydefinitions/request")
+                .then()
+                .statusCode(200)
+                .contentType(JSON)
+                .body("size()", is(0));
+    }
+
+    @Override
+    protected Object controller() {
+        return new PolicyDefinitionApiController(monitor, transformerRegistry, service, jsonLd);
+    }
+
+    @NotNull
+    private PolicyDefinition.Builder createPolicyDefinition() {
+        var policy = Policy.Builder.newInstance().build();
+
+        return PolicyDefinition.Builder.newInstance()
+                .id("policyDefinitionId")
+                .createdAt(1234)
+                .policy(policy);
     }
 }

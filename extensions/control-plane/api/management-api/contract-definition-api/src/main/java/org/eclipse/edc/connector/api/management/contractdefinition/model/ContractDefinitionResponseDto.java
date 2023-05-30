@@ -26,10 +26,9 @@ import java.util.List;
 
 @JsonDeserialize(builder = ContractDefinitionResponseDto.Builder.class)
 public class ContractDefinitionResponseDto extends BaseResponseDto {
-    private String id;
     private String accessPolicyId;
     private String contractPolicyId;
-    private List<CriterionDto> criteria = new ArrayList<>();
+    private List<CriterionDto> assetsSelector = new ArrayList<>();
 
     private ContractDefinitionResponseDto() {
     }
@@ -42,12 +41,8 @@ public class ContractDefinitionResponseDto extends BaseResponseDto {
         return contractPolicyId;
     }
 
-    public List<CriterionDto> getCriteria() {
-        return criteria;
-    }
-
-    public String getId() {
-        return id;
+    public List<CriterionDto> getAssetsSelector() {
+        return assetsSelector;
     }
 
     @JsonPOJOBuilder(withPrefix = "")
@@ -71,18 +66,13 @@ public class ContractDefinitionResponseDto extends BaseResponseDto {
             return this;
         }
 
-        public Builder criteria(List<CriterionDto> criteria) {
-            dto.criteria = criteria;
+        public Builder assetsSelector(List<CriterionDto> criteria) {
+            dto.assetsSelector = criteria;
             return this;
         }
 
         @Override
         public Builder self() {
-            return this;
-        }
-
-        public Builder id(String id) {
-            dto.id = id;
             return this;
         }
     }

@@ -1,77 +1,8 @@
 openapi: 3.0.1
 paths:
-  /catalog:
-    get:
-      deprecated: true
-      operationId: getCatalog
-      parameters:
-      - in: query
-        name: providerUrl
-        required: true
-        schema:
-          type: string
-          example: null
-      - in: query
-        name: offset
-        schema:
-          type: integer
-          format: int32
-          example: null
-      - in: query
-        name: limit
-        schema:
-          type: integer
-          format: int32
-          example: null
-      - in: query
-        name: filter
-        schema:
-          type: string
-          example: null
-      - in: query
-        name: sort
-        schema:
-          type: string
-          enum:
-          - ASC
-          - DESC
-          example: null
-      - in: query
-        name: sortField
-        schema:
-          type: string
-          example: null
-      responses:
-        default:
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Catalog'
-          description: Gets contract offers (=catalog) of a single connector
-      tags:
-      - Catalog (deprecated)
-  /catalog/request:
-    post:
-      deprecated: true
-      operationId: requestCatalog
-      requestBody:
-        content:
-          '*/*':
-            schema:
-              $ref: '#/components/schemas/CatalogRequestDto'
-        required: true
-      responses:
-        default:
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Catalog'
-          description: Gets contract offers (=catalog) of a single connector
-      tags:
-      - Catalog (deprecated)
   /v2/catalog/request:
     post:
-      operationId: requestCatalog_1
+      operationId: requestCatalog
       requestBody:
         content:
           application/json:
@@ -132,6 +63,12 @@ components:
       type: object
       example: null
       properties:
+        '@context':
+          type: object
+          example: null
+        '@type':
+          type: string
+          example: null
         protocol:
           type: string
           example: null
@@ -172,6 +109,12 @@ components:
       type: object
       example: null
       properties:
+        '@context':
+          type: object
+          example: null
+        '@type':
+          type: string
+          example: null
         operandLeft:
           type: object
           example: null
@@ -381,7 +324,10 @@ components:
       type: object
       example: null
       properties:
-        filter:
+        '@context':
+          type: object
+          example: null
+        '@type':
           type: string
           example: null
         filterExpression:
