@@ -42,6 +42,7 @@ import org.eclipse.edc.connector.transfer.spi.types.protocol.TransferCompletionM
 import org.eclipse.edc.connector.transfer.spi.types.protocol.TransferRequestMessage;
 import org.eclipse.edc.connector.transfer.spi.types.protocol.TransferStartMessage;
 import org.eclipse.edc.connector.transfer.spi.types.protocol.TransferTerminationMessage;
+import org.eclipse.edc.policy.model.Policy;
 import org.eclipse.edc.spi.asset.DataAddressResolver;
 import org.eclipse.edc.spi.command.CommandProcessor;
 import org.eclipse.edc.spi.command.CommandQueue;
@@ -93,7 +94,7 @@ import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.TERMINATED;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.TERMINATING;
 import static org.eclipse.edc.spi.persistence.StateEntityStore.hasState;
-import static org.eclipse.edc.spi.types.domain.DataAddress.SECRET;
+import static org.eclipse.edc.spi.types.domain.DataAddress.EDC_DATA_ADDRESS_SECRET;
 
 /**
  * This transfer process manager receives a {@link TransferProcess} and transitions it through its internal state
@@ -176,9 +177,9 @@ public class TransferProcessManagerImpl implements TransferProcessManager, Provi
     public StatusResult<TransferProcess> initiateConsumerRequest(TransferRequest transferRequest) {
         // make the request idempotent: if the process exists, return
         var dataRequest = transferRequest.getDataRequest();
-        var processId = transferProcessStore.processIdForDataRequestId(dataRequest.getId());
-        if (processId != null) {
-            return StatusResult.success(transferProcessStore.findById(processId));
+        var existingTransferProcess = transferProcessStore.findForCorrelationId(dataRequest.getId());
+        if (existingTransferProcess != null) {
+            return StatusResult.success(existingTransferProcess);
         }
         var process = TransferProcess.Builder.newInstance()
                 .id(dataRequest.getId())
@@ -320,7 +321,7 @@ public class TransferProcessManagerImpl implements TransferProcessManager, Provi
             process.setContentDataAddress(dataAddress);
 
             var dataDestination = process.getDataRequest().getDataDestination();
-            var secret = dataDestination.getProperty(SECRET);
+            var secret = dataDestination.getProperty(EDC_DATA_ADDRESS_SECRET);
             if (secret != null) {
                 vault.storeSecret(dataDestination.getKeyName(), secret);
             }
@@ -394,19 +395,18 @@ public class TransferProcessManagerImpl implements TransferProcessManager, Provi
 
         var dataDestination = Optional.ofNullable(dataRequest.getDataDestination().getKeyName())
                 .flatMap(key -> Optional.ofNullable(vault.resolveSecret(key)))
-                .map(secret -> DataAddress.Builder.newInstance().properties(dataRequest.getDataDestination().getProperties()).property(SECRET, secret).build())
+                .map(secret -> DataAddress.Builder.newInstance().properties(dataRequest.getDataDestination().getProperties()).property(EDC_DATA_ADDRESS_SECRET, secret).build())
                 .orElse(dataRequest.getDataDestination());
 
         var message = TransferRequestMessage.Builder.newInstance()
                 .processId(dataRequest.getId())
                 .protocol(dataRequest.getProtocol())
-                .connectorId(dataRequest.getConnectorId())
                 .counterPartyAddress(dataRequest.getConnectorAddress())
                 .callbackAddress(protocolWebhook.url())
                 .dataDestination(dataDestination)
                 .properties(dataRequest.getProperties())
-                .assetId(dataRequest.getAssetId())
                 .contractId(dataRequest.getContractId())
+                .policy(policyArchive.findPolicyForContract(dataRequest.getContractId()))
                 .build();
 
         var description = format("Send %s to %s", message.getClass().getSimpleName(), message.getCounterPartyAddress());
@@ -440,7 +440,7 @@ public class TransferProcessManagerImpl implements TransferProcessManager, Provi
         var description = "Initiate data flow";
 
         return entityRetryProcessFactory.doSyncProcess(process, () -> dataFlowManager.initiate(dataRequest, contentAddress, policy))
-                .onSuccess(this::sendTransferStartMessage)
+                .onSuccess((p, dataFlowResponse) -> sendTransferStartMessage(p, dataFlowResponse, policy))
                 .onFatalError((p, failure) -> transitionToTerminating(p, failure.getFailureDetail()))
                 .onFailure((t, failure) -> transitionToStarting(t))
                 .onRetryExhausted((p, failure) -> transitionToTerminating(p, failure.getFailureDetail()))
@@ -449,13 +449,14 @@ public class TransferProcessManagerImpl implements TransferProcessManager, Provi
     }
 
     @WithSpan
-    private void sendTransferStartMessage(TransferProcess process, DataFlowResponse dataFlowResponse) {
+    private void sendTransferStartMessage(TransferProcess process, DataFlowResponse dataFlowResponse, Policy policy) {
         var dataRequest = process.getDataRequest();
         var message = TransferStartMessage.Builder.newInstance()
                 .protocol(dataRequest.getProtocol())
                 .dataAddress(dataFlowResponse.getDataAddress())
                 .counterPartyAddress(dataRequest.getConnectorAddress())
                 .processId(dataRequest.getId())
+                .policy(policy)
                 .build();
 
         var description = format("Send %s to %s", dataRequest.getClass().getSimpleName(), dataRequest.getConnectorAddress());
@@ -525,6 +526,7 @@ public class TransferProcessManagerImpl implements TransferProcessManager, Provi
                 .protocol(dataRequest.getProtocol())
                 .counterPartyAddress(dataRequest.getConnectorAddress())
                 .processId(dataRequest.getId())
+                .policy(policyArchive.findPolicyForContract(dataRequest.getContractId()))
                 .build();
 
         var description = format("Send %s to %s", dataRequest.getClass().getSimpleName(), dataRequest.getConnectorAddress());
@@ -556,6 +558,7 @@ public class TransferProcessManagerImpl implements TransferProcessManager, Provi
                 .counterPartyAddress(dataRequest.getConnectorAddress())
                 .protocol(dataRequest.getProtocol())
                 .processId(dataRequest.getId())
+                .policy(policyArchive.findPolicyForContract(dataRequest.getContractId()))
                 .build();
 
         var description = format("Send %s to %s", dataRequest.getClass().getSimpleName(), dataRequest.getConnectorAddress());

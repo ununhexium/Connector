@@ -14,12 +14,15 @@
 
 package org.eclipse.edc.spi.iam;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 
 /**
  * Parameter Object for {@link IdentityService#obtainClientCredentials(TokenParameters)}.
  */
 public class TokenParameters {
+    private final Map<String, Object> additional = new HashMap<>();
     private String scope;
     private String audience;
 
@@ -32,6 +35,10 @@ public class TokenParameters {
 
     public String getAudience() {
         return audience;
+    }
+
+    public Map<String, Object> getAdditional() {
+        return additional;
     }
 
     public static class Builder {
@@ -55,6 +62,15 @@ public class TokenParameters {
             return this;
         }
 
+        public Builder additional(Map<String, Object> additional) {
+            result.additional.putAll(additional);
+            return this;
+        }
+
+        public Builder additional(String key, Object value) {
+            result.additional.put(key, value);
+            return this;
+        }
 
         public TokenParameters build() {
             Objects.requireNonNull(result.audience, "audience");

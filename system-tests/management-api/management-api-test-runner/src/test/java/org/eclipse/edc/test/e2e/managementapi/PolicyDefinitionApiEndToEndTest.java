@@ -57,6 +57,7 @@ public class PolicyDefinitionApiEndToEndTest extends BaseManagementApiEndToEndTe
                 .contentType(JSON)
                 .post()
                 .then()
+                .contentType(JSON)
                 .extract().jsonPath().getString(ID);
 
         assertThat(store().findById(id)).isNotNull()
@@ -69,7 +70,9 @@ public class PolicyDefinitionApiEndToEndTest extends BaseManagementApiEndToEndTe
                 .statusCode(200)
                 .contentType(JSON)
                 .body(ID, is(id))
-                .body(CONTEXT, hasEntry(EDC_PREFIX, EDC_NAMESPACE));
+                .body(CONTEXT, hasEntry(EDC_PREFIX, EDC_NAMESPACE))
+                .log().all()
+                .body("'edc:policy'.'odrl:permission'.'odrl:constraint'.'odrl:operator'.@id", is("odrl:eq"));
     }
 
     @Test
@@ -91,7 +94,6 @@ public class PolicyDefinitionApiEndToEndTest extends BaseManagementApiEndToEndTe
                 .extract().jsonPath().getString(ID);
 
         var createdAt = baseRequest()
-                .body(createObjectBuilder().build())
                 .contentType(JSON)
                 .post("/request")
                 .then()
@@ -156,6 +158,10 @@ public class PolicyDefinitionApiEndToEndTest extends BaseManagementApiEndToEndTe
                         .add(createObjectBuilder()
                                 .add("target", "http://example.com/asset:9898.movie")
                                 .add("action", "use")
+                                .add("constraint", createObjectBuilder()
+                                                .add("leftOperand", "left")
+                                                .add("operator", "eq")
+                                                .add("rightOperand", "value"))
                                 .build())
                         .build())
                 .build();

@@ -18,6 +18,7 @@ paths:
                 example: null
                 items:
                   $ref: '#/components/schemas/ContractAgreementDto'
+          description: The contract agreements matching the query
         "400":
           content:
             application/json:
@@ -187,6 +188,26 @@ components:
           $ref: '#/components/schemas/Permission'
         target:
           type: string
+          example: null
+    JsonArray:
+      type: array
+      example: null
+      items:
+        $ref: '#/components/schemas/JsonValue'
+      properties:
+        empty:
+          type: boolean
+          example: null
+        valueType:
+          type: string
+          enum:
+          - ARRAY
+          - OBJECT
+          - STRING
+          - NUMBER
+          - "TRUE"
+          - "FALSE"
+          - "NULL"
           example: null
     JsonObject:
       type: object

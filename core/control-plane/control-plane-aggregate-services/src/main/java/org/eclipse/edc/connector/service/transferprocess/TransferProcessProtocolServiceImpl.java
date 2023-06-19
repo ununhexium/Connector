@@ -126,7 +126,6 @@ public class TransferProcessProtocolServiceImpl implements TransferProcessProtoc
         var dataRequest = DataRequest.Builder.newInstance()
                 .id(message.getProcessId())
                 .protocol(message.getProtocol())
-                .connectorId(message.getConnectorId())
                 .connectorAddress(message.getCallbackAddress())
                 .dataDestination(message.getDataDestination())
                 .properties(message.getProperties())
@@ -134,9 +133,9 @@ public class TransferProcessProtocolServiceImpl implements TransferProcessProtoc
                 .contractId(message.getContractId())
                 .build();
 
-        var processId = transferProcessStore.processIdForDataRequestId(dataRequest.getId());
-        if (processId != null) {
-            return ServiceResult.success(transferProcessStore.findById(processId));
+        var existingTransferProcess = transferProcessStore.findForCorrelationId(dataRequest.getId());
+        if (existingTransferProcess != null) {
+            return ServiceResult.success(existingTransferProcess);
         }
         var process = TransferProcess.Builder.newInstance()
                 .id(randomUUID().toString())
@@ -197,8 +196,7 @@ public class TransferProcessProtocolServiceImpl implements TransferProcessProtoc
 
     private ServiceResult<TransferProcess> onMessageDo(TransferRemoteMessage message, Function<TransferProcess, ServiceResult<TransferProcess>> action) {
         return transactionContext.execute(() -> Optional.of(message.getProcessId())
-                .map(transferProcessStore::processIdForDataRequestId)
-                .map(transferProcessStore::findById)
+                .map(transferProcessStore::findForCorrelationId)
                 .map(action)
                 .orElse(ServiceResult.notFound(format("TransferProcess with DataRequest id %s not found", message.getProcessId()))));
     }

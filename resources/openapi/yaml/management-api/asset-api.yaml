@@ -90,6 +90,7 @@ paths:
                 example: null
                 items:
                   $ref: '#/components/schemas/AssetResponseDto'
+          description: The assets matching the query
         "400":
           content:
             application/json:
@@ -312,9 +313,6 @@ components:
           $ref: '#/components/schemas/Asset'
         dataAddress:
           $ref: '#/components/schemas/DataAddress'
-      required:
-      - asset
-      - dataAddress
     AssetResponseDto:
       type: object
       example: null
@@ -434,6 +432,26 @@ components:
         createdAt:
           type: integer
           format: int64
+          example: null
+    JsonArray:
+      type: array
+      example: null
+      items:
+        $ref: '#/components/schemas/JsonValue'
+      properties:
+        empty:
+          type: boolean
+          example: null
+        valueType:
+          type: string
+          enum:
+          - ARRAY
+          - OBJECT
+          - STRING
+          - NUMBER
+          - "TRUE"
+          - "FALSE"
+          - "NULL"
           example: null
     JsonObject:
       type: object

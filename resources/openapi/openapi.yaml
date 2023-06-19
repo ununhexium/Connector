@@ -2,7 +2,7 @@ openapi: 3.0.1
 info:
   title: EDC REST API
   description: EDC REST APIs - merged by OpenApiMerger
-  version: 0.1.0-SNAPSHOT
+  version: 0.1.1-SNAPSHOT
 servers:
 - url: /
 tags:
@@ -79,6 +79,7 @@ paths:
       operationId: checkHealth
       responses:
         "200":
+          description: The runtime is working properly.
           content:
             application/json:
               schema:
@@ -95,6 +96,7 @@ paths:
       operationId: getLiveness
       responses:
         "200":
+          description: The runtime is working properly.
           content:
             application/json:
               schema:
@@ -111,6 +113,7 @@ paths:
       operationId: getReadiness
       responses:
         "200":
+          description: The runtime is able to accept requests.
           content:
             application/json:
               schema:
@@ -127,6 +130,7 @@ paths:
       operationId: getStartup
       responses:
         "200":
+          description: The runtime has completed startup.
           content:
             application/json:
               schema:
@@ -377,6 +381,7 @@ paths:
               $ref: '#/components/schemas/QuerySpecDto'
       responses:
         "200":
+          description: The assets matching the query
           content:
             application/json:
               schema:
@@ -593,6 +598,7 @@ paths:
               $ref: '#/components/schemas/QuerySpecDto'
       responses:
         "200":
+          description: The contract agreements matching the query
           content:
             application/json:
               schema:
@@ -732,6 +738,7 @@ paths:
               $ref: '#/components/schemas/QuerySpecDto'
       responses:
         "200":
+          description: The contract definitions matching the query
           content:
             application/json:
               schema:
@@ -875,6 +882,7 @@ paths:
               $ref: '#/components/schemas/QuerySpecDto'
       responses:
         "200":
+          description: The contract negotiations that match the query
           content:
             application/json:
               schema:
@@ -1150,6 +1158,7 @@ paths:
               $ref: '#/components/schemas/QuerySpecDto'
       responses:
         "200":
+          description: The policy definitions matching the query
           content:
             application/json:
               schema:
@@ -1343,6 +1352,7 @@ paths:
               $ref: '#/components/schemas/QuerySpecDto'
       responses:
         "200":
+          description: The transfer processes matching the query
           content:
             application/json:
               schema:
@@ -1655,9 +1665,6 @@ components:
           example: null
       example: null
     AssetEntryNewDto:
-      required:
-      - asset
-      - dataAddress
       type: object
       properties:
         asset:
@@ -1721,38 +1728,6 @@ components:
     CallbackAddress:
       type: object
       properties:
-        authCodeId:
-          type: string
-          example: null
-        authKey:
-          type: string
-          example: null
-        events:
-          uniqueItems: true
-          type: array
-          example: null
-          items:
-            type: string
-            example: null
-        transactional:
-          type: boolean
-          example: null
-        uri:
-          type: string
-          example: null
-      example: null
-    CallbackAddressDto:
-      required:
-      - events
-      - uri
-      type: object
-      properties:
-        '@context':
-          type: object
-          example: null
-        '@type':
-          type: string
-          example: null
         authCodeId:
           type: string
           example: null
@@ -1867,10 +1842,6 @@ components:
           example: null
       example: null
     ContractDefinitionRequestDto:
-      required:
-      - accessPolicyId
-      - assetsSelector
-      - contractPolicyId
       type: object
       properties:
         '@context':
@@ -2281,6 +2252,26 @@ components:
           format: int64
           example: null
       example: null
+    JsonArray:
+      type: array
+      properties:
+        empty:
+          type: boolean
+          example: null
+        valueType:
+          type: string
+          example: null
+          enum:
+          - ARRAY
+          - OBJECT
+          - STRING
+          - NUMBER
+          - "TRUE"
+          - "FALSE"
+          - "NULL"
+      example: null
+      items:
+        $ref: '#/components/schemas/JsonValue'
     JsonObject:
       type: object
       properties:
@@ -2334,7 +2325,7 @@ components:
           type: array
           example: null
           items:
-            $ref: '#/components/schemas/CallbackAddressDto'
+            $ref: '#/components/schemas/CallbackAddress'
         connectorAddress:
           type: string
           example: null
@@ -2590,7 +2581,7 @@ components:
           type: array
           example: null
           items:
-            $ref: '#/components/schemas/CallbackAddressDto'
+            $ref: '#/components/schemas/CallbackAddress'
         createdAt:
           type: integer
           format: int64
@@ -2649,7 +2640,7 @@ components:
           type: array
           example: null
           items:
-            $ref: '#/components/schemas/CallbackAddressDto'
+            $ref: '#/components/schemas/CallbackAddress'
         connectorAddress:
           type: string
           example: null

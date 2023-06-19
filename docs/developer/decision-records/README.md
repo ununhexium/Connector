@@ -61,3 +61,7 @@
 - [2023-05-17-Helm-charts](2023-05-17-delete-helm-charts)
 - [2023-05-23-Java-17-baseline](2023-05-23-java-17-baseline)
 - [2023-05-25-template-repository](2023-05-25-template-repository)
+- [2023-06-02-separating_plugins_and_metamodel](2023-06-02-separating_plugins_and_metamodel)
+- [2023-06-05-validation-engine](2023-06-05-validation-engine)
+- [2023-06-19-change-of-github-labels](2023-06-19-new-issue-triage-process/)
+- [2023-06-19-onboarding-contributors](2023-06-19-onboarding-contributors/)

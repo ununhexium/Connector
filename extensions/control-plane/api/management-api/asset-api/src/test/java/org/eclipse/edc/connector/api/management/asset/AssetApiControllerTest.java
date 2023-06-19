@@ -22,16 +22,16 @@ import org.eclipse.edc.api.model.IdResponseDto;
 import org.eclipse.edc.api.model.QuerySpecDto;
 import org.eclipse.edc.connector.api.management.asset.model.AssetEntryNewDto;
 import org.eclipse.edc.connector.spi.asset.AssetService;
-import org.eclipse.edc.jsonld.TitaniumJsonLd;
 import org.eclipse.edc.junit.annotations.ApiTest;
 import org.eclipse.edc.service.spi.result.ServiceResult;
 import org.eclipse.edc.spi.asset.DataAddressResolver;
-import org.eclipse.edc.spi.monitor.Monitor;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.eclipse.edc.spi.result.Result;
 import org.eclipse.edc.spi.types.domain.DataAddress;
 import org.eclipse.edc.spi.types.domain.asset.Asset;
 import org.eclipse.edc.transform.spi.TypeTransformerRegistry;
+import org.eclipse.edc.validator.spi.JsonObjectValidatorRegistry;
+import org.eclipse.edc.validator.spi.ValidationResult;
 import org.eclipse.edc.web.jersey.testfixtures.RestControllerTestBase;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -42,16 +42,18 @@ import java.util.stream.Stream;
 import static io.restassured.RestAssured.given;
 import static io.restassured.http.ContentType.JSON;
 import static jakarta.json.Json.createObjectBuilder;
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.eclipse.edc.api.model.IdResponseDto.EDC_ID_RESPONSE_DTO_CREATED_AT;
 import static org.eclipse.edc.api.model.IdResponseDto.EDC_ID_RESPONSE_DTO_TYPE;
+import static org.eclipse.edc.connector.api.management.asset.model.AssetEntryNewDto.EDC_ASSET_ENTRY_DTO_TYPE;
 import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.CONTEXT;
 import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.ID;
 import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.TYPE;
 import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.VOCAB;
 import static org.eclipse.edc.spi.CoreConstants.EDC_NAMESPACE;
 import static org.eclipse.edc.spi.CoreConstants.EDC_PREFIX;
+import static org.eclipse.edc.spi.types.domain.DataAddress.EDC_DATA_ADDRESS_TYPE;
 import static org.eclipse.edc.spi.types.domain.asset.Asset.EDC_ASSET_TYPE;
+import static org.eclipse.edc.validator.spi.Violation.violation;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.is;
@@ -78,6 +80,7 @@ class AssetApiControllerTest extends RestControllerTestBase {
     private final AssetService service = mock(AssetService.class);
     private final DataAddressResolver dataAddressResolver = mock(DataAddressResolver.class);
     private final TypeTransformerRegistry transformerRegistry = mock(TypeTransformerRegistry.class);
+    private final JsonObjectValidatorRegistry validator = mock(JsonObjectValidatorRegistry.class);
 
     @BeforeEach
     void setup() {
@@ -91,7 +94,6 @@ class AssetApiControllerTest extends RestControllerTestBase {
                     .build()
             );
         });
-
     }
 
     @Test
@@ -104,6 +106,7 @@ class AssetApiControllerTest extends RestControllerTestBase {
                 .thenReturn(Result.success(QuerySpecDto.Builder.newInstance().offset(10).build()));
         when(transformerRegistry.transform(isA(QuerySpecDto.class), eq(QuerySpec.class)))
                 .thenReturn(Result.success(QuerySpec.Builder.newInstance().offset(10).build()));
+        when(validator.validate(any(), any())).thenReturn(ValidationResult.success());
 
         baseRequest()
                 .contentType(JSON)
@@ -127,6 +130,7 @@ class AssetApiControllerTest extends RestControllerTestBase {
                 .thenReturn(Result.success(QuerySpec.Builder.newInstance().offset(10).build()));
         when(transformerRegistry.transform(isA(Asset.class), eq(JsonObject.class)))
                 .thenReturn(Result.failure("failed to transform"));
+        when(validator.validate(any(), any())).thenReturn(ValidationResult.success());
 
         baseRequest()
                 .contentType(JSON)
@@ -142,6 +146,7 @@ class AssetApiControllerTest extends RestControllerTestBase {
         when(transformerRegistry.transform(any(JsonObject.class), eq(QuerySpecDto.class))).thenReturn(Result.success(QuerySpecDto.Builder.newInstance().build()));
         when(transformerRegistry.transform(any(QuerySpecDto.class), eq(QuerySpec.class))).thenReturn(Result.success(QuerySpec.Builder.newInstance().build()));
         when(service.query(any())).thenReturn(ServiceResult.badRequest("test-message"));
+        when(validator.validate(any(), any())).thenReturn(ValidationResult.success());
 
         baseRequest()
                 .body(Map.of("offset", -1))
@@ -153,10 +158,12 @@ class AssetApiControllerTest extends RestControllerTestBase {
 
     @Test
     void requestAsset_shouldReturnBadRequest_whenQueryTransformFails() {
-        when(transformerRegistry.transform(isA(JsonObject.class), eq(QuerySpecDto.class))).thenReturn(Result.success(QuerySpecDto.Builder.newInstance().build()));
+        when(transformerRegistry.transform(isA(JsonObject.class), eq(QuerySpecDto.class)))
+                .thenReturn(Result.success(QuerySpecDto.Builder.newInstance().build()));
         when(transformerRegistry.transform(isA(QuerySpecDto.class), eq(QuerySpec.class)))
                 .thenReturn(Result.failure("error"));
         when(service.query(any())).thenReturn(ServiceResult.success());
+        when(validator.validate(any(), any())).thenReturn(ValidationResult.success());
 
         baseRequest()
                 .contentType(JSON)
@@ -171,6 +178,7 @@ class AssetApiControllerTest extends RestControllerTestBase {
         when(transformerRegistry.transform(isA(QuerySpecDto.class), eq(QuerySpec.class)))
                 .thenReturn(Result.success(QuerySpec.Builder.newInstance().build()));
         when(service.query(any())).thenReturn(ServiceResult.badRequest());
+        when(validator.validate(any(), any())).thenReturn(ValidationResult.success());
 
         baseRequest()
                 .contentType(JSON)
@@ -180,21 +188,34 @@ class AssetApiControllerTest extends RestControllerTestBase {
     }
 
     @Test
+    void requestAsset_shouldReturnBadRequest_whenValidationFails() {
+        when(transformerRegistry.transform(isA(QuerySpecDto.class), eq(QuerySpec.class)))
+                .thenReturn(Result.success(QuerySpec.Builder.newInstance().build()));
+        when(validator.validate(any(), any())).thenReturn(ValidationResult.failure(violation("validation failure", "a path")));
+
+        baseRequest()
+                .contentType(JSON)
+                .body("{}")
+                .post("/assets/request")
+                .then()
+                .statusCode(400);
+        verify(validator).validate(eq(QuerySpecDto.EDC_QUERY_SPEC_TYPE), isA(JsonObject.class));
+        verifyNoInteractions(service);
+    }
+
+    @Test
     void getSingleAsset() {
         var asset = Asset.Builder.newInstance().property("key", "value").build();
         when(service.findById("id")).thenReturn(asset);
         var jobj = createAssetJson().build();
         when(transformerRegistry.transform(isA(Asset.class), eq(JsonObject.class))).thenReturn(Result.success(jobj));
 
-        var response = baseRequest()
+        baseRequest()
                 .get("/assets/id")
                 .then()
                 .statusCode(200)
                 .contentType(JSON)
-                .body(ID, equalTo(TEST_ASSET_ID))
-                .extract().body().jsonPath();
-
-        assertThat(response.getMap("'" + Asset.EDC_ASSET_PROPERTIES + "'")).hasSize(4);
+                .body(ID, equalTo(TEST_ASSET_ID));
 
         verify(transformerRegistry).transform(isA(Asset.class), eq(JsonObject.class));
         verifyNoMoreInteractions(transformerRegistry);
@@ -229,6 +250,7 @@ class AssetApiControllerTest extends RestControllerTestBase {
         var assetEntryDto = AssetEntryNewDto.Builder.newInstance().asset(asset).dataAddress(dataAddress).build();
         when(transformerRegistry.transform(any(JsonObject.class), eq(AssetEntryNewDto.class))).thenReturn(Result.success(assetEntryDto));
         when(service.create(any(), any())).thenReturn(ServiceResult.success(asset));
+        when(validator.validate(any(), any())).thenReturn(ValidationResult.success());
 
         baseRequest()
                 .contentType(JSON)
@@ -247,24 +269,25 @@ class AssetApiControllerTest extends RestControllerTestBase {
     }
 
     @Test
-    void createAsset_shouldReturnBadRequest_whenDataAddressIsNull() {
-        var assetDto = createAssetJson().build();
-        var assetEntryDto = createAssetEntryDto(assetDto);
-        when(transformerRegistry.transform(any(JsonObject.class), eq(AssetEntryNewDto.class))).thenReturn(Result.failure("failure"));
-
+    void createAsset_shouldReturnBadRequest_whenValidationFails() {
+        var assetEntry = createAssetEntryDto();
+        when(validator.validate(any(), any())).thenReturn(ValidationResult.failure(violation("a failure", "a path")));
 
         baseRequest()
-                .body(assetEntryDto)
                 .contentType(JSON)
+                .body(assetEntry)
                 .post("/assets")
                 .then()
                 .statusCode(400);
-        verifyNoInteractions(service);
+
+        verify(validator).validate(eq(EDC_ASSET_ENTRY_DTO_TYPE), isA(JsonObject.class));
+        verifyNoInteractions(service, transformerRegistry);
     }
 
     @Test
     void createAsset_shouldReturnBadRequest_whenTransformFails() {
         when(transformerRegistry.transform(isA(JsonObject.class), eq(AssetEntryNewDto.class))).thenReturn(Result.failure("failed"));
+        when(validator.validate(any(), any())).thenReturn(ValidationResult.success());
 
         baseRequest()
                 .body(createAssetEntryDto())
@@ -282,6 +305,7 @@ class AssetApiControllerTest extends RestControllerTestBase {
         var assetNewDto = AssetEntryNewDto.Builder.newInstance().asset(asset).dataAddress(dataAddress).build();
         when(transformerRegistry.transform(any(JsonObject.class), eq(AssetEntryNewDto.class))).thenReturn(Result.success(assetNewDto));
         when(service.create(any(), any())).thenReturn(ServiceResult.conflict("already exists"));
+        when(validator.validate(any(), any())).thenReturn(ValidationResult.success());
 
         baseRequest()
                 .body(createAssetEntryDto())
@@ -295,6 +319,7 @@ class AssetApiControllerTest extends RestControllerTestBase {
     void createAsset_emptyAttributes() {
         when(transformerRegistry.transform(isA(JsonObject.class), eq(AssetEntryNewDto.class))).thenReturn(Result.failure("Cannot be transformed"));
         var assetEntryDto = createAssetEntryDto(createObjectBuilder().build(), createDataAddressJson());
+        when(validator.validate(any(), any())).thenReturn(ValidationResult.success());
 
         baseRequest()
                 .body(assetEntryDto)
@@ -343,7 +368,6 @@ class AssetApiControllerTest extends RestControllerTestBase {
     void getAssetAddress() {
         when(dataAddressResolver.resolveForAsset("id"))
                 .thenReturn(DataAddress.Builder.newInstance().type("any").build());
-        var dataAddressDto = DataAddressDto.Builder.newInstance().properties(Map.of("key", "value")).build();
         when(transformerRegistry.transform(isA(DataAddress.class), eq(JsonObject.class)))
                 .thenReturn(Result.success(createObjectBuilder().build()));
 
@@ -372,6 +396,7 @@ class AssetApiControllerTest extends RestControllerTestBase {
         var asset = Asset.Builder.newInstance().property("key1", "value1").build();
         when(transformerRegistry.transform(isA(JsonObject.class), eq(Asset.class))).thenReturn(Result.success(asset));
         when(service.update(any(Asset.class))).thenReturn(ServiceResult.success());
+        when(validator.validate(any(), any())).thenReturn(ValidationResult.success());
 
         baseRequest()
                 .body(createAssetJson().build())
@@ -387,6 +412,7 @@ class AssetApiControllerTest extends RestControllerTestBase {
         var asset = Asset.Builder.newInstance().property("key1", "value1").build();
         when(transformerRegistry.transform(isA(JsonObject.class), eq(Asset.class))).thenReturn(Result.success(asset));
         when(service.update(any(Asset.class))).thenReturn(ServiceResult.notFound("not found"));
+        when(validator.validate(any(), any())).thenReturn(ValidationResult.success());
 
         baseRequest()
                 .body(createAssetJson().build())
@@ -399,6 +425,7 @@ class AssetApiControllerTest extends RestControllerTestBase {
     @Test
     void updateAsset_shouldReturnBadRequest_whenTransformFails() {
         when(transformerRegistry.transform(isA(JsonObject.class), eq(Asset.class))).thenReturn(Result.failure("error"));
+        when(validator.validate(any(), any())).thenReturn(ValidationResult.success());
 
         baseRequest()
                 .body(createAssetJson().build())
@@ -410,11 +437,27 @@ class AssetApiControllerTest extends RestControllerTestBase {
     }
 
     @Test
+    void updateAsset_shouldReturnBadRequest_whenValidationFails() {
+        when(transformerRegistry.transform(isA(JsonObject.class), eq(Asset.class))).thenReturn(Result.failure("error"));
+        when(validator.validate(any(), any())).thenReturn(ValidationResult.failure(violation("validation failure", "path")));
+
+        baseRequest()
+                .body(createAssetJson().build())
+                .contentType(JSON)
+                .put("/assets")
+                .then()
+                .statusCode(400);
+        verify(validator).validate(eq(EDC_ASSET_TYPE), isA(JsonObject.class));
+        verifyNoInteractions(service, transformerRegistry);
+    }
+
+    @Test
     void updateDataAddress_whenAssetExists() {
         var dataAddress = DataAddress.Builder.newInstance().type("test-type").property("key1", "value1").build();
         when(transformerRegistry.transform(isA(JsonObject.class), eq(DataAddress.class)))
                 .thenReturn(Result.success(dataAddress));
         when(service.update(any(), any(DataAddress.class))).thenReturn(ServiceResult.success());
+        when(validator.validate(any(), any())).thenReturn(ValidationResult.success());
 
         baseRequest()
                 .body(createDataAddressJson())
@@ -431,6 +474,7 @@ class AssetApiControllerTest extends RestControllerTestBase {
         var dataAddress = DataAddress.Builder.newInstance().type("test-type").property("key1", "value1").build();
         when(transformerRegistry.transform(isA(DataAddressDto.class), eq(DataAddress.class))).thenReturn(Result.success(dataAddress));
         when(service.update(any(), any(DataAddress.class))).thenReturn(ServiceResult.notFound("not found"));
+        when(validator.validate(any(), any())).thenReturn(ValidationResult.success());
 
         baseRequest()
                 .body(dataAddressDto)
@@ -444,6 +488,7 @@ class AssetApiControllerTest extends RestControllerTestBase {
     void updateDataAddress_shouldReturnBadRequest_whenTransformationFails() {
         when(transformerRegistry.transform(isA(JsonObject.class), eq(DataAddress.class)))
                 .thenReturn(Result.failure("error"));
+        when(validator.validate(any(), any())).thenReturn(ValidationResult.success());
 
         baseRequest()
                 .body(createDataAddressJson())
@@ -454,9 +499,25 @@ class AssetApiControllerTest extends RestControllerTestBase {
         verifyNoInteractions(service);
     }
 
+    @Test
+    void updateDataAddress_shouldReturnBadRequest_whenValidationFails() {
+        when(transformerRegistry.transform(isA(JsonObject.class), eq(DataAddress.class)))
+                .thenReturn(Result.failure("error"));
+        when(validator.validate(any(), any())).thenReturn(ValidationResult.failure(violation("validation error", "path")));
+
+        baseRequest()
+                .body(createDataAddressJson())
+                .contentType(JSON)
+                .put("/assets/assetId/dataaddress")
+                .then()
+                .statusCode(400);
+        verify(validator).validate(eq(EDC_DATA_ADDRESS_TYPE), isA(JsonObject.class));
+        verifyNoInteractions(service);
+    }
+
     @Override
     protected Object controller() {
-        return new AssetApiController(service, dataAddressResolver, transformerRegistry, new TitaniumJsonLd(mock(Monitor.class)), monitor);
+        return new AssetApiController(service, dataAddressResolver, transformerRegistry, monitor, validator);
     }
 
     private JsonObject createDataAddressJson() {
@@ -475,12 +536,6 @@ class AssetApiControllerTest extends RestControllerTestBase {
         return createObjectBuilder()
                 .add("asset", asset)
                 .add("dataAddress", dataAddress)
-                .build();
-    }
-
-    private JsonObject createAssetEntryDto(JsonObject asset) {
-        return createObjectBuilder()
-                .add("asset", asset)
                 .build();
     }
 

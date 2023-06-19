@@ -24,6 +24,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.json.JsonArray;
 import jakarta.json.JsonObject;
 import jakarta.validation.Valid;
 import org.eclipse.edc.api.model.IdResponseDto;
@@ -34,20 +35,18 @@ import org.eclipse.edc.connector.api.management.transferprocess.model.TransferRe
 import org.eclipse.edc.connector.api.management.transferprocess.model.TransferState;
 import org.eclipse.edc.web.spi.ApiErrorDetail;
 
-import java.util.List;
-
 @OpenAPIDefinition
 @Tag(name = "Transfer Process")
 public interface TransferProcessApi {
     @Operation(description = "Returns all transfer process according to a query",
             requestBody = @RequestBody(content = @Content(schema = @Schema(implementation = QuerySpecDto.class))),
             responses = {
-                    @ApiResponse(responseCode = "200",
+                    @ApiResponse(responseCode = "200", description = "The transfer processes matching the query",
                             content = @Content(array = @ArraySchema(schema = @Schema(implementation = TransferProcessDto.class)))),
                     @ApiResponse(responseCode = "400", description = "Request was malformed",
                             content = @Content(array = @ArraySchema(schema = @Schema(implementation = ApiErrorDetail.class)))) }
     )
-    List<JsonObject> queryTransferProcesses(@Valid JsonObject querySpecDto);
+    JsonArray queryTransferProcesses(@Valid JsonObject querySpecDto);
 
     @Operation(description = "Gets an transfer process with the given ID",
             responses = {

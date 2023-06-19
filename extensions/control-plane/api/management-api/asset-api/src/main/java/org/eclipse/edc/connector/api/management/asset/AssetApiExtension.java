@@ -20,16 +20,20 @@ import org.eclipse.edc.connector.api.management.asset.transform.AssetRequestDtoT
 import org.eclipse.edc.connector.api.management.asset.transform.AssetToAssetResponseDtoTransformer;
 import org.eclipse.edc.connector.api.management.asset.transform.AssetUpdateRequestWrapperDtoToAssetTransformer;
 import org.eclipse.edc.connector.api.management.asset.transform.JsonObjectToAssetEntryNewDtoTransformer;
+import org.eclipse.edc.connector.api.management.asset.validation.AssetEntryDtoValidator;
 import org.eclipse.edc.connector.api.management.configuration.ManagementApiConfiguration;
 import org.eclipse.edc.connector.spi.asset.AssetService;
-import org.eclipse.edc.jsonld.spi.JsonLd;
 import org.eclipse.edc.runtime.metamodel.annotation.Extension;
 import org.eclipse.edc.runtime.metamodel.annotation.Inject;
 import org.eclipse.edc.spi.asset.DataAddressResolver;
 import org.eclipse.edc.spi.system.ServiceExtension;
 import org.eclipse.edc.spi.system.ServiceExtensionContext;
 import org.eclipse.edc.transform.spi.TypeTransformerRegistry;
+import org.eclipse.edc.validator.spi.JsonObjectValidatorRegistry;
 import org.eclipse.edc.web.spi.WebService;
+
+import static org.eclipse.edc.connector.api.management.asset.model.AssetEntryNewDto.EDC_ASSET_ENTRY_DTO_TYPE;
+import static org.eclipse.edc.spi.types.domain.asset.Asset.EDC_ASSET_TYPE;
 
 @Extension(value = AssetApiExtension.NAME)
 public class AssetApiExtension implements ServiceExtension {
@@ -52,7 +56,7 @@ public class AssetApiExtension implements ServiceExtension {
     private DataAddressResolver dataAddressResolver;
 
     @Inject
-    private JsonLd jsonLdService;
+    private JsonObjectValidatorRegistry validator;
 
     @Override
     public String name() {
@@ -67,8 +71,10 @@ public class AssetApiExtension implements ServiceExtension {
         transformerRegistry.register(new AssetUpdateRequestWrapperDtoToAssetTransformer());
         transformerRegistry.register(new AssetToAssetResponseDtoTransformer());
         transformerRegistry.register(new JsonObjectToAssetEntryNewDtoTransformer());
-        
-        webService.registerResource(config.getContextAlias(), new AssetApiController(assetService, dataAddressResolver, transformerRegistry, jsonLdService, monitor));
-    }
 
+        validator.register(EDC_ASSET_ENTRY_DTO_TYPE, AssetEntryDtoValidator.assetEntryValidator());
+        validator.register(EDC_ASSET_TYPE, AssetEntryDtoValidator.assetValidator());
+
+        webService.registerResource(config.getContextAlias(), new AssetApiController(assetService, dataAddressResolver, transformerRegistry, monitor, validator));
+    }
 }
