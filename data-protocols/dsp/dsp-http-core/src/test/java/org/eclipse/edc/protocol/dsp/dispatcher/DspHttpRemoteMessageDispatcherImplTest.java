@@ -16,6 +16,7 @@ package org.eclipse.edc.protocol.dsp.dispatcher;
 
 import okhttp3.Request;
 import okhttp3.Response;
+import org.eclipse.edc.policy.engine.spi.PolicyContext;
 import org.eclipse.edc.policy.engine.spi.PolicyEngine;
 import org.eclipse.edc.policy.model.Policy;
 import org.eclipse.edc.protocol.dsp.spi.dispatcher.DspHttpDispatcherDelegate;
@@ -26,6 +27,7 @@ import org.eclipse.edc.spi.iam.IdentityService;
 import org.eclipse.edc.spi.iam.TokenDecorator;
 import org.eclipse.edc.spi.iam.TokenParameters;
 import org.eclipse.edc.spi.iam.TokenRepresentation;
+import org.eclipse.edc.spi.response.StatusResult;
 import org.eclipse.edc.spi.result.Result;
 import org.eclipse.edc.spi.types.domain.message.RemoteMessage;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,10 +42,11 @@ import static java.time.temporal.ChronoUnit.SECONDS;
 import static java.util.concurrent.CompletableFuture.completedFuture;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.eclipse.edc.protocol.dsp.spi.types.HttpMessageProtocol.DATASPACE_PROTOCOL_HTTP;
+import static org.mockito.AdditionalMatchers.and;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -74,13 +77,13 @@ class DspHttpRemoteMessageDispatcherImplTest {
     }
 
     @Test
-    void send_sendRequestViaHttpClient() {
+    void dispatch_sendRequestViaHttpClient() {
         var responseBody = "response";
-        Function<Response, String> responseFunction = response -> responseBody;
+        Function<Response, StatusResult<String>> responseFunction = response -> StatusResult.success(responseBody);
         var authToken = "token";
 
         when(delegate.buildRequest(any())).thenReturn(new Request.Builder().url("http://url").build());
-        when(delegate.parseResponse()).thenReturn(responseFunction);
+        when(delegate.handleResponse()).thenReturn(responseFunction);
         when(httpClient.executeAsync(any(), any(), any())).thenReturn(completedFuture(responseBody));
         when(identityService.obtainClientCredentials(any()))
                 .thenReturn(Result.success(TokenRepresentation.Builder.newInstance().token(authToken).build()));
@@ -88,7 +91,7 @@ class DspHttpRemoteMessageDispatcherImplTest {
         dispatcher.registerDelegate(delegate);
 
         var message = new TestMessage();
-        var result = dispatcher.send(String.class, message);
+        var result = dispatcher.dispatch(String.class, message);
 
         assertThat(result).succeedsWithin(timeout).isEqualTo(responseBody);
 
@@ -98,16 +101,16 @@ class DspHttpRemoteMessageDispatcherImplTest {
     }
 
     @Test
-    void send_ensureTokenDecoratorScope() {
+    void dispatch_ensureTokenDecoratorScope() {
         var responseBody = "response";
-        Function<Response, String> responseFunction = response -> responseBody;
+        Function<Response, StatusResult<String>> responseFunction = response -> StatusResult.success(responseBody);
         var authToken = "token";
 
         Map<String, Object> additional = Map.of("foo", "bar");
 
         when(tokenDecoratorMock.decorate(any())).thenAnswer(a -> a.getArgument(0, TokenParameters.Builder.class).scope("test-scope").additional(additional));
         when(delegate.buildRequest(any())).thenReturn(new Request.Builder().url("http://url").build());
-        when(delegate.parseResponse()).thenReturn(responseFunction);
+        when(delegate.handleResponse()).thenReturn(responseFunction);
         when(httpClient.executeAsync(any(), any(), any())).thenReturn(completedFuture(responseBody));
         when(identityService.obtainClientCredentials(any()))
                 .thenReturn(Result.success(TokenRepresentation.Builder.newInstance().token(authToken).build()));
@@ -115,9 +118,9 @@ class DspHttpRemoteMessageDispatcherImplTest {
         dispatcher.registerDelegate(delegate);
 
         var message = new TestMessage();
-        var result = dispatcher.send(String.class, message);
+        var result = dispatcher.dispatch(String.class, message);
 
-        assertThat(result).succeedsWithin(timeout).isEqualTo(responseBody);
+        assertThat(result).succeedsWithin(timeout);
 
         var captor = ArgumentCaptor.forClass(TokenParameters.class);
 
@@ -134,44 +137,44 @@ class DspHttpRemoteMessageDispatcherImplTest {
     }
 
     @Test
-    void send_noDelegateFound_throwException() {
-        assertThat(dispatcher.send(String.class, new TestMessage())).failsWithin(timeout)
+    void dispatch_noDelegateFound_throwException() {
+        assertThat(dispatcher.dispatch(String.class, new TestMessage())).failsWithin(timeout)
                 .withThrowableThat().withCauseInstanceOf(EdcException.class).withMessageContaining("found");
 
         verifyNoInteractions(httpClient);
     }
 
     @Test
-    void send_failedToObtainToken_throwException() {
+    void dispatch_failedToObtainToken_throwException() {
         dispatcher.registerDelegate(delegate);
         when(delegate.buildRequest(any())).thenReturn(new Request.Builder().url("http://url").build());
         when(identityService.obtainClientCredentials(any())).thenReturn(Result.failure("error"));
 
-        assertThat(dispatcher.send(String.class, new TestMessage())).failsWithin(timeout)
+        assertThat(dispatcher.dispatch(String.class, new TestMessage())).failsWithin(timeout)
                 .withThrowableThat().withCauseInstanceOf(EdcException.class).withMessageContaining("credentials");
 
         verifyNoInteractions(httpClient);
     }
 
     @Test
-    void send_shouldNotEvaluatePolicy_whenItIsNotRegistered() {
+    void dispatch_shouldNotEvaluatePolicy_whenItIsNotRegistered() {
         when(delegate.buildRequest(any())).thenReturn(new Request.Builder().url("http://url").build());
-        when(delegate.parseResponse()).thenReturn(response -> null);
+        when(delegate.handleResponse()).thenReturn(response -> null);
         when(httpClient.executeAsync(any(), any(), any())).thenReturn(completedFuture(null));
         when(identityService.obtainClientCredentials(any()))
                 .thenReturn(Result.success(TokenRepresentation.Builder.newInstance().token("any").build()));
         dispatcher.registerDelegate(delegate);
 
-        var result = dispatcher.send(String.class, new TestMessage());
+        var result = dispatcher.dispatch(String.class, new TestMessage());
 
         assertThat(result).succeedsWithin(timeout);
         verifyNoInteractions(policyEngine);
     }
 
     @Test
-    void send_shouldEvaluatePolicy() {
+    void dispatch_shouldEvaluatePolicy() {
         when(delegate.buildRequest(any())).thenReturn(new Request.Builder().url("http://url").build());
-        when(delegate.parseResponse()).thenReturn(response -> null);
+        when(delegate.handleResponse()).thenReturn(response -> null);
         when(httpClient.executeAsync(any(), any(), any())).thenReturn(completedFuture(null));
         when(identityService.obtainClientCredentials(any()))
                 .thenReturn(Result.success(TokenRepresentation.Builder.newInstance().token("any").build()));
@@ -179,10 +182,10 @@ class DspHttpRemoteMessageDispatcherImplTest {
         var policy = Policy.Builder.newInstance().build();
         dispatcher.registerPolicyScope(TestMessage.class, "test.message", m -> policy);
 
-        var result = dispatcher.send(String.class, new TestMessage());
+        var result = dispatcher.dispatch(String.class, new TestMessage());
 
         assertThat(result).succeedsWithin(timeout);
-        verify(policyEngine).evaluate(any(), eq(policy), isNull(), argThat(map -> map.containsKey(TokenParameters.Builder.class)));
+        verify(policyEngine).evaluate(eq("test.message"), eq(policy), and(isA(PolicyContext.class), argThat(c -> c.getContextData(TokenParameters.Builder.class) != null)));
     }
 
     static class TestMessage implements RemoteMessage {

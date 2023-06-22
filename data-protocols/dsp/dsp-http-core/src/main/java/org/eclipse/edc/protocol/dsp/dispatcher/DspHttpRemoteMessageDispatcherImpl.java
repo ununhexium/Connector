@@ -14,6 +14,7 @@
 
 package org.eclipse.edc.protocol.dsp.dispatcher;
 
+import org.eclipse.edc.policy.engine.spi.PolicyContextImpl;
 import org.eclipse.edc.policy.engine.spi.PolicyEngine;
 import org.eclipse.edc.policy.model.Policy;
 import org.eclipse.edc.protocol.dsp.spi.dispatcher.DspHttpDispatcherDelegate;
@@ -24,6 +25,7 @@ import org.eclipse.edc.spi.http.EdcHttpClient;
 import org.eclipse.edc.spi.iam.IdentityService;
 import org.eclipse.edc.spi.iam.TokenDecorator;
 import org.eclipse.edc.spi.iam.TokenParameters;
+import org.eclipse.edc.spi.response.StatusResult;
 import org.eclipse.edc.spi.types.domain.message.RemoteMessage;
 
 import java.util.HashMap;
@@ -34,7 +36,7 @@ import java.util.function.Function;
 
 import static java.lang.String.format;
 import static java.util.concurrent.CompletableFuture.failedFuture;
-import static org.eclipse.edc.spi.http.FallbackFactories.statusMustBeSuccessful;
+import static org.eclipse.edc.spi.http.FallbackFactories.retryWhenStatusNot2xxOr4xx;
 
 /**
  * Dispatches remote messages using the dataspace protocol. Uses {@link DspHttpDispatcherDelegate}s
@@ -76,6 +78,18 @@ public class DspHttpRemoteMessageDispatcherImpl implements DspHttpRemoteMessageD
      */
     @Override
     public <T, M extends RemoteMessage> CompletableFuture<T> send(Class<T> responseType, M message) {
+        return dispatch(responseType, message)
+                .thenApply(it -> {
+                    if (it.succeeded()) {
+                        return it.getContent();
+                    } else {
+                        return null;
+                    }
+                });
+    }
+
+    @Override
+    public <T, M extends RemoteMessage> CompletableFuture<StatusResult<T>> dispatch(Class<T> responseType, M message) {
         var delegate = (DspHttpDispatcherDelegate<M, T>) delegates.get(message.getClass());
         if (delegate == null) {
             return failedFuture(new EdcException(format("No DSP message dispatcher found for message type %s", message.getClass())));
@@ -87,10 +101,11 @@ public class DspHttpRemoteMessageDispatcherImpl implements DspHttpRemoteMessageD
 
         var policyScope = policyScopes.get(message.getClass());
         if (policyScope != null) {
-            var policyContext = new HashMap<Class<?>, Object>();
-            policyContext.put(TokenParameters.Builder.class, tokenParametersBuilder);
+            var context = PolicyContextImpl.Builder.newInstance()
+                    .additional(TokenParameters.Builder.class, tokenParametersBuilder)
+                    .build();
             var policyProvider = (Function<M, Policy>) policyScope.policyProvider;
-            policyEngine.evaluate(policyScope.scope, policyProvider.apply(message), null, policyContext);
+            policyEngine.evaluate(policyScope.scope, policyProvider.apply(message), context);
         }
 
         var tokenParameters = tokenParametersBuilder
@@ -103,7 +118,7 @@ public class DspHttpRemoteMessageDispatcherImpl implements DspHttpRemoteMessageD
                             .header("Authorization", token.getToken())
                             .build();
 
-                    return httpClient.executeAsync(requestWithAuth, List.of(statusMustBeSuccessful()), delegate.parseResponse());
+                    return httpClient.executeAsync(requestWithAuth, List.of(retryWhenStatusNot2xxOr4xx()), delegate.handleResponse());
                 })
                 .orElse(failure -> failedFuture(new EdcException(format("Unable to obtain credentials: %s", failure.getFailureDetail()))));
     }

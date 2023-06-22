@@ -2,7 +2,7 @@ openapi: 3.0.1
 info:
   title: EDC REST API
   description: EDC REST APIs - merged by OpenApiMerger
-  version: 0.1.1-SNAPSHOT
+  version: 0.1.2-SNAPSHOT
 servers:
 - url: /
 tags:
@@ -1956,10 +1956,6 @@ components:
           example: null
       example: null
     ContractOfferDescription:
-      required:
-      - assetId
-      - offerId
-      - policy
       type: object
       properties:
         assetId:
@@ -1970,10 +1966,6 @@ components:
           example: null
         policy:
           $ref: '#/components/schemas/Policy'
-        validity:
-          type: integer
-          format: int64
-          example: null
       example: null
     CriterionDto:
       required:
@@ -2308,11 +2300,6 @@ components:
           - "NULL"
       example: null
     NegotiationInitiateRequestDto:
-      required:
-      - connectorAddress
-      - connectorId
-      - offer
-      - protocol
       type: object
       properties:
         '@context':
@@ -2427,8 +2414,6 @@ components:
           example: null
       example: null
     PolicyDefinitionRequestDto:
-      required:
-      - policy
       type: object
       properties:
         '@id':
@@ -2438,8 +2423,6 @@ components:
           $ref: '#/components/schemas/Policy'
       example: null
     PolicyDefinitionResponseDto:
-      required:
-      - policy
       type: object
       properties:
         '@context':
@@ -2459,8 +2442,6 @@ components:
           $ref: '#/components/schemas/Policy'
       example: null
     PolicyDefinitionUpdateDto:
-      required:
-      - policy
       type: object
       properties:
         policy:
