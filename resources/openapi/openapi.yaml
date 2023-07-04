@@ -2,7 +2,7 @@ openapi: 3.0.1
 info:
   title: EDC REST API
   description: EDC REST APIs - merged by OpenApiMerger
-  version: 0.1.2-SNAPSHOT
+  version: 0.1.3-SNAPSHOT
 servers:
 - url: /
 tags:
@@ -83,10 +83,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                example: null
-                items:
-                  $ref: '#/components/schemas/HealthStatus'
+                $ref: '#/components/schemas/HealthStatus'
   /check/liveness:
     get:
       tags:
@@ -100,10 +97,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                example: null
-                items:
-                  $ref: '#/components/schemas/HealthStatus'
+                $ref: '#/components/schemas/HealthStatus'
   /check/readiness:
     get:
       tags:
@@ -117,10 +111,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                example: null
-                items:
-                  $ref: '#/components/schemas/HealthStatus'
+                $ref: '#/components/schemas/HealthStatus'
   /check/startup:
     get:
       tags:
@@ -134,10 +125,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                example: null
-                items:
-                  $ref: '#/components/schemas/HealthStatus'
+                $ref: '#/components/schemas/HealthStatus'
   /instances:
     get:
       tags:
@@ -195,7 +183,7 @@ paths:
       parameters:
       - name: Authorization
         in: header
-        required: true
+        required: false
         style: simple
         explode: false
         schema:
@@ -292,7 +280,6 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/TransferProcessFailStateDto'
-        required: true
       responses:
         "400":
           description: "Request was malformed, e.g. id was null"
@@ -1629,7 +1616,7 @@ components:
       type: object
       properties:
         invalidValue:
-          type: string
+          type: object
           example: null
         message:
           type: string
@@ -1702,8 +1689,6 @@ components:
           example: null
       example: null
     AssetUpdateRequestDto:
-      required:
-      - properties
       type: object
       properties:
         '@context':
@@ -1777,8 +1762,6 @@ components:
           example: null
       example: null
     CatalogRequestDto:
-      required:
-      - providerUrl
       type: object
       properties:
         '@context':
@@ -1808,12 +1791,6 @@ components:
       discriminator:
         propertyName: edctype
     ContractAgreementDto:
-      required:
-      - '@id'
-      - assetId
-      - consumerId
-      - policy
-      - providerId
       type: object
       properties:
         '@context':
@@ -1968,9 +1945,6 @@ components:
           $ref: '#/components/schemas/Policy'
       example: null
     CriterionDto:
-      required:
-      - operandLeft
-      - operator
       type: object
       properties:
         '@context':
@@ -2000,8 +1974,6 @@ components:
           example: null
       example: null
     DataAddressDto:
-      required:
-      - properties
       type: object
       properties:
         '@context':
@@ -2468,12 +2440,6 @@ components:
           example: null
       example: null
     ProvisionerWebhookRequest:
-      required:
-      - apiKeyJwt
-      - assetId
-      - contentDataAddress
-      - resourceDefinitionId
-      - resourceName
       type: object
       properties:
         apiKeyJwt:
@@ -2538,8 +2504,6 @@ components:
           example: null
       example: null
     TerminateTransferDto:
-      required:
-      - reason
       type: object
       properties:
         reason:
@@ -2596,8 +2560,6 @@ components:
           example: null
       example: null
     TransferProcessFailStateDto:
-      required:
-      - errorMessage
       type: object
       properties:
         errorMessage:
@@ -2605,13 +2567,6 @@ components:
           example: null
       example: null
     TransferRequestDto:
-      required:
-      - assetId
-      - connectorAddress
-      - connectorId
-      - contractId
-      - dataDestination
-      - protocol
       type: object
       properties:
         assetId:

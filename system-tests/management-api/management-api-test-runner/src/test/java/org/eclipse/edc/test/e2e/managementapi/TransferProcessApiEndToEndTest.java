@@ -34,6 +34,7 @@ import static jakarta.json.Json.createObjectBuilder;
 import static java.util.Collections.emptySet;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.COMPLETED;
+import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.REQUESTED;
 import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.CONTEXT;
 import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.ID;
 import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.TYPE;
@@ -107,6 +108,9 @@ public class TransferProcessApiEndToEndTest extends BaseManagementApiEndToEndTes
                 )
                 .add("callbackAddresses", createCallbackAddress())
                 .add("protocol", "dataspace-protocol-http")
+                .add("connectorAddress", "http://connector-address")
+                .add("connectorId", "connectorId")
+                .add("contractId", "contractId")
                 .add("assetId", "assetId")
                 .build();
 
@@ -115,6 +119,7 @@ public class TransferProcessApiEndToEndTest extends BaseManagementApiEndToEndTes
                 .body(requestBody)
                 .post("/")
                 .then()
+                .log().ifError()
                 .statusCode(200)
                 .extract().jsonPath().getString(ID);
 
@@ -136,7 +141,7 @@ public class TransferProcessApiEndToEndTest extends BaseManagementApiEndToEndTes
     @Test
     void terminate() {
         var id = UUID.randomUUID().toString();
-        getStore().updateOrCreate(createTransferProcess(id));
+        getStore().updateOrCreate(createTransferProcessBuilder(id).state(REQUESTED.code()).build());
         var requestBody = createObjectBuilder()
                 .add(CONTEXT, createObjectBuilder().add(VOCAB, EDC_NAMESPACE))
                 .add("reason", "any")
@@ -147,6 +152,7 @@ public class TransferProcessApiEndToEndTest extends BaseManagementApiEndToEndTes
                 .body(requestBody)
                 .post("/" + id + "/terminate")
                 .then()
+                .log().ifError()
                 .statusCode(204);
     }
 

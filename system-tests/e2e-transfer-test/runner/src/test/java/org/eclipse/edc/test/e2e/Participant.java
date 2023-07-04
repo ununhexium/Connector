@@ -222,6 +222,7 @@ public class Participant {
                 .add("protocol", "dataspace-protocol-http")
                 .add("assetId", assetId)
                 .add("contractId", contractId)
+                .add("connectorId", provider.participantId)
                 .add("connectorAddress", provider.protocolEndpoint + PROTOCOL_PATH)
                 .add("privateProperties", privateProperties)
                 .build();
@@ -233,6 +234,7 @@ public class Participant {
                 .when()
                 .post("/v2/transferprocesses")
                 .then()
+                .log().ifError()
                 .statusCode(200)
                 .extract().body().jsonPath().getString(ID);
     }
@@ -477,7 +479,7 @@ public class Participant {
 
     private ContractId getContractId(JsonObject dataset) {
         var id = dataset.getJsonArray(ODRL_POLICY_ATTRIBUTE).get(0).asJsonObject().getString(ID);
-        return ContractId.parse(id);
+        return ContractId.parseId(id).getContent();
     }
 
     private String getContractNegotiationField(String negotiationId, String fieldName) {

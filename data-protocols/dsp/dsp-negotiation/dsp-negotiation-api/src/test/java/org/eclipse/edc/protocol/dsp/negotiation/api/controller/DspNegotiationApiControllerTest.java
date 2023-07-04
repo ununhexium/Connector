@@ -25,6 +25,7 @@ import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreementV
 import org.eclipse.edc.connector.contract.spi.types.agreement.ContractNegotiationEventMessage;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiation;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationTerminationMessage;
+import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractOfferMessage;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractRequestMessage;
 import org.eclipse.edc.connector.contract.spi.types.offer.ContractOffer;
 import org.eclipse.edc.connector.contract.spi.types.protocol.ContractRemoteMessage;
@@ -74,6 +75,7 @@ import static org.eclipse.edc.protocol.dsp.type.DspNegotiationPropertyAndTypeNam
 import static org.eclipse.edc.protocol.dsp.type.DspNegotiationPropertyAndTypeNames.DSPACE_TYPE_CONTRACT_NEGOTIATION_ERROR;
 import static org.eclipse.edc.protocol.dsp.type.DspNegotiationPropertyAndTypeNames.DSPACE_TYPE_CONTRACT_NEGOTIATION_EVENT_MESSAGE;
 import static org.eclipse.edc.protocol.dsp.type.DspNegotiationPropertyAndTypeNames.DSPACE_TYPE_CONTRACT_NEGOTIATION_TERMINATION_MESSAGE;
+import static org.eclipse.edc.protocol.dsp.type.DspNegotiationPropertyAndTypeNames.DSPACE_TYPE_CONTRACT_OFFER_MESSAGE;
 import static org.eclipse.edc.protocol.dsp.type.DspNegotiationPropertyAndTypeNames.DSPACE_TYPE_CONTRACT_REQUEST_MESSAGE;
 import static org.eclipse.edc.protocol.dsp.type.DspPropertyAndTypeNames.DSPACE_PROPERTY_CODE;
 import static org.eclipse.edc.protocol.dsp.type.DspPropertyAndTypeNames.DSPACE_PROPERTY_PROCESS_ID;
@@ -87,7 +89,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ApiTest
-public class DspNegotiationApiControllerTest extends RestControllerTestBase {
+class DspNegotiationApiControllerTest extends RestControllerTestBase {
 
     private final IdentityService identityService = mock(IdentityService.class);
     private final TypeTransformerRegistry registry = mock(TypeTransformerRegistry.class);
@@ -123,6 +125,16 @@ public class DspNegotiationApiControllerTest extends RestControllerTestBase {
                 .counterPartyAddress("http://connector")
                 .callbackAddress("http://connector")
                 .dataSet("dataSet")
+                .contractOffer(contractOffer())
+                .build();
+    }
+    
+    private static ContractOfferMessage contractOfferMessage() {
+        return ContractOfferMessage.Builder.newInstance()
+                .protocol("protocol")
+                .processId("testId")
+                .counterPartyAddress("http://connector")
+                .callbackAddress("http://connector")
                 .contractOffer(contractOffer())
                 .build();
     }
@@ -182,24 +194,49 @@ public class DspNegotiationApiControllerTest extends RestControllerTestBase {
     }
 
     @Test
-    void getNegotiation_shouldReturnNotImplemented_whenOperationNotSupported() {
+    void getNegotiation_shouldReturnNegotiation_whenValidRequest() {
         var token = token();
+        var id = "negotiationId";
+        var negotiation = contractNegotiation();
+        var json = Json.createObjectBuilder().build();
 
         when(identityService.verifyJwtToken(any(TokenRepresentation.class), eq(callbackAddress))).thenReturn(Result.success(token));
-
-        //operation not yet supported
+        when(protocolService.findById(id, token)).thenReturn(ServiceResult.success(negotiation));
+        when(registry.transform(any(ContractNegotiation.class), eq(JsonObject.class))).thenReturn(Result.success(json));
+        
         var result = baseRequest()
-                .get(BASE_PATH + "testId")
+                .get(BASE_PATH + id)
                 .then()
                 .contentType(MediaType.APPLICATION_JSON)
-                .statusCode(501)
+                .statusCode(200)
                 .extract().as(JsonObject.class);
 
         assertThat(result).isNotNull();
+        verify(protocolService, times(1)).findById(id, token);
+    }
+    
+    @Test
+    void getNegotiation_shouldReturnNotFound_whenServiceResultNotFound() {
+        var token = token();
+        var id = "negotiationId";
+        
+        when(identityService.verifyJwtToken(any(TokenRepresentation.class), eq(callbackAddress))).thenReturn(Result.success(token));
+        when(protocolService.findById(id, token)).thenReturn(ServiceResult.notFound("not found"));
+        
+        var result = baseRequest()
+                .get(BASE_PATH + id)
+                .then()
+                .contentType(MediaType.APPLICATION_JSON)
+                .statusCode(404)
+                .extract().as(JsonObject.class);
+        
+        assertThat(result).isNotNull();
         assertThat(result.getString(JsonLdKeywords.TYPE)).isEqualTo(DSPACE_TYPE_CONTRACT_NEGOTIATION_ERROR);
-        assertThat(result.getString(DSPACE_PROPERTY_CODE)).isEqualTo("501");
+        assertThat(result.getString(DSPACE_PROPERTY_CODE)).isEqualTo("404");
         assertThat(result.get(DSPACE_PROPERTY_PROCESS_ID)).isNotNull();
         assertThat(result.get(DSPACE_PROPERTY_REASON)).isNotNull();
+        
+        verify(protocolService, times(1)).findById(id, token);
     }
 
     @Test
@@ -252,28 +289,6 @@ public class DspNegotiationApiControllerTest extends RestControllerTestBase {
         assertThat(result).isNotNull();
         assertThat(result.getString(JsonLdKeywords.TYPE)).isEqualTo(DSPACE_TYPE_CONTRACT_NEGOTIATION_ERROR);
         assertThat(result.getString(DSPACE_PROPERTY_CODE)).isEqualTo("500");
-        assertThat(result.get(DSPACE_PROPERTY_PROCESS_ID)).isNotNull();
-        assertThat(result.get(DSPACE_PROPERTY_REASON)).isNotNull();
-    }
-
-    @Test
-    void providerOffer_shouldReturnNotImplemented_whenOperationNotSupported() {
-        var token = token();
-
-        when(identityService.verifyJwtToken(any(TokenRepresentation.class), eq(callbackAddress))).thenReturn(Result.success(token));
-
-        var result = baseRequest()
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(request)
-                .post(BASE_PATH + "testId" + CONTRACT_OFFER)
-                .then()
-                .contentType(MediaType.APPLICATION_JSON)
-                .statusCode(501)
-                .extract().as(JsonObject.class);
-
-        assertThat(result).isNotNull();
-        assertThat(result.getString(JsonLdKeywords.TYPE)).isEqualTo(DSPACE_TYPE_CONTRACT_NEGOTIATION_ERROR);
-        assertThat(result.getString(DSPACE_PROPERTY_CODE)).isEqualTo("501");
         assertThat(result.get(DSPACE_PROPERTY_PROCESS_ID)).isNotNull();
         assertThat(result.get(DSPACE_PROPERTY_REASON)).isNotNull();
     }
@@ -362,6 +377,7 @@ public class DspNegotiationApiControllerTest extends RestControllerTestBase {
         when(protocolService.notifyVerified(any(ContractAgreementVerificationMessage.class), eq(token))).thenReturn(ServiceResult.success(contractNegotiation()));
         when(protocolService.notifyTerminated(any(ContractNegotiationTerminationMessage.class), eq(token))).thenReturn(ServiceResult.success(contractNegotiation()));
         when(protocolService.notifyAgreed(any(ContractAgreementMessage.class), eq(token))).thenReturn(ServiceResult.success(contractNegotiation()));
+        when(protocolService.notifyOffered(any(ContractOfferMessage.class), eq(token))).thenReturn(ServiceResult.success(contractNegotiation()));
 
         baseRequest()
                 .contentType(MediaType.APPLICATION_JSON)
@@ -401,6 +417,7 @@ public class DspNegotiationApiControllerTest extends RestControllerTestBase {
         when(protocolService.notifyVerified(any(ContractAgreementVerificationMessage.class), eq(token))).thenReturn(ServiceResult.conflict("error"));
         when(protocolService.notifyTerminated(any(ContractNegotiationTerminationMessage.class), eq(token))).thenReturn(ServiceResult.conflict("error"));
         when(protocolService.notifyAgreed(any(ContractAgreementMessage.class), eq(token))).thenReturn(ServiceResult.conflict("error"));
+        when(protocolService.notifyOffered(any(ContractOfferMessage.class), eq(token))).thenReturn(ServiceResult.conflict("error"));
 
         var result = baseRequest()
                 .contentType(MediaType.APPLICATION_JSON)
@@ -490,7 +507,8 @@ public class DspNegotiationApiControllerTest extends RestControllerTestBase {
                     Arguments.of(BASE_PATH + "testId" + EVENT),
                     Arguments.of(BASE_PATH + "testId" + AGREEMENT + VERIFICATION),
                     Arguments.of(BASE_PATH + "testId" + TERMINATION),
-                    Arguments.of(BASE_PATH + "testId" + AGREEMENT)
+                    Arguments.of(BASE_PATH + "testId" + AGREEMENT),
+                    Arguments.of(BASE_PATH + "testId" + CONTRACT_OFFER)
             );
         }
     }
@@ -501,6 +519,7 @@ public class DspNegotiationApiControllerTest extends RestControllerTestBase {
         JsonObject agreementVerification = Json.createObjectBuilder().add("@type", DSPACE_TYPE_CONTRACT_AGREEMENT_VERIFICATION_MESSAGE).build();
         JsonObject negotiationTermination = Json.createObjectBuilder().add("@type", DSPACE_TYPE_CONTRACT_NEGOTIATION_TERMINATION_MESSAGE).build();
         JsonObject contractAgreement = Json.createObjectBuilder().add("@type", DSPACE_TYPE_CONTRACT_AGREEMENT_MESSAGE).build();
+        JsonObject contractOffer = Json.createObjectBuilder().add("@type", DSPACE_TYPE_CONTRACT_OFFER_MESSAGE).build();
 
         @Override
         public Stream<? extends Arguments> provideArguments(ExtensionContext context) throws Exception {
@@ -516,7 +535,9 @@ public class DspNegotiationApiControllerTest extends RestControllerTestBase {
                     Arguments.of(BASE_PATH + "testId" + TERMINATION, contractNegotiationTerminationMessage(), negotiationTermination,
                             ContractNegotiationProtocolService.class.getDeclaredMethod("notifyTerminated", ContractNegotiationTerminationMessage.class, ClaimToken.class)),
                     Arguments.of(BASE_PATH + "testId" + AGREEMENT, contractAgreementMessage(), contractAgreement,
-                            ContractNegotiationProtocolService.class.getDeclaredMethod("notifyAgreed", ContractAgreementMessage.class, ClaimToken.class))
+                            ContractNegotiationProtocolService.class.getDeclaredMethod("notifyAgreed", ContractAgreementMessage.class, ClaimToken.class)),
+                    Arguments.of(BASE_PATH + "testId" + CONTRACT_OFFER, contractOfferMessage(), contractOffer,
+                            ContractNegotiationProtocolService.class.getDeclaredMethod("notifyOffered", ContractOfferMessage.class, ClaimToken.class))
             );
         }
     }
@@ -527,6 +548,7 @@ public class DspNegotiationApiControllerTest extends RestControllerTestBase {
         JsonObject agreementVerification = Json.createObjectBuilder().add("@type", DSPACE_TYPE_CONTRACT_AGREEMENT_VERIFICATION_MESSAGE).build();
         JsonObject negotiationTermination = Json.createObjectBuilder().add("@type", DSPACE_TYPE_CONTRACT_NEGOTIATION_TERMINATION_MESSAGE).build();
         JsonObject contractAgreement = Json.createObjectBuilder().add("@type", DSPACE_TYPE_CONTRACT_AGREEMENT_MESSAGE).build();
+        JsonObject contractOffer = Json.createObjectBuilder().add("@type", DSPACE_TYPE_CONTRACT_OFFER_MESSAGE).build();
 
         @Override
         public Stream<? extends Arguments> provideArguments(ExtensionContext context) throws Exception {
@@ -544,7 +566,9 @@ public class DspNegotiationApiControllerTest extends RestControllerTestBase {
                     Arguments.of(BASE_PATH + "testId" + TERMINATION, contractNegotiationTerminationMessage(), negotiationTermination,
                             ContractNegotiationProtocolService.class.getDeclaredMethod("notifyTerminated", ContractNegotiationTerminationMessage.class, ClaimToken.class)),
                     Arguments.of(BASE_PATH + "testId" + AGREEMENT, contractAgreementMessage(), contractAgreement,
-                            ContractNegotiationProtocolService.class.getDeclaredMethod("notifyAgreed", ContractAgreementMessage.class, ClaimToken.class))
+                            ContractNegotiationProtocolService.class.getDeclaredMethod("notifyAgreed", ContractAgreementMessage.class, ClaimToken.class)),
+                    Arguments.of(BASE_PATH + "testId" + CONTRACT_OFFER, contractOfferMessage(), contractOffer,
+                            ContractNegotiationProtocolService.class.getDeclaredMethod("notifyOffered", ContractOfferMessage.class, ClaimToken.class))
             );
         }
     }

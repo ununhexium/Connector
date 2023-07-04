@@ -24,6 +24,7 @@ import org.eclipse.edc.connector.transfer.observe.TransferProcessObservableImpl;
 import org.eclipse.edc.connector.transfer.spi.observe.TransferProcessListener;
 import org.eclipse.edc.connector.transfer.spi.observe.TransferProcessStartedData;
 import org.eclipse.edc.connector.transfer.spi.store.TransferProcessStore;
+import org.eclipse.edc.connector.transfer.spi.types.DataRequest;
 import org.eclipse.edc.connector.transfer.spi.types.TransferProcess;
 import org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates;
 import org.eclipse.edc.connector.transfer.spi.types.protocol.TransferCompletionMessage;
@@ -64,6 +65,7 @@ import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates
 import static org.eclipse.edc.junit.assertions.AbstractResultAssert.assertThat;
 import static org.eclipse.edc.service.spi.result.ServiceFailure.Reason.BAD_REQUEST;
 import static org.eclipse.edc.service.spi.result.ServiceFailure.Reason.CONFLICT;
+import static org.eclipse.edc.service.spi.result.ServiceFailure.Reason.NOT_FOUND;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.atLeastOnce;
@@ -97,7 +99,7 @@ class TransferProcessProtocolServiceImplTest {
     void notifyRequested_validAgreement_shouldInitiateTransfer() {
         var message = TransferRequestMessage.Builder.newInstance()
                 .processId("transferProcessId")
-                .contractId(ContractId.createContractId("definitionId", "assetId"))
+                .contractId(ContractId.create("definitionId", "assetId").toString())
                 .protocol("protocol")
                 .callbackAddress("http://any")
                 .dataDestination(DataAddress.Builder.newInstance().type("any").build())
@@ -123,7 +125,7 @@ class TransferProcessProtocolServiceImplTest {
     void notifyRequested_doNothingIfProcessAlreadyExist() {
         var message = TransferRequestMessage.Builder.newInstance()
                 .processId("correlationId")
-                .contractId(ContractId.createContractId("definitionId", "assetId"))
+                .contractId(ContractId.create("definitionId", "assetId").toString())
                 .protocol("protocol")
                 .callbackAddress("http://any")
                 .dataDestination(DataAddress.Builder.newInstance().type("any").build())
@@ -162,7 +164,7 @@ class TransferProcessProtocolServiceImplTest {
         var message = TransferRequestMessage.Builder.newInstance()
                 .protocol("protocol")
                 .callbackAddress("http://any")
-                .contractId(ContractId.createContractId("definitionId", "assetId"))
+                .contractId(ContractId.create("definitionId", "assetId").toString())
                 .dataDestination(DataAddress.Builder.newInstance().type("any").build())
                 .build();
         when(negotiationStore.findContractAgreement(any())).thenReturn(contractAgreement());
@@ -181,7 +183,7 @@ class TransferProcessProtocolServiceImplTest {
         when(dataAddressValidator.validate(any())).thenReturn(Result.failure("invalid data address"));
         var message = TransferRequestMessage.Builder.newInstance()
                 .protocol("protocol")
-                .contractId(ContractId.createContractId("definitionId", "assetId"))
+                .contractId(ContractId.create("definitionId", "assetId").toString())
                 .callbackAddress("http://any")
                 .dataDestination(DataAddress.Builder.newInstance().type("any").build())
                 .build();
@@ -306,6 +308,55 @@ class TransferProcessProtocolServiceImplTest {
         verify(store, never()).updateOrCreate(any());
         verifyNoInteractions(listener);
     }
+    
+    @Test
+    void findById_shouldReturnTransferProcess_whenValidCounterParty() {
+        var processId = "transferProcessId";
+        var transferProcess = transferProcess(INITIAL, processId);
+        var token = claimToken();
+        var agreement = contractAgreement();
+    
+        when(store.findById(processId)).thenReturn(transferProcess);
+        when(negotiationStore.findContractAgreement(any())).thenReturn(agreement);
+        when(validationService.validateRequest(token, agreement)).thenReturn(Result.success());
+    
+        var result = service.findById(processId, token);
+    
+        assertThat(result)
+                .isSucceeded()
+                .isEqualTo(transferProcess);
+    }
+
+    @Test
+    void findById_shouldReturnNotFound_whenNegotiationNotFound() {
+        when(store.findById(any())).thenReturn(null);
+        
+        var result = service.findById("invalidId", ClaimToken.Builder.newInstance().build());
+        
+        assertThat(result)
+                .isFailed()
+                .extracting(ServiceFailure::getReason)
+                .isEqualTo(NOT_FOUND);
+    }
+    
+    @Test
+    void findById_shouldReturnNotFound_whenCounterPartyUnauthorized() {
+        var processId = "transferProcessId";
+        var transferProcess = transferProcess(INITIAL, processId);
+        var token = claimToken();
+        var agreement = contractAgreement();
+        
+        when(store.findById(processId)).thenReturn(transferProcess);
+        when(negotiationStore.findContractAgreement(any())).thenReturn(agreement);
+        when(validationService.validateRequest(token, agreement)).thenReturn(Result.failure("error"));
+        
+        var result = service.findById(processId, token);
+
+        assertThat(result)
+                .isFailed()
+                .extracting(ServiceFailure::getReason)
+                .isEqualTo(NOT_FOUND);
+    }
 
     @ParameterizedTest
     @ArgumentsSource(NotFoundArguments.class)
@@ -323,6 +374,7 @@ class TransferProcessProtocolServiceImplTest {
         return TransferProcess.Builder.newInstance()
                 .state(state.code())
                 .id(id)
+                .dataRequest(dataRequest())
                 .build();
     }
 
@@ -339,6 +391,13 @@ class TransferProcessProtocolServiceImplTest {
                 .consumerId("consumer")
                 .assetId("asset")
                 .policy(Policy.Builder.newInstance().build())
+                .build();
+    }
+    
+    private DataRequest dataRequest() {
+        return DataRequest.Builder.newInstance()
+                .contractId("contractId")
+                .destinationType("type")
                 .build();
     }
 

@@ -25,7 +25,7 @@ import org.eclipse.edc.connector.contract.spi.types.agreement.ContractNegotiatio
 import org.eclipse.edc.connector.contract.spi.types.command.ContractNegotiationCommand;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiation;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationStates;
-import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractRequestMessage;
+import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractOfferMessage;
 import org.eclipse.edc.connector.contract.spi.types.offer.ContractOffer;
 import org.eclipse.edc.connector.policy.spi.PolicyDefinition;
 import org.eclipse.edc.connector.policy.spi.store.PolicyDefinitionStore;
@@ -128,7 +128,7 @@ class ProviderContractNegotiationManagerImplTest {
 
         await().untilAsserted(() -> {
             verify(store).save(argThat(p -> p.getState() == OFFERED.code()));
-            verify(dispatcherRegistry, only()).dispatch(any(), isA(ContractRequestMessage.class));
+            verify(dispatcherRegistry, only()).dispatch(any(), isA(ContractOfferMessage.class));
             verify(listener).offered(any());
         });
     }
@@ -248,7 +248,7 @@ class ProviderContractNegotiationManagerImplTest {
 
     private ContractAgreement.Builder contractAgreementBuilder() {
         return ContractAgreement.Builder.newInstance()
-                .id(ContractId.createContractId(UUID.randomUUID().toString(), "test-asset-id"))
+                .id(ContractId.create(UUID.randomUUID().toString(), "test-asset-id").toString())
                 .providerId("any")
                 .consumerId("any")
                 .assetId("default")
@@ -257,7 +257,7 @@ class ProviderContractNegotiationManagerImplTest {
 
     private ContractOffer contractOffer() {
         return ContractOffer.Builder.newInstance()
-                .id(ContractId.createContractId("1", "test-asset-id"))
+                .id(ContractId.create("1", "test-asset-id").toString())
                 .policy(Policy.Builder.newInstance().build())
                 .assetId("assetId")
                 .providerId(PROVIDER_ID)

@@ -18,7 +18,7 @@
 
 package org.eclipse.edc.connector.contract.negotiation;
 
-import io.opentelemetry.extension.annotations.WithSpan;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.eclipse.edc.connector.contract.spi.ContractId;
 import org.eclipse.edc.connector.contract.spi.negotiation.ProviderContractNegotiationManager;
 import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreement;
@@ -28,7 +28,7 @@ import org.eclipse.edc.connector.contract.spi.types.command.ContractNegotiationC
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiation;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationStates;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationTerminationMessage;
-import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractRequestMessage;
+import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractOfferMessage;
 import org.eclipse.edc.spi.query.Criterion;
 import org.eclipse.edc.statemachine.StateMachineManager;
 import org.eclipse.edc.statemachine.StateProcessorImpl;
@@ -102,22 +102,21 @@ public class ProviderContractNegotiationManagerImpl extends AbstractContractNego
     @WithSpan
     private boolean processOffering(ContractNegotiation negotiation) {
         var currentOffer = negotiation.getLastContractOffer();
-
-        var contractOfferRequest = ContractRequestMessage.Builder.newInstance()
+        
+        var contractOfferMessage = ContractOfferMessage.Builder.newInstance()
                 .protocol(negotiation.getProtocol())
-                .connectorId(negotiation.getCounterPartyId())
                 .counterPartyAddress(negotiation.getCounterPartyAddress())
                 .contractOffer(currentOffer)
                 .processId(negotiation.getCorrelationId())
                 .build();
 
-        return entityRetryProcessFactory.doAsyncStatusResultProcess(negotiation, () -> dispatcherRegistry.dispatch(Object.class, contractOfferRequest))
+        return entityRetryProcessFactory.doAsyncStatusResultProcess(negotiation, () -> dispatcherRegistry.dispatch(Object.class, contractOfferMessage))
                 .entityRetrieve(negotiationStore::findById)
                 .onDelay(this::breakLease)
                 .onSuccess((n, result) -> transitionToOffered(n))
                 .onFailure((n, throwable) -> transitionToOffering(n))
                 .onFatalError((n, failure) -> transitionToTerminated(n, failure.getFailureDetail()))
-                .onRetryExhausted((n, throwable) -> transitionToTerminating(n, format("Failed to send %s to consumer: %s", contractOfferRequest.getClass().getSimpleName(), throwable.getMessage())))
+                .onRetryExhausted((n, throwable) -> transitionToTerminating(n, format("Failed to send %s to consumer: %s", contractOfferMessage.getClass().getSimpleName(), throwable.getMessage())))
                 .execute("[Provider] send counter offer");
     }
 
@@ -174,15 +173,16 @@ public class ProviderContractNegotiationManagerImpl extends AbstractContractNego
         if (retrievedAgreement == null) {
             var lastOffer = negotiation.getLastContractOffer();
 
-            var contractId = ContractId.parse(lastOffer.getId());
-            if (!contractId.isValid()) {
-                monitor.severe("ProviderContractNegotiationManagerImpl.checkConfirming(): Offer Id not correctly formatted.");
+            var contractIdResult = ContractId.parseId(lastOffer.getId());
+            if (contractIdResult.failed()) {
+                monitor.severe("ProviderContractNegotiationManagerImpl.checkConfirming(): Offer Id not correctly formatted: " + contractIdResult.getFailureDetail());
                 return false;
             }
-            var definitionId = contractId.definitionPart();
+
+            var contractId = contractIdResult.getContent();
 
             agreement = ContractAgreement.Builder.newInstance()
-                    .id(ContractId.createContractId(definitionId, lastOffer.getAssetId()))
+                    .id(contractId.derive().toString())
                     .contractSigningDate(clock.instant().getEpochSecond())
                     .providerId(participantId)
                     .consumerId(negotiation.getCounterPartyId())

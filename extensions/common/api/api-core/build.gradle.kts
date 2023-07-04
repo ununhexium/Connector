@@ -24,9 +24,8 @@ dependencies {
     api(project(":spi:common:json-ld-spi"))
 
     implementation(project(":core:common:util"))
+    implementation(project(":core:common:validator-core"))
     implementation(libs.jakarta.rsApi)
-    implementation(libs.jakarta.validation)
-    implementation(libs.jersey.beanvalidation) //for validation
 
     testImplementation(libs.jersey.common)
     testImplementation(libs.jersey.server)

@@ -27,14 +27,13 @@ import static java.util.UUID.randomUUID;
 
 /**
  * Object that wraps the contract offer and provides additional information about e.g. protocol and recipient.
+ * Sent by the consumer.
  */
 public class ContractRequestMessage implements ContractRemoteMessage {
 
     private String id;
     private Type type = Type.COUNTER_OFFER;
     private String protocol = "unknown";
-    @Deprecated(forRemoval = true)
-    private String connectorId;
     private String counterPartyAddress;
     private String callbackAddress;
     private String processId;
@@ -62,11 +61,6 @@ public class ContractRequestMessage implements ContractRemoteMessage {
     @Override
     public String getCounterPartyAddress() {
         return counterPartyAddress;
-    }
-
-    @Deprecated
-    public String getConnectorId() {
-        return connectorId;
     }
 
     @Override
@@ -125,12 +119,6 @@ public class ContractRequestMessage implements ContractRemoteMessage {
 
         public Builder protocol(String protocol) {
             contractRequestMessage.protocol = protocol;
-            return this;
-        }
-
-        @Deprecated
-        public Builder connectorId(String connectorId) {
-            contractRequestMessage.connectorId = connectorId;
             return this;
         }
 

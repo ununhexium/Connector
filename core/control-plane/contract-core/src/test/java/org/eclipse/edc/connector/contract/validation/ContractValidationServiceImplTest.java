@@ -18,6 +18,7 @@
 package org.eclipse.edc.connector.contract.validation;
 
 import org.eclipse.edc.connector.contract.policy.PolicyEquality;
+import org.eclipse.edc.connector.contract.spi.ContractId;
 import org.eclipse.edc.connector.contract.spi.offer.ContractDefinitionResolver;
 import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreement;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiation;
@@ -49,7 +50,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static java.lang.String.format;
 import static java.time.Instant.MIN;
 import static java.util.Collections.emptyMap;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -238,12 +238,10 @@ class ContractValidationServiceImplTest {
         var claimToken = ClaimToken.Builder.newInstance().build();
         var agreement = createContractAgreement()
                 .contractSigningDate(now.getEpochSecond())
-                .id("1:2:3")
                 .consumerId(CONSUMER_ID)
                 .build();
 
         var isValid = validationService.validateAgreement(claimToken, agreement);
-
 
         assertThat(isValid.succeeded()).isTrue();
 
@@ -269,7 +267,6 @@ class ContractValidationServiceImplTest {
         var claimToken = ClaimToken.Builder.newInstance().build();
         var agreement = createContractAgreement()
                 .contractSigningDate(now.getEpochSecond())
-                .id("1:2:3")
                 .consumerId(CONSUMER_ID)
                 .build();
 
@@ -307,7 +304,7 @@ class ContractValidationServiceImplTest {
 
     @Test
     void validateConfirmed_succeed() {
-        var agreement = createContractAgreement().id("1:2:3").build();
+        var agreement = createContractAgreement().id("any").build();
         var offer = createContractOffer();
         var token = ClaimToken.Builder.newInstance().build();
 
@@ -324,49 +321,33 @@ class ContractValidationServiceImplTest {
 
     @Test
     void validateConfirmed_failsIfOfferIsNull() {
-        var agreement = createContractAgreement().id("1:2:3").build();
+        var agreement = createContractAgreement().id("any").build();
         var token = ClaimToken.Builder.newInstance().build();
 
         var result = validationService.validateConfirmed(token, agreement, null);
 
         assertThat(result).isFailed();
-        verify(agentService, times(0)).createFor(eq(token));
+        verifyNoInteractions(agentService, policyEquality);
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = { CONSUMER_ID })
-    @NullSource
-    void validateConfirmed_failsIfInvalidClaims(String counterPartyId) {
-        var agreement = createContractAgreement().id("1:2:3").build();
+    @Test
+    void validateConfirmed_shouldFail_whenParticipantIdentityIsNotTheExpectedOne() {
+        var agreement = createContractAgreement().build();
         var offer = createContractOffer();
         var token = ClaimToken.Builder.newInstance().build();
 
-        var participantAgent = new ParticipantAgent(Map.of(), counterPartyId != null ? Map.of(PARTICIPANT_IDENTITY, counterPartyId) : Map.of());
+        var participantAgent = new ParticipantAgent(Map.of(), Map.of(PARTICIPANT_IDENTITY, "not-the-expected-one"));
         when(agentService.createFor(eq(token))).thenReturn(participantAgent);
 
         var result = validationService.validateConfirmed(token, agreement, offer);
 
-        assertThat(result.succeeded()).isFalse();
-
-        verify(agentService).createFor(isA(ClaimToken.class));
-    }
-
-    @Test
-    void validateConfirmed_failsIfIdIsNotValid() {
-        var agreement = createContractAgreement().id("not a valid id").build();
-        var offer = createContractOffer();
-        var token = ClaimToken.Builder.newInstance().build();
-
-        var result = validationService.validateConfirmed(token, agreement, offer);
-
-        assertThat(result.failed()).isTrue();
-
-        verify(agentService, times(0)).createFor(eq(token));
+        assertThat(result).isFailed();
+        verifyNoInteractions(policyEquality);
     }
 
     @Test
     void validateConfirmed_failsIfPoliciesAreNotEqual() {
-        var agreement = createContractAgreement().id("1:2:3").build();
+        var agreement = createContractAgreement().build();
         var offer = createContractOffer();
         var token = ClaimToken.Builder.newInstance().build();
 
@@ -379,6 +360,45 @@ class ContractValidationServiceImplTest {
         assertThat(result.failed()).isTrue();
 
         verify(agentService).createFor(eq(token));
+    }
+    
+    @Test
+    void validateRequest_shouldReturnSuccess_whenRequestingPartyProvider() {
+        var token = ClaimToken.Builder.newInstance().build();
+        var agreement = createContractAgreement().build();
+        var participantAgent = new ParticipantAgent(Map.of(), Map.of(PARTICIPANT_IDENTITY, PROVIDER_ID));
+    
+        when(agentService.createFor(token)).thenReturn(participantAgent);
+        
+        var result = validationService.validateRequest(token, agreement);
+        
+        assertThat(result).isSucceeded();
+    }
+    
+    @Test
+    void validateRequest_shouldReturnSuccess_whenRequestingPartyConsumer() {
+        var token = ClaimToken.Builder.newInstance().build();
+        var agreement = createContractAgreement().build();
+        var participantAgent = new ParticipantAgent(Map.of(), Map.of(PARTICIPANT_IDENTITY, CONSUMER_ID));
+    
+        when(agentService.createFor(token)).thenReturn(participantAgent);
+    
+        var result = validationService.validateRequest(token, agreement);
+    
+        assertThat(result).isSucceeded();
+    }
+    
+    @Test
+    void validateRequest_shouldReturnFailure_whenRequestingPartyUnauthorized() {
+        var token = ClaimToken.Builder.newInstance().build();
+        var agreement = createContractAgreement().build();
+        var participantAgent = new ParticipantAgent(Map.of(), Map.of(PARTICIPANT_IDENTITY, "invalid"));
+    
+        when(agentService.createFor(token)).thenReturn(participantAgent);
+    
+        var result = validationService.validateRequest(token, agreement);
+    
+        assertThat(result).isFailed();
     }
 
     @Test
@@ -454,7 +474,7 @@ class ContractValidationServiceImplTest {
 
         var claimToken = ClaimToken.Builder.newInstance().build();
         var agreement = createContractAgreement()
-                .id("1:2:3")
+                .id(ContractId.create("1", "2").toString())
                 .contractSigningDate(Instant.now().toEpochMilli())
                 .build();
 
@@ -469,7 +489,7 @@ class ContractValidationServiceImplTest {
 
         var claimToken = ClaimToken.Builder.newInstance().build();
         var agreement = createContractAgreement()
-                .id("1:2:3")
+                .id(ContractId.create("1", "2").toString())
                 .contractSigningDate(signingDate)
                 .build();
 
@@ -478,7 +498,7 @@ class ContractValidationServiceImplTest {
 
     private ContractOffer createContractOffer(Asset asset, Policy policy) {
         return ContractOffer.Builder.newInstance()
-                .id(format("1:%s:3", asset.getId()))
+                .id(ContractId.create("1", asset.getId()).toString())
                 .assetId(asset.getId())
                 .policy(policy)
                 .providerId(PROVIDER_ID)
@@ -496,7 +516,7 @@ class ContractValidationServiceImplTest {
     }
 
     private ContractAgreement.Builder createContractAgreement() {
-        return ContractAgreement.Builder.newInstance().id("1")
+        return ContractAgreement.Builder.newInstance().id(ContractId.create("1", "2").toString())
                 .providerId(PROVIDER_ID)
                 .consumerId(CONSUMER_ID)
                 .policy(Policy.Builder.newInstance().build())

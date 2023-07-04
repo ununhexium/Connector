@@ -24,6 +24,7 @@ import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreementV
 import org.eclipse.edc.connector.contract.spi.types.agreement.ContractNegotiationEventMessage;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiation;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationTerminationMessage;
+import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractOfferMessage;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractRequestMessage;
 import org.eclipse.edc.connector.contract.spi.types.offer.ContractOffer;
 import org.eclipse.edc.connector.contract.spi.validation.ContractValidationService;
@@ -61,6 +62,7 @@ import static org.eclipse.edc.connector.contract.spi.types.negotiation.ContractN
 import static org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationStates.VERIFIED;
 import static org.eclipse.edc.junit.assertions.AbstractResultAssert.assertThat;
 import static org.eclipse.edc.service.spi.result.ServiceFailure.Reason.BAD_REQUEST;
+import static org.eclipse.edc.service.spi.result.ServiceFailure.Reason.NOT_FOUND;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -98,7 +100,6 @@ class ContractNegotiationProtocolServiceImplTest {
         var validatedOffer = new ValidatedConsumerOffer(CONSUMER_ID, contractOffer);
         when(validationService.validateInitialOffer(token, contractOffer)).thenReturn(Result.success(validatedOffer));
         var message = ContractRequestMessage.Builder.newInstance()
-                .connectorId(CONSUMER_ID)
                 .callbackAddress("callbackAddress")
                 .protocol("protocol")
                 .contractOffer(contractOffer)
@@ -112,7 +113,6 @@ class ContractNegotiationProtocolServiceImplTest {
         verify(store).save(calls.capture());
         assertThat(calls.getAllValues()).anySatisfy(n -> {
             assertThat(n.getState()).isEqualTo(REQUESTED.code());
-            assertThat(n.getCounterPartyId()).isEqualTo(message.getConnectorId());
             assertThat(n.getCounterPartyAddress()).isEqualTo(message.getCallbackAddress());
             assertThat(n.getProtocol()).isEqualTo(message.getProtocol());
             assertThat(n.getCorrelationId()).isEqualTo(message.getProcessId());
@@ -131,7 +131,6 @@ class ContractNegotiationProtocolServiceImplTest {
         when(validationService.validateInitialOffer(token, contractOffer)).thenReturn(Result.failure("error"));
 
         var message = ContractRequestMessage.Builder.newInstance()
-                .connectorId(CONSUMER_ID)
                 .counterPartyAddress("callbackAddress")
                 .protocol("protocol")
                 .contractOffer(contractOffer)
@@ -142,6 +141,74 @@ class ContractNegotiationProtocolServiceImplTest {
 
         assertThat(result).isFailed().extracting(ServiceFailure::getReason).isEqualTo(BAD_REQUEST);
         verify(validationService).validateInitialOffer(token, contractOffer);
+    }
+    
+    @Test
+    void notifyOffered_shouldTransitionToOffered_whenNegotiationFound() {
+        var processId = "processId";
+        var token = ClaimToken.Builder.newInstance().build();
+        var contractOffer = contractOffer();
+        var message = ContractOfferMessage.Builder.newInstance()
+                .callbackAddress("callbackAddress")
+                .protocol("protocol")
+                .contractOffer(contractOffer)
+                .processId(processId)
+                .build();
+        var negotiation = createContractNegotiationRequested();
+        
+        when(store.findForCorrelationId(processId)).thenReturn(negotiation);
+        when(validationService.validateRequest(token, negotiation)).thenReturn(Result.success());
+        
+        var result = service.notifyOffered(message, token);
+        
+        assertThat(result).isSucceeded();
+        var updatedNegotiation = result.getContent();
+        assertThat(updatedNegotiation.getContractOffers()).hasSize(2);
+        assertThat(updatedNegotiation.getLastContractOffer()).isEqualTo(contractOffer);
+        
+        verify(listener).offered(any());
+        verify(transactionContext, atLeastOnce()).execute(any(TransactionContext.ResultTransactionBlock.class));
+    }
+    
+    @Test
+    void notifyOffered_shouldReturnFailure_whenNegotiationNotFound() {
+        var token = ClaimToken.Builder.newInstance().build();
+        var contractOffer = contractOffer();
+        var message = ContractOfferMessage.Builder.newInstance()
+                .callbackAddress("callbackAddress")
+                .protocol("protocol")
+                .contractOffer(contractOffer)
+                .processId("processId")
+                .build();
+    
+        when(store.findForCorrelationId(any())).thenReturn(null);
+        
+        var result = service.notifyOffered(message, token);
+        
+        assertThat(result).isFailed().extracting(ServiceFailure::getReason).isEqualTo(NOT_FOUND);
+        verify(listener, never()).offered(any());
+    }
+    
+    @Test
+    void notifyOffered_shouldReturnFailure_whenCounterPartyValidationFails() {
+        var processId = "processId";
+        var token = ClaimToken.Builder.newInstance().build();
+        var contractOffer = contractOffer();
+        var message = ContractOfferMessage.Builder.newInstance()
+                .callbackAddress("callbackAddress")
+                .protocol("protocol")
+                .contractOffer(contractOffer)
+                .processId(processId)
+                .build();
+        var negotiation = createContractNegotiationRequested();
+    
+        when(store.findForCorrelationId(processId)).thenReturn(negotiation);
+        when(validationService.validateRequest(token, negotiation)).thenReturn(Result.failure("error"));
+        
+        var result = service.notifyOffered(message, token);
+        
+        assertThat(result).isFailed().extracting(ServiceFailure::getReason).isEqualTo(BAD_REQUEST);
+        verify(listener, never()).offered(any());
     }
 
     @Test
@@ -196,7 +263,7 @@ class ContractNegotiationProtocolServiceImplTest {
     void notifyVerified_shouldTransitionToVerified() {
         var negotiation = contractNegotiationBuilder().id("negotiationId").type(PROVIDER).state(AGREED.code()).build();
         when(store.findForCorrelationId("processId")).thenReturn(negotiation);
-        when(validationService.validateRequest(any(), any())).thenReturn(Result.success());
+        when(validationService.validateRequest(any(), any(ContractNegotiation.class))).thenReturn(Result.success());
         var message = ContractAgreementVerificationMessage.Builder.newInstance()
                 .protocol("protocol")
                 .counterPartyAddress("http://any")
@@ -208,7 +275,7 @@ class ContractNegotiationProtocolServiceImplTest {
         assertThat(result).isSucceeded();
         verify(store).save(argThat(n -> n.getState() == VERIFIED.code()));
         verify(listener).verified(negotiation);
-        verify(validationService).validateRequest(any(), any());
+        verify(validationService).validateRequest(any(), any(ContractNegotiation.class));
         verify(transactionContext, atLeastOnce()).execute(any(TransactionContext.ResultTransactionBlock.class));
     }
 
@@ -216,7 +283,7 @@ class ContractNegotiationProtocolServiceImplTest {
     void notifyVerified_shouldReturnBadRequest_whenValidationFails() {
         var negotiation = contractNegotiationBuilder().id("negotiationId").type(PROVIDER).state(AGREED.code()).build();
         when(store.findForCorrelationId("processId")).thenReturn(negotiation);
-        when(validationService.validateRequest(any(), any())).thenReturn(Result.failure("validation error"));
+        when(validationService.validateRequest(any(), any(ContractNegotiation.class))).thenReturn(Result.failure("validation error"));
         var message = ContractAgreementVerificationMessage.Builder.newInstance()
                 .protocol("protocol")
                 .counterPartyAddress("http://any")
@@ -234,7 +301,7 @@ class ContractNegotiationProtocolServiceImplTest {
     void notifyFinalized_shouldTransitionToFinalized() {
         var negotiation = contractNegotiationBuilder().id("negotiationId").type(PROVIDER).state(VERIFIED.code()).build();
         when(store.findForCorrelationId("processId")).thenReturn(negotiation);
-        when(validationService.validateRequest(any(), any())).thenReturn(Result.success());
+        when(validationService.validateRequest(any(), any(ContractNegotiation.class))).thenReturn(Result.success());
         var message = ContractNegotiationEventMessage.Builder.newInstance()
                 .type(ContractNegotiationEventMessage.Type.FINALIZED)
                 .protocol("protocol")
@@ -248,7 +315,7 @@ class ContractNegotiationProtocolServiceImplTest {
         assertThat(result).isSucceeded();
         verify(store).save(argThat(n -> n.getState() == FINALIZED.code()));
         verify(listener).finalized(negotiation);
-        verify(validationService).validateRequest(any(), any());
+        verify(validationService).validateRequest(any(), any(ContractNegotiation.class));
         verify(transactionContext, atLeastOnce()).execute(any(TransactionContext.ResultTransactionBlock.class));
     }
 
@@ -256,7 +323,7 @@ class ContractNegotiationProtocolServiceImplTest {
     void notifyFinalized_shouldReturnBadRequest_whenValidationFails() {
         var negotiation = contractNegotiationBuilder().id("negotiationId").type(PROVIDER).state(VERIFIED.code()).build();
         when(store.findForCorrelationId("processId")).thenReturn(negotiation);
-        when(validationService.validateRequest(any(), any())).thenReturn(Result.failure("validation error"));
+        when(validationService.validateRequest(any(), any(ContractNegotiation.class))).thenReturn(Result.failure("validation error"));
         var message = ContractNegotiationEventMessage.Builder.newInstance()
                 .type(ContractNegotiationEventMessage.Type.FINALIZED)
                 .protocol("protocol")
@@ -276,7 +343,7 @@ class ContractNegotiationProtocolServiceImplTest {
     void notifyTerminated_shouldTransitionToTerminated() {
         var negotiation = contractNegotiationBuilder().id("negotiationId").type(PROVIDER).state(VERIFIED.code()).build();
         when(store.findForCorrelationId("processId")).thenReturn(negotiation);
-        when(validationService.validateRequest(any(), any())).thenReturn(Result.success());
+        when(validationService.validateRequest(any(), any(ContractNegotiation.class))).thenReturn(Result.success());
         var message = ContractNegotiationTerminationMessage.Builder.newInstance()
                 .protocol("protocol")
                 .processId("processId")
@@ -290,7 +357,7 @@ class ContractNegotiationProtocolServiceImplTest {
         assertThat(result).isSucceeded();
         verify(store).save(argThat(n -> n.getState() == TERMINATED.code()));
         verify(listener).terminated(negotiation);
-        verify(validationService).validateRequest(any(), any());
+        verify(validationService).validateRequest(any(), any(ContractNegotiation.class));
         verify(transactionContext, atLeastOnce()).execute(any(TransactionContext.ResultTransactionBlock.class));
     }
 
@@ -298,7 +365,7 @@ class ContractNegotiationProtocolServiceImplTest {
     void notifyTerminated_shouldReturnBadRequest_whenValidationFails() {
         var negotiation = contractNegotiationBuilder().id("negotiationId").type(PROVIDER).state(VERIFIED.code()).build();
         when(store.findForCorrelationId("processId")).thenReturn(negotiation);
-        when(validationService.validateRequest(any(), any())).thenReturn(Result.failure("validation error"));
+        when(validationService.validateRequest(any(), any(ContractNegotiation.class))).thenReturn(Result.failure("validation error"));
         var message = ContractNegotiationTerminationMessage.Builder.newInstance()
                 .protocol("protocol")
                 .processId("processId")
@@ -312,6 +379,51 @@ class ContractNegotiationProtocolServiceImplTest {
         assertThat(result).isFailed().extracting(ServiceFailure::getReason).isEqualTo(BAD_REQUEST);
         verify(store, never()).save(any());
         verifyNoInteractions(listener);
+    }
+    
+    @Test
+    void findById_shouldReturnNegotiation_whenValidCounterParty() {
+        var id = "negotiationId";
+        var token = ClaimToken.Builder.newInstance().build();
+        var negotiation = contractNegotiationBuilder().id(id).type(PROVIDER).state(VERIFIED.code()).build();
+        
+        when(store.findById(id)).thenReturn(negotiation);
+        when(validationService.validateRequest(token, negotiation)).thenReturn(Result.success());
+        
+        var result = service.findById(id, token);
+        
+        assertThat(result)
+                .isSucceeded()
+                .isEqualTo(negotiation);
+    }
+    
+    @Test
+    void findById_shouldReturnNotFound_whenNegotiationNotFound() {
+        when(store.findById(any())).thenReturn(null);
+    
+        var result = service.findById("invalidId", ClaimToken.Builder.newInstance().build());
+        
+        assertThat(result)
+                .isFailed()
+                .extracting(ServiceFailure::getReason)
+                .isEqualTo(NOT_FOUND);
+    }
+    
+    @Test
+    void findById_shouldReturnNotFound_whenCounterPartyUnauthorized() {
+        var id = "negotiationId";
+        var token = ClaimToken.Builder.newInstance().build();
+        var negotiation = contractNegotiationBuilder().id(id).type(PROVIDER).state(VERIFIED.code()).build();
+    
+        when(store.findById(id)).thenReturn(negotiation);
+        when(validationService.validateRequest(token, negotiation)).thenReturn(Result.failure("validation error"));
+    
+        var result = service.findById(id, token);
+        
+        assertThat(result)
+                .isFailed()
+                .extracting(ServiceFailure::getReason)
+                .isEqualTo(NOT_FOUND);
     }
 
     @ParameterizedTest
@@ -356,7 +468,7 @@ class ContractNegotiationProtocolServiceImplTest {
 
     private ContractOffer contractOffer() {
         return ContractOffer.Builder.newInstance()
-                .id(ContractId.createContractId("1", "test-asset-id"))
+                .id(ContractId.create("1", "test-asset-id").toString())
                 .policy(createPolicy())
                 .assetId("assetId")
                 .providerId(PROVIDER_ID)

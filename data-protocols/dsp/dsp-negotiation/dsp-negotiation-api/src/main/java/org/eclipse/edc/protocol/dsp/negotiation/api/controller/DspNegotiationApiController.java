@@ -29,6 +29,7 @@ import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreementV
 import org.eclipse.edc.connector.contract.spi.types.agreement.ContractNegotiationEventMessage;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiation;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationTerminationMessage;
+import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractOfferMessage;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractRequestMessage;
 import org.eclipse.edc.connector.contract.spi.types.protocol.ContractRemoteMessage;
 import org.eclipse.edc.connector.spi.contractnegotiation.ContractNegotiationProtocolService;
@@ -66,6 +67,7 @@ import static org.eclipse.edc.protocol.dsp.type.DspNegotiationPropertyAndTypeNam
 import static org.eclipse.edc.protocol.dsp.type.DspNegotiationPropertyAndTypeNames.DSPACE_TYPE_CONTRACT_NEGOTIATION_ERROR;
 import static org.eclipse.edc.protocol.dsp.type.DspNegotiationPropertyAndTypeNames.DSPACE_TYPE_CONTRACT_NEGOTIATION_EVENT_MESSAGE;
 import static org.eclipse.edc.protocol.dsp.type.DspNegotiationPropertyAndTypeNames.DSPACE_TYPE_CONTRACT_NEGOTIATION_TERMINATION_MESSAGE;
+import static org.eclipse.edc.protocol.dsp.type.DspNegotiationPropertyAndTypeNames.DSPACE_TYPE_CONTRACT_OFFER_MESSAGE;
 import static org.eclipse.edc.protocol.dsp.type.DspNegotiationPropertyAndTypeNames.DSPACE_TYPE_CONTRACT_REQUEST_MESSAGE;
 import static org.eclipse.edc.protocol.dsp.type.DspPropertyAndTypeNames.DSPACE_PROPERTY_CALLBACK_ADDRESS;
 
@@ -106,9 +108,14 @@ public class DspNegotiationApiController {
     @GET
     @Path("{id}")
     public Response getNegotiation(@PathParam("id") String id, @HeaderParam(AUTHORIZATION) String token) {
-        return error()
-                .processId(id)
-                .notImplemented();
+        var claimTokenResult = checkAndReturnAuthToken(token);
+        if (claimTokenResult.failed()) {
+            return error().processId(id).unauthorized();
+        }
+        
+        return protocolService.findById(id, claimTokenResult.getContent())
+                .map(this::createNegotiationResponse)
+                .orElse(createErrorResponse(id));
     }
 
     /**
@@ -133,20 +140,8 @@ public class DspNegotiationApiController {
             return error()
                     .from(negotiationResult.getFailure());
         }
-
-        var negotiation = negotiationResult.getContent();
-        return transformerRegistry.transform(negotiation, JsonObject.class)
-                .map(transformedJson -> Response.ok().type(MediaType.APPLICATION_JSON).entity(transformedJson).build())
-                .orElse(failure -> {
-                    var errorCode = UUID.randomUUID();
-                    monitor.warning(String.format("Error transforming negotiation, error id %s: %s", errorCode, failure.getFailureDetail()));
-                    var processId = negotiation.getCorrelationId();
-                    return error()
-                            .processId(processId)
-                            .message(String.format("Error code %s", errorCode))
-                            .internalServerError();
-                });
-
+    
+        return createNegotiationResponse(negotiationResult.getContent());
     }
 
     /**
@@ -261,7 +256,15 @@ public class DspNegotiationApiController {
     public Response providerOffer(@PathParam("id") String id,
                                   JsonObject body,
                                   @HeaderParam(AUTHORIZATION) String token) {
-        return error().processId(id).notImplemented();
+        return handleMessage(MessageSpec.Builder.newInstance(ContractOfferMessage.class)
+                .expectedMessageType(DSPACE_TYPE_CONTRACT_OFFER_MESSAGE)
+                .processId(id)
+                .message(body)
+                .token(token)
+                .serviceCall(protocolService::notifyOffered)
+                .build())
+                .map(cn -> Response.ok().build())
+                .orElse(createErrorResponse(id));
     }
 
     /**
@@ -333,6 +336,20 @@ public class DspNegotiationApiController {
             return Result.success(actual);
         }
         return Objects.equals(expected, actual.getProcessId()) ? Result.success(actual) : Result.failure(format("Invalid process ID. Expected: %s, actual: %s", expected, actual));
+    }
+    
+    private Response createNegotiationResponse(ContractNegotiation negotiation) {
+        return transformerRegistry.transform(negotiation, JsonObject.class)
+                .map(transformedJson -> Response.ok().type(MediaType.APPLICATION_JSON).entity(transformedJson).build())
+                .orElse(failure -> {
+                    var errorCode = UUID.randomUUID();
+                    monitor.warning(String.format("Error transforming negotiation, error id %s: %s", errorCode, failure.getFailureDetail()));
+                    var processId = negotiation.getCorrelationId();
+                    return error()
+                            .processId(processId)
+                            .message(String.format("Error code %s", errorCode))
+                            .internalServerError();
+                });
     }
 
     @NotNull

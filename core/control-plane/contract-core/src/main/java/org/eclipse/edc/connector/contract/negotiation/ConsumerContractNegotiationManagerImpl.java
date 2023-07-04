@@ -18,7 +18,7 @@
 
 package org.eclipse.edc.connector.contract.negotiation;
 
-import io.opentelemetry.extension.annotations.WithSpan;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.eclipse.edc.connector.contract.spi.ContractId;
 import org.eclipse.edc.connector.contract.spi.negotiation.ConsumerContractNegotiationManager;
 import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreement;
@@ -138,7 +138,6 @@ public class ConsumerContractNegotiationManagerImpl extends AbstractContractNego
                 .counterPartyAddress(negotiation.getCounterPartyAddress())
                 .callbackAddress(protocolWebhook.url())
                 .protocol(negotiation.getProtocol())
-                .connectorId(negotiation.getCounterPartyId())
                 .processId(negotiation.getId())
                 .type(ContractRequestMessage.Type.INITIAL)
                 .build();
@@ -165,16 +164,16 @@ public class ConsumerContractNegotiationManagerImpl extends AbstractContractNego
     private boolean processAccepting(ContractNegotiation negotiation) {
         var lastOffer = negotiation.getLastContractOffer();
 
-        var contractId = ContractId.parse(lastOffer.getId());
-        if (!contractId.isValid()) {
-            monitor.severe("ConsumerContractNegotiationManagerImpl.approveContractOffers(): Offer Id not correctly formatted.");
+        var contractIdResult = ContractId.parseId(lastOffer.getId());
+        if (contractIdResult.failed()) {
+            monitor.severe("ConsumerContractNegotiationManagerImpl.approveContractOffers(): Offer Id not correctly formatted: " + contractIdResult.getFailureDetail());
             return false;
         }
-        var definitionId = contractId.definitionPart();
+        var contractId = contractIdResult.getContent();
 
         var policy = lastOffer.getPolicy();
         var agreement = ContractAgreement.Builder.newInstance()
-                .id(ContractId.createContractId(definitionId, lastOffer.getAssetId()))
+                .id(contractId.derive().toString())
                 .contractSigningDate(clock.instant().getEpochSecond())
                 .providerId(negotiation.getCounterPartyId())
                 .consumerId(participantId)

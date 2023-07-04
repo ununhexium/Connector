@@ -9,12 +9,13 @@
  *
  *  Contributors:
  *       Bayerische Motoren Werke Aktiengesellschaft (BMW AG) - initial API and implementation
+ *       Fraunhofer Institute for Software and Systems Engineering - implementation for provider offer
  *
  */
 
 package org.eclipse.edc.connector.service.contractnegotiation;
 
-import io.opentelemetry.extension.annotations.WithSpan;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.eclipse.edc.connector.contract.spi.negotiation.observe.ContractNegotiationObservable;
 import org.eclipse.edc.connector.contract.spi.negotiation.store.ContractNegotiationStore;
 import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreementMessage;
@@ -23,6 +24,7 @@ import org.eclipse.edc.connector.contract.spi.types.agreement.ContractNegotiatio
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiation;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationStates;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationTerminationMessage;
+import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractOfferMessage;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractRequestMessage;
 import org.eclipse.edc.connector.contract.spi.types.protocol.ContractRemoteMessage;
 import org.eclipse.edc.connector.contract.spi.validation.ContractValidationService;
@@ -35,6 +37,7 @@ import org.eclipse.edc.spi.telemetry.Telemetry;
 import org.eclipse.edc.transaction.spi.TransactionContext;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Optional;
 import java.util.UUID;
 
 import static java.lang.String.format;
@@ -78,8 +81,16 @@ public class ContractNegotiationProtocolServiceImpl implements ContractNegotiati
     @Override
     @WithSpan
     @NotNull
-    public ServiceResult<ContractNegotiation> notifyOffered(ContractRequestMessage message, ClaimToken claimToken) {
-        throw new UnsupportedOperationException("not implemented");
+    public ServiceResult<ContractNegotiation> notifyOffered(ContractOfferMessage message, ClaimToken claimToken) {
+        return transactionContext.execute(() -> getNegotiation(message)
+                .compose(negotiation -> validateRequest(claimToken, negotiation))
+                .onSuccess(negotiation -> {
+                    monitor.debug(() -> "[Consumer] Contract offer received.");
+                    negotiation.addContractOffer(message.getContractOffer());
+                    negotiation.transitionOffered();
+                    update(negotiation);
+                    observable.invokeForEach(l -> l.offered(negotiation));
+                }));
     }
 
     @Override
@@ -142,6 +153,16 @@ public class ContractNegotiationProtocolServiceImpl implements ContractNegotiati
                     observable.invokeForEach(l -> l.terminated(negotiation));
                 }));
     }
+    
+    @Override
+    @WithSpan
+    @NotNull
+    public ServiceResult<ContractNegotiation> findById(String id, ClaimToken claimToken) {
+        return transactionContext.execute(() -> Optional.ofNullable(store.findById(id))
+                .map(negotiation -> validateGetRequest(claimToken, negotiation))
+                .map(ServiceResult::success)
+                .orElse(ServiceResult.notFound(format("No negotiation with id %s found", id))));
+    }
 
     @NotNull
     private ServiceResult<ContractNegotiation> createNegotiation(ContractRequestMessage message, ValidatedConsumerOffer validatedOffer) {
@@ -192,6 +213,15 @@ public class ContractNegotiationProtocolServiceImpl implements ContractNegotiati
             return ServiceResult.badRequest("Invalid client credentials: " + result.getFailureDetail());
         } else {
             return ServiceResult.success(negotiation);
+        }
+    }
+    
+    private ContractNegotiation validateGetRequest(ClaimToken claimToken, ContractNegotiation negotiation) {
+        var result = validationService.validateRequest(claimToken, negotiation);
+        if (result.failed()) {
+            return null;
+        } else {
+            return negotiation;
         }
     }
 
