@@ -14,9 +14,7 @@
 
 package org.eclipse.edc.test.e2e.managementapi;
 
-import io.restassured.common.mapper.TypeRef;
-import io.restassured.specification.RequestSpecification;
-import jakarta.json.JsonObject;
+import jakarta.json.JsonArray;
 import jakarta.json.JsonObjectBuilder;
 import org.eclipse.edc.connector.contract.spi.offer.store.ContractDefinitionStore;
 import org.eclipse.edc.connector.contract.spi.types.offer.ContractDefinition;
@@ -24,9 +22,6 @@ import org.eclipse.edc.junit.annotations.EndToEndTest;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
-
-import static io.restassured.RestAssured.given;
 import static io.restassured.http.ContentType.JSON;
 import static jakarta.json.Json.createArrayBuilder;
 import static jakarta.json.Json.createObjectBuilder;
@@ -45,8 +40,6 @@ public class ContractDefinitionApiEndToEndTest extends BaseManagementApiEndToEnd
     public static final String TEST_ID = "test-id";
     public static final String TEST_AP_ID = "ap1";
     public static final String TEST_CP_ID = "cp1";
-    private static final TypeRef<List<JsonObject>> LIST_TYPE = new TypeRef<>() {
-    };
 
     @Test
     void queryContractDefinitions_noQuerySpec() {
@@ -56,13 +49,13 @@ public class ContractDefinitionApiEndToEndTest extends BaseManagementApiEndToEnd
 
         var body = baseRequest()
                 .contentType(JSON)
-                .post("/request")
+                .post("/v2/contractdefinitions/request")
                 .then()
                 .statusCode(200)
                 .body("size()", greaterThan(0))
-                .extract().body().as(LIST_TYPE);
+                .extract().body().as(JsonArray.class);
 
-        var criteria = body.get(0).getJsonArray("edc:assetsSelector");
+        var criteria = body.getJsonObject(0).getJsonArray("edc:assetsSelector");
         assertThat(criteria).hasSize(2);
     }
 
@@ -75,7 +68,7 @@ public class ContractDefinitionApiEndToEndTest extends BaseManagementApiEndToEnd
         baseRequest()
                 .contentType(JSON)
                 .body(requestJson)
-                .post()
+                .post("/v2/contractdefinitions")
                 .then()
                 .statusCode(200)
                 .body("@id", equalTo(TEST_ID));
@@ -91,7 +84,7 @@ public class ContractDefinitionApiEndToEndTest extends BaseManagementApiEndToEnd
         store.save(entity);
 
         baseRequest()
-                .delete(entity.getId())
+                .delete("/v2/contractdefinitions/" + entity.getId())
                 .then()
                 .statusCode(204);
 
@@ -111,7 +104,7 @@ public class ContractDefinitionApiEndToEndTest extends BaseManagementApiEndToEnd
         baseRequest()
                 .contentType(JSON)
                 .body(updated)
-                .put()
+                .put("/v2/contractdefinitions")
                 .then()
                 .statusCode(204);
 
@@ -132,19 +125,12 @@ public class ContractDefinitionApiEndToEndTest extends BaseManagementApiEndToEnd
         baseRequest()
                 .contentType(JSON)
                 .body(updated)
-                .put()
+                .put("/v2/contractdefinitions")
                 .then()
                 .statusCode(404);
 
         var all = store.findAll(QuerySpec.none());
         assertThat(all).isEmpty();
-    }
-
-    private RequestSpecification baseRequest() {
-        return given()
-                .port(PORT)
-                .basePath("/management/v2/contractdefinitions")
-                .when();
     }
 
     private JsonObjectBuilder createDefinitionBuilder() {
@@ -161,7 +147,7 @@ public class ContractDefinitionApiEndToEndTest extends BaseManagementApiEndToEnd
 
     private static JsonObjectBuilder createCriterionBuilder(String left, String operator, String right) {
         return createObjectBuilder()
-                .add(TYPE, "CriterionDto")
+                .add(TYPE, "Criterion")
                 .add("operandLeft", left)
                 .add("operator", operator)
                 .add("operandRight", right);

@@ -35,6 +35,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Predicate;
 
 import static java.lang.String.format;
@@ -60,6 +61,7 @@ import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.SUSPENDING;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.TERMINATED;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.TERMINATING;
+import static org.eclipse.edc.spi.CoreConstants.EDC_NAMESPACE;
 
 /**
  * Represents a data transfer process.
@@ -103,11 +105,25 @@ import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates
 @JsonDeserialize(builder = TransferProcess.Builder.class)
 public class TransferProcess extends StatefulEntity<TransferProcess> {
 
+    public static final String TRANSFER_PROCESS_TYPE = EDC_NAMESPACE + "TransferProcess";
+    public static final String TRANSFER_PROCESS_CREATED_AT = EDC_NAMESPACE + "createdAt";
+    public static final String TRANSFER_PROCESS_CORRELATION_ID = EDC_NAMESPACE + "correlationId";
+    public static final String TRANSFER_PROCESS_STATE = EDC_NAMESPACE + "state";
+    public static final String TRANSFER_PROCESS_STATE_TIMESTAMP = EDC_NAMESPACE + "stateTimestamp";
+    public static final String TRANSFER_PROCESS_ASSET_ID = EDC_NAMESPACE + "assetId";
+    public static final String TRANSFER_PROCESS_CONTRACT_ID = EDC_NAMESPACE + "contractId";
+    public static final String TRANSFER_PROCESS_CONNECTOR_ID = EDC_NAMESPACE + "connectorId";
+    public static final String TRANSFER_PROCESS_PROPERTIES = EDC_NAMESPACE + "properties";
+    public static final String TRANSFER_PROCESS_PRIVATE_PROPERTIES = EDC_NAMESPACE + "privateProperties";
+    public static final String TRANSFER_PROCESS_TYPE_TYPE = EDC_NAMESPACE + "type";
+    public static final String TRANSFER_PROCESS_ERROR_DETAIL = EDC_NAMESPACE + "errorDetail";
+    public static final String TRANSFER_PROCESS_DATA_DESTINATION = EDC_NAMESPACE + "dataDestination";
+    public static final String TRANSFER_PROCESS_CALLBACK_ADDRESSES = EDC_NAMESPACE + "callbackAddresses";
     private Type type = CONSUMER;
     private DataRequest dataRequest;
     private DataAddress contentDataAddress;
     private ResourceManifest resourceManifest;
-    private ProvisionedResourceSet provisionedResourceSet;
+    private ProvisionedResourceSet provisionedResourceSet = ProvisionedResourceSet.Builder.newInstance().build();
     private List<DeprovisionedResource> deprovisionedResources = new ArrayList<>();
     private Map<String, String> privateProperties = new HashMap<>();
     private List<CallbackAddress> callbackAddresses = new ArrayList<>();
@@ -150,9 +166,6 @@ public class TransferProcess extends StatefulEntity<TransferProcess> {
     }
 
     public void addProvisionedResource(ProvisionedResource resource) {
-        if (provisionedResourceSet == null) {
-            provisionedResourceSet = ProvisionedResourceSet.Builder.newInstance().transferProcessId(id).build();
-        }
         provisionedResourceSet.addResource(resource);
         setModified();
 
@@ -165,10 +178,7 @@ public class TransferProcess extends StatefulEntity<TransferProcess> {
 
     @Nullable
     public ProvisionedResource getProvisionedResource(String id) {
-        if (provisionedResourceSet == null) {
-            return null;
-        }
-        return provisionedResourceSet.getResources().stream().filter(r -> r.getId().equals(id)).findFirst().orElse(null);
+        return getProvisionedResources().stream().filter(r -> r.getId().equals(id)).findFirst().orElse(null);
     }
 
     /**
@@ -311,6 +321,11 @@ public class TransferProcess extends StatefulEntity<TransferProcess> {
         transition(TERMINATING, state -> canBeTerminated());
     }
 
+    public void transitionTerminated(String message) {
+        this.errorDetail = message;
+        transitionTerminated();
+    }
+
     public void transitionTerminated() {
         transition(TERMINATED, state -> canBeTerminated());
     }
@@ -322,6 +337,46 @@ public class TransferProcess extends StatefulEntity<TransferProcess> {
     @JsonIgnore
     public String getCorrelationId() {
         return dataRequest.getId();
+    }
+
+    @JsonIgnore
+    public List<ProvisionedResource> getProvisionedResources() {
+        return Optional.ofNullable(getProvisionedResourceSet()).map(ProvisionedResourceSet::getResources).orElse(emptyList());
+    }
+
+    @JsonIgnore
+    public String getConnectorAddress() {
+        return dataRequest.getConnectorAddress();
+    }
+
+    @JsonIgnore
+    public String getAssetId() {
+        return dataRequest.getAssetId();
+    }
+
+    @JsonIgnore
+    public String getContractId() {
+        return dataRequest.getContractId();
+    }
+
+    @JsonIgnore
+    public DataAddress getDataDestination() {
+        return dataRequest.getDataDestination();
+    }
+
+    @JsonIgnore
+    public String getProtocol() {
+        return dataRequest.getProtocol();
+    }
+
+    @JsonIgnore
+    public void updateDestination(DataAddress dataAddress) {
+        dataRequest.updateDestination(dataAddress);
+    }
+
+    @JsonIgnore
+    public String getConnectorId() {
+        return dataRequest.getConnectorId();
     }
 
     @Override
@@ -336,6 +391,11 @@ public class TransferProcess extends StatefulEntity<TransferProcess> {
                 .callbackAddresses(callbackAddresses)
                 .type(type);
         return copy(builder);
+    }
+
+    @Override
+    public String stateAsString() {
+        return TransferProcessStates.from(state).name();
     }
 
     public Builder toBuilder() {
@@ -355,7 +415,7 @@ public class TransferProcess extends StatefulEntity<TransferProcess> {
         if (o == null || getClass() != o.getClass()) {
             return false;
         }
-        TransferProcess that = (TransferProcess) o;
+        var that = (TransferProcess) o;
         return id.equals(that.id);
     }
 
@@ -453,10 +513,6 @@ public class TransferProcess extends StatefulEntity<TransferProcess> {
 
             if (entity.resourceManifest != null) {
                 entity.resourceManifest.setTransferProcessId(entity.id);
-            }
-
-            if (entity.provisionedResourceSet != null) {
-                entity.provisionedResourceSet.setTransferProcessId(entity.id);
             }
 
             if (entity.dataRequest != null) {

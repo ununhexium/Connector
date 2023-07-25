@@ -20,7 +20,7 @@ import org.eclipse.edc.connector.transfer.spi.testfixtures.store.TestFunctions;
 import org.eclipse.edc.connector.transfer.spi.testfixtures.store.TransferProcessStoreTestBase;
 import org.eclipse.edc.connector.transfer.spi.types.ProvisionedResourceSet;
 import org.eclipse.edc.connector.transfer.spi.types.ResourceManifest;
-import org.eclipse.edc.junit.annotations.PostgresqlDbIntegrationTest;
+import org.eclipse.edc.junit.annotations.ComponentTest;
 import org.eclipse.edc.policy.model.PolicyRegistrationTypes;
 import org.eclipse.edc.spi.query.Criterion;
 import org.eclipse.edc.spi.query.QuerySpec;
@@ -49,7 +49,7 @@ import static org.eclipse.edc.connector.transfer.spi.testfixtures.store.TestFunc
 import static org.eclipse.edc.connector.transfer.spi.testfixtures.store.TestFunctions.createTransferProcess;
 import static org.eclipse.edc.connector.transfer.spi.testfixtures.store.TestFunctions.createTransferProcessBuilder;
 
-@PostgresqlDbIntegrationTest
+@ComponentTest
 @ExtendWith(PostgresqlStoreSetupExtension.class)
 class PostgresTransferProcessStoreTest extends TransferProcessStoreTestBase {
 
@@ -171,6 +171,7 @@ class PostgresTransferProcessStoreTest extends TransferProcessStoreTestBase {
 
     }
 
+
     @Test
     void create_withoutDataRequest_throwsException() {
         var t1 = TestFunctions.createTransferProcessBuilder("id1")
@@ -207,12 +208,12 @@ class PostgresTransferProcessStoreTest extends TransferProcessStoreTestBase {
     }
 
     @Override
-    protected void lockEntity(String negotiationId, String owner, Duration duration) {
+    protected void leaseEntity(String negotiationId, String owner, Duration duration) {
         getLeaseUtil().leaseEntity(negotiationId, owner, duration);
     }
 
     @Override
-    protected boolean isLockedBy(String negotiationId, String owner) {
+    protected boolean isLeasedBy(String negotiationId, String owner) {
         return getLeaseUtil().isLeased(negotiationId, owner);
     }
 

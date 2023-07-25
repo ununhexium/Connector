@@ -15,17 +15,15 @@
 package org.eclipse.edc.connector.api.management.catalog;
 
 import org.eclipse.edc.catalog.spi.CatalogRequest;
-import org.eclipse.edc.connector.api.management.catalog.transform.CatalogRequestDtoToCatalogRequestTransformer;
-import org.eclipse.edc.connector.api.management.catalog.transform.JsonObjectToCatalogRequestDtoTransformer;
-import org.eclipse.edc.connector.api.management.catalog.transform.JsonObjectToQuerySpecDtoTransformer;
+import org.eclipse.edc.connector.api.management.catalog.transform.JsonObjectToCatalogRequestTransformer;
 import org.eclipse.edc.connector.api.management.catalog.validation.CatalogRequestValidator;
 import org.eclipse.edc.connector.api.management.configuration.ManagementApiConfiguration;
+import org.eclipse.edc.connector.api.management.configuration.transform.ManagementApiTypeTransformerRegistry;
 import org.eclipse.edc.connector.spi.catalog.CatalogService;
 import org.eclipse.edc.runtime.metamodel.annotation.Extension;
 import org.eclipse.edc.runtime.metamodel.annotation.Inject;
 import org.eclipse.edc.spi.system.ServiceExtension;
 import org.eclipse.edc.spi.system.ServiceExtensionContext;
-import org.eclipse.edc.transform.spi.TypeTransformerRegistry;
 import org.eclipse.edc.validator.spi.JsonObjectValidatorRegistry;
 import org.eclipse.edc.web.spi.WebService;
 
@@ -41,7 +39,7 @@ public class CatalogApiExtension implements ServiceExtension {
     private ManagementApiConfiguration config;
 
     @Inject
-    private TypeTransformerRegistry transformerRegistry;
+    private ManagementApiTypeTransformerRegistry transformerRegistry;
 
     @Inject
     private CatalogService service;
@@ -56,12 +54,10 @@ public class CatalogApiExtension implements ServiceExtension {
 
     @Override
     public void initialize(ServiceExtensionContext context) {
-        transformerRegistry.register(new CatalogRequestDtoToCatalogRequestTransformer());
-        transformerRegistry.register(new JsonObjectToCatalogRequestDtoTransformer());
-        transformerRegistry.register(new JsonObjectToQuerySpecDtoTransformer());
+        transformerRegistry.register(new JsonObjectToCatalogRequestTransformer());
 
         webService.registerResource(config.getContextAlias(), new CatalogApiController(service, transformerRegistry, validatorRegistry));
 
-        validatorRegistry.register(CatalogRequest.EDC_CATALOG_REQUEST_TYPE, CatalogRequestValidator.instance());
+        validatorRegistry.register(CatalogRequest.CATALOG_REQUEST_TYPE, CatalogRequestValidator.instance());
     }
 }

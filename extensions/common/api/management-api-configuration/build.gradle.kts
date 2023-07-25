@@ -21,9 +21,13 @@ dependencies {
     api(project(":spi:common:json-ld-spi"))
     api(project(":spi:common:web-spi"))
     implementation(project(":core:common:jersey-providers"))
+    implementation(project(":core:common:transform-core"))
     implementation(project(":extensions:common:api:api-core"))
 
+    implementation(libs.swagger.annotations.jakarta)
+
     testImplementation(project(":core:common:junit"))
+    testImplementation(project(":extensions:common:json-ld"))
 }
 
 edcBuild {

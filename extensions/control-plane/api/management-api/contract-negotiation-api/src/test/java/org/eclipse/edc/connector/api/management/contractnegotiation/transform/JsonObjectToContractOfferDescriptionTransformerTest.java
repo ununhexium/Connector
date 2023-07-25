@@ -53,7 +53,7 @@ class JsonObjectToContractOfferDescriptionTransformerTest {
     @Test
     void transform() {
         var jsonObject = Json.createObjectBuilder()
-                .add(TYPE, ContractOfferDescription.TYPE)
+                .add(TYPE, ContractOfferDescription.CONTRACT_OFFER_DESCRIPTION_TYPE)
                 .add(OFFER_ID, "test-offer-id")
                 .add(ASSET_ID, "test-asset")
                 .add(POLICY, createPolicy())
@@ -62,12 +62,12 @@ class JsonObjectToContractOfferDescriptionTransformerTest {
         var context = mock(TransformerContext.class);
         when(context.transform(any(JsonValue.class), eq(Policy.class))).thenReturn(Policy.Builder.newInstance().build());
 
-        var dto = transformer.transform(jsonLd.expand(jsonObject).getContent(), context);
+        var result = transformer.transform(jsonLd.expand(jsonObject).getContent(), context);
 
-        assertThat(dto).isNotNull();
-        assertThat(dto.getOfferId()).isEqualTo("test-offer-id");
-        assertThat(dto.getAssetId()).isEqualTo("test-asset");
-        assertThat(dto.getPolicy()).isNotNull();
+        assertThat(result).isNotNull();
+        assertThat(result.getOfferId()).isEqualTo("test-offer-id");
+        assertThat(result.getAssetId()).isEqualTo("test-asset");
+        assertThat(result.getPolicy()).isNotNull();
 
     }
 

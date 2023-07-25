@@ -23,12 +23,10 @@ import org.eclipse.edc.policy.model.Policy;
 import org.eclipse.edc.spi.asset.AssetIndex;
 import org.eclipse.edc.spi.types.domain.DataAddress;
 import org.eclipse.edc.spi.types.domain.asset.Asset;
-import org.eclipse.edc.spi.types.domain.asset.AssetEntry;
 import org.junit.jupiter.api.Test;
 
 import java.util.UUID;
 
-import static io.restassured.RestAssured.given;
 import static io.restassured.http.ContentType.JSON;
 import static jakarta.json.Json.createArrayBuilder;
 import static jakarta.json.Json.createObjectBuilder;
@@ -53,12 +51,10 @@ public class CatalogApiEndToEndTest extends BaseManagementApiEndToEndTest {
                 .add("protocol", "dataspace-protocol-http")
                 .build();
 
-        given()
-                .port(PORT)
+        baseRequest()
                 .contentType(JSON)
                 .body(requestBody)
-                .basePath("/management/v2/catalog")
-                .post("/request")
+                .post("/v2/catalog/request")
                 .then()
                 .statusCode(200)
                 .contentType(JSON)
@@ -67,9 +63,6 @@ public class CatalogApiEndToEndTest extends BaseManagementApiEndToEndTest {
 
     @Test
     void shouldReturnCatalog_withQuerySpec() {
-        var asset = createAsset("id-1");
-        var asset1 = createAsset("id-2");
-
         var assetIndex = controlPlane.getContext().getService(AssetIndex.class);
         var policyDefinitionStore = controlPlane.getContext().getService(PolicyDefinitionStore.class);
         var contractDefinitionStore = controlPlane.getContext().getService(ContractDefinitionStore.class);
@@ -88,12 +81,12 @@ public class CatalogApiEndToEndTest extends BaseManagementApiEndToEndTest {
         policyDefinitionStore.create(PolicyDefinition.Builder.newInstance().id(policyId).policy(policy).build());
         contractDefinitionStore.save(cd);
 
-        assetIndex.create(new AssetEntry(asset.build(), createDataAddress().build()));
-        assetIndex.create(new AssetEntry(asset1.build(), createDataAddress().build()));
+        assetIndex.create(createAsset("id-1").build());
+        assetIndex.create(createAsset("id-2").build());
 
         var criteria = createArrayBuilder()
                 .add(createObjectBuilder()
-                        .add(TYPE, "CriterionDto")
+                        .add(TYPE, "Criterion")
                         .add("operandLeft", EDC_NAMESPACE + "id")
                         .add("operator", "=")
                         .add("operandRight", "id-2")
@@ -102,7 +95,7 @@ public class CatalogApiEndToEndTest extends BaseManagementApiEndToEndTest {
                 .build();
 
         var querySpec = createObjectBuilder()
-                .add(TYPE, "QuerySpecDto")
+                .add(TYPE, "QuerySpec")
                 .add("filterExpression", criteria)
                 .add("limit", 1);
 
@@ -114,26 +107,20 @@ public class CatalogApiEndToEndTest extends BaseManagementApiEndToEndTest {
                 .add("querySpec", querySpec)
                 .build();
 
-        given()
-                .port(PORT)
+        baseRequest()
                 .contentType(JSON)
                 .body(requestBody)
-                .basePath("/management/v2/catalog")
-                .post("/request")
+                .post("/v2/catalog/request")
                 .then()
                 .statusCode(200)
                 .contentType(JSON)
                 .body(TYPE, is("dcat:Catalog"))
-                .body("'dcat:dataset'.'edc:id'", is("id-2"))
-                .extract().body().asString();
-    }
-
-    private DataAddress.Builder createDataAddress() {
-        return DataAddress.Builder.newInstance().type("test-type");
+                .body("'dcat:dataset'.'edc:id'", is("id-2"));
     }
 
     private Asset.Builder createAsset(String id) {
         return Asset.Builder.newInstance()
+                .dataAddress(DataAddress.Builder.newInstance().type("test-type").build())
                 .id(id);
     }
 

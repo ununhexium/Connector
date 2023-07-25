@@ -20,18 +20,14 @@ import org.eclipse.edc.connector.contract.spi.negotiation.observe.ContractNegoti
 import org.eclipse.edc.connector.contract.spi.negotiation.store.ContractNegotiationStore;
 import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreement;
 import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreementVerificationMessage;
-import org.eclipse.edc.connector.contract.spi.types.command.ContractNegotiationCommand;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiation;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationStates;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractRequest;
-import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractRequestData;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractRequestMessage;
 import org.eclipse.edc.connector.contract.spi.types.offer.ContractOffer;
 import org.eclipse.edc.connector.policy.spi.store.PolicyDefinitionStore;
 import org.eclipse.edc.policy.model.Policy;
 import org.eclipse.edc.spi.EdcException;
-import org.eclipse.edc.spi.command.CommandQueue;
-import org.eclipse.edc.spi.command.CommandRunner;
 import org.eclipse.edc.spi.message.RemoteMessageDispatcherRegistry;
 import org.eclipse.edc.spi.monitor.Monitor;
 import org.eclipse.edc.spi.protocol.ProtocolWebhook;
@@ -50,7 +46,6 @@ import org.junit.jupiter.params.provider.ArgumentsSource;
 import org.mockito.ArgumentCaptor;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -102,10 +97,6 @@ class ConsumerContractNegotiationManagerImplTest {
     @BeforeEach
     void setUp() {
         when(protocolWebhook.url()).thenReturn(protocolWebhookUrl);
-        CommandQueue<ContractNegotiationCommand> queue = mock();
-        when(queue.dequeue(anyInt())).thenReturn(new ArrayList<>());
-
-        CommandRunner<ContractNegotiationCommand> commandRunner = mock();
 
         var observable = new ContractNegotiationObservableImpl();
         observable.registerListener(listener);
@@ -114,8 +105,6 @@ class ConsumerContractNegotiationManagerImplTest {
                 .participantId(PARTICIPANT_ID)
                 .dispatcherRegistry(dispatcherRegistry)
                 .monitor(mock(Monitor.class))
-                .commandQueue(queue)
-                .commandRunner(commandRunner)
                 .observable(observable)
                 .store(store)
                 .policyStore(policyStore)
@@ -128,15 +117,11 @@ class ConsumerContractNegotiationManagerImplTest {
     void initiate_shouldSaveNewNegotiationInInitialState() {
         var contractOffer = contractOffer();
 
-        var requestData = ContractRequestData.Builder.newInstance()
-                .connectorId("connectorId")
+        var request = ContractRequest.Builder.newInstance()
+                .providerId("providerId")
                 .counterPartyAddress("callbackAddress")
                 .protocol("protocol")
                 .contractOffer(contractOffer)
-                .build();
-
-        var request = ContractRequest.Builder.newInstance()
-                .requestData(requestData)
                 .callbackAddresses(List.of(CallbackAddress.Builder.newInstance()
                         .uri("local://test")
                         .build()))
@@ -147,9 +132,9 @@ class ConsumerContractNegotiationManagerImplTest {
         assertThat(result.succeeded()).isTrue();
         verify(store).save(argThat(negotiation ->
                 negotiation.getState() == INITIAL.code() &&
-                        negotiation.getCounterPartyId().equals(requestData.getConnectorId()) &&
-                        negotiation.getCounterPartyAddress().equals(requestData.getCounterPartyAddress()) &&
-                        negotiation.getProtocol().equals(requestData.getProtocol()) &&
+                        negotiation.getCounterPartyId().equals("providerId") &&
+                        negotiation.getCounterPartyAddress().equals(request.getCounterPartyAddress()) &&
+                        negotiation.getProtocol().equals(request.getProtocol()) &&
                         negotiation.getCorrelationId().equals(negotiation.getId()) &&
                         negotiation.getContractOffers().size() == 1 &&
                         negotiation.getLastContractOffer().equals(contractOffer) &&

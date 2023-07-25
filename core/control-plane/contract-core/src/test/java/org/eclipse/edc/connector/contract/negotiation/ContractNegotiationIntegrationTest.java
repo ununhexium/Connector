@@ -21,12 +21,10 @@ import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreement;
 import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreementMessage;
 import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreementVerificationMessage;
 import org.eclipse.edc.connector.contract.spi.types.agreement.ContractNegotiationEventMessage;
-import org.eclipse.edc.connector.contract.spi.types.command.ContractNegotiationCommand;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiation;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationStates;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationTerminationMessage;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractRequest;
-import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractRequestData;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractRequestMessage;
 import org.eclipse.edc.connector.contract.spi.types.offer.ContractOffer;
 import org.eclipse.edc.connector.contract.spi.validation.ContractValidationService;
@@ -35,13 +33,12 @@ import org.eclipse.edc.connector.defaults.storage.contractnegotiation.InMemoryCo
 import org.eclipse.edc.connector.policy.spi.store.PolicyDefinitionStore;
 import org.eclipse.edc.connector.service.contractnegotiation.ContractNegotiationProtocolServiceImpl;
 import org.eclipse.edc.connector.spi.contractnegotiation.ContractNegotiationProtocolService;
+import org.eclipse.edc.junit.annotations.ComponentTest;
 import org.eclipse.edc.policy.model.Action;
 import org.eclipse.edc.policy.model.Duty;
 import org.eclipse.edc.policy.model.Policy;
 import org.eclipse.edc.policy.model.PolicyType;
 import org.eclipse.edc.service.spi.result.ServiceResult;
-import org.eclipse.edc.spi.command.CommandQueue;
-import org.eclipse.edc.spi.command.CommandRunner;
 import org.eclipse.edc.spi.iam.ClaimToken;
 import org.eclipse.edc.spi.message.RemoteMessageDispatcherRegistry;
 import org.eclipse.edc.spi.monitor.ConsoleMonitor;
@@ -58,7 +55,6 @@ import org.junit.jupiter.api.Test;
 import org.mockito.stubbing.Answer;
 
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -68,7 +64,6 @@ import static java.util.concurrent.CompletableFuture.failedFuture;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.Mockito.atLeastOnce;
@@ -76,7 +71,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-//@ComponentTest
+@ComponentTest
 class ContractNegotiationIntegrationTest {
     private static final String CONSUMER_ID = "consumer";
     private static final String PROVIDER_ID = "provider";
@@ -101,18 +96,11 @@ class ContractNegotiationIntegrationTest {
     void init() {
         var monitor = new ConsoleMonitor();
 
-        CommandQueue<ContractNegotiationCommand> queue = mock();
-        when(queue.dequeue(anyInt())).thenReturn(new ArrayList<>());
-
-        CommandRunner<ContractNegotiationCommand> runner = mock();
-
         providerManager = ProviderContractNegotiationManagerImpl.Builder.newInstance()
                 .participantId(PROVIDER_ID)
                 .dispatcherRegistry(providerDispatcherRegistry)
                 .monitor(monitor)
                 .waitStrategy(() -> 1000)
-                .commandQueue(queue)
-                .commandRunner(runner)
                 .observable(new ContractNegotiationObservableImpl())
                 .store(providerStore)
                 .policyStore(mock(PolicyDefinitionStore.class))
@@ -123,7 +111,6 @@ class ContractNegotiationIntegrationTest {
                 .participantId(CONSUMER_ID)
                 .dispatcherRegistry(consumerDispatcherRegistry)
                 .monitor(monitor).waitStrategy(() -> 1000)
-                .commandQueue(queue).commandRunner(runner)
                 .observable(new ContractNegotiationObservableImpl())
                 .store(consumerStore)
                 .policyStore(mock(PolicyDefinitionStore.class))
@@ -157,9 +144,13 @@ class ContractNegotiationIntegrationTest {
         consumerManager.start();
 
         // Create an initial request and trigger consumer manager
-        var requestData = ContractRequestData.Builder.newInstance().connectorId(PROVIDER_ID).counterPartyAddress("callbackAddress").contractOffer(offer).protocol("protocol").build();
-
-        var request = ContractRequest.Builder.newInstance().callbackAddresses(List.of(CallbackAddress.Builder.newInstance().uri("local://test").build())).requestData(requestData).build();
+        var request = ContractRequest.Builder.newInstance()
+                .providerId(PROVIDER_ID)
+                .counterPartyAddress("callbackAddress")
+                .contractOffer(offer)
+                .protocol("protocol")
+                .callbackAddresses(List.of(CallbackAddress.Builder.newInstance().uri("local://test").build()))
+                .build();
 
         consumerManager.initiate(request);
 
@@ -201,9 +192,12 @@ class ContractNegotiationIntegrationTest {
         consumerManager.start();
 
         // Create an initial request and trigger consumer manager
-        var requestData = ContractRequestData.Builder.newInstance().connectorId("connectorId").counterPartyAddress("callbackAddress").contractOffer(offer).protocol("protocol").build();
-
-        var request = ContractRequest.Builder.newInstance().requestData(requestData).build();
+        var request = ContractRequest.Builder.newInstance()
+                .providerId("connectorId")
+                .counterPartyAddress("callbackAddress")
+                .contractOffer(offer)
+                .protocol("protocol")
+                .build();
 
         consumerManager.initiate(request);
 
@@ -226,9 +220,14 @@ class ContractNegotiationIntegrationTest {
         consumerManager.start();
 
         // Create an initial request and trigger consumer manager
-        var requestData = ContractRequestData.Builder.newInstance().connectorId("connectorId").counterPartyAddress("callbackAddress").contractOffer(offer).protocol("protocol").build();
+        var request = ContractRequest.Builder.newInstance()
+                .providerId("connectorId")
+                .counterPartyAddress("callbackAddress")
+                .contractOffer(offer)
+                .protocol("protocol")
+                .callbackAddresses(List.of(CallbackAddress.Builder.newInstance().uri("local://test").build()))
+                .build();
 
-        var request = ContractRequest.Builder.newInstance().requestData(requestData).callbackAddresses(List.of(CallbackAddress.Builder.newInstance().uri("local://test").build())).build();
         consumerManager.initiate(request);
 
         await().atMost(DEFAULT_TEST_TIMEOUT).pollInterval(DEFAULT_POLL_INTERVAL).untilAsserted(() -> {
@@ -327,7 +326,6 @@ class ContractNegotiationIntegrationTest {
     private ContractOffer getContractOffer() {
         return ContractOffer.Builder.newInstance()
                 .id(ContractId.create("1", "test-asset-id").toString())
-                .providerId("provider")
                 .assetId(randomUUID().toString())
                 .policy(Policy.Builder.newInstance()
                         .type(PolicyType.CONTRACT)

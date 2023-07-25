@@ -25,6 +25,7 @@ import org.eclipse.edc.connector.transfer.spi.types.TransferProcess;
 import org.eclipse.edc.spi.persistence.EdcPersistenceException;
 import org.eclipse.edc.spi.query.Criterion;
 import org.eclipse.edc.spi.query.QuerySpec;
+import org.eclipse.edc.spi.result.StoreResult;
 import org.eclipse.edc.spi.types.domain.DataAddress;
 import org.eclipse.edc.sql.QueryExecutor;
 import org.eclipse.edc.sql.lease.SqlLeaseContextBuilder;
@@ -91,41 +92,86 @@ public class SqlTransferProcessStore extends AbstractSqlStore implements Transfe
     }
 
     @Override
+    public StoreResult<TransferProcess> findByIdAndLease(String id) {
+        return transactionContext.execute(() -> {
+            try (var connection = getConnection()) {
+                var entity = findByIdInternal(connection, id);
+                if (entity == null) {
+                    return StoreResult.notFound(format("TransferProcess %s not found", id));
+                }
+
+                leaseContext.withConnection(connection).acquireLease(entity.getId());
+                return StoreResult.success(entity);
+            } catch (IllegalStateException e) {
+                return StoreResult.alreadyLeased(format("TransferProcess %s is already leased", id));
+            } catch (SQLException e) {
+                throw new EdcPersistenceException(e);
+            }
+        });
+    }
+
+    @Override
+    public StoreResult<TransferProcess> findByCorrelationIdAndLease(String correlationId) {
+        return transactionContext.execute(() -> {
+            var query = correlationIdQuerySpec(correlationId);
+
+            try (
+                    var connection = getConnection();
+                    var stream = executeQuery(connection, query)
+            ) {
+                var entity = stream.findFirst().orElse(null);
+                if (entity == null) {
+                    return StoreResult.notFound(format("TransferProcess with correlationId %s not found", correlationId));
+                }
+
+                leaseContext.withConnection(connection).acquireLease(entity.getId());
+                return StoreResult.success(entity);
+            } catch (IllegalStateException e) {
+                return StoreResult.alreadyLeased(format("TransferProcess with correlationId %s is already leased", correlationId));
+            } catch (SQLException e) {
+                throw new EdcPersistenceException(e);
+            }
+        });
+    }
+
+    @Override
+    public void save(TransferProcess entity) {
+        Objects.requireNonNull(entity.getId(), "TransferProcesses must have an ID!");
+        if (entity.getDataRequest() == null) {
+            throw new IllegalArgumentException("Cannot store TransferProcess without a DataRequest");
+        }
+        transactionContext.execute(() -> {
+            try (var conn = getConnection()) {
+                var existing = findByIdInternal(conn, entity.getId());
+                if (existing != null) {
+                    leaseContext.by(leaseHolderName).withConnection(conn).breakLease(entity.getId());
+                    update(conn, entity, existing.getDataRequest().getId());
+                } else {
+                    insert(conn, entity);
+                }
+            } catch (SQLException e) {
+                throw new EdcPersistenceException(e);
+            }
+        });
+    }
+
+    @Override
     public @Nullable TransferProcess findById(String id) {
         return transactionContext.execute(() -> {
-            var querySpec = QuerySpec.Builder.newInstance().filter(new Criterion("id", "=", id)).build();
-            return single(findAll(querySpec).collect(toList()));
+            try (var connection = getConnection()) {
+                return findByIdInternal(connection, id);
+            } catch (SQLException e) {
+                throw new EdcPersistenceException(e);
+            }
         });
     }
 
     @Override
     public @Nullable TransferProcess findForCorrelationId(String correlationId) {
         return transactionContext.execute(() -> {
-            var criterion = criterion("dataRequest.id", "=", correlationId);
-            var query = QuerySpec.Builder.newInstance().filter(criterion).build();
+            var query = correlationIdQuerySpec(correlationId);
             try (var stream = findAll(query)) {
                 return single(stream.collect(toList()));
-            }
-        });
-    }
-
-    @Override
-    public void updateOrCreate(TransferProcess process) {
-        Objects.requireNonNull(process.getId(), "TransferProcesses must have an ID!");
-        if (process.getDataRequest() == null) {
-            throw new IllegalArgumentException("Cannot store TransferProcess without a DataRequest");
-        }
-        transactionContext.execute(() -> {
-            try (var conn = getConnection()) {
-                var existing = findByIdInternal(conn, process.getId());
-                if (existing != null) {
-                    leaseContext.by(leaseHolderName).withConnection(conn).breakLease(process.getId());
-                    update(conn, process, existing.getDataRequest().getId());
-                } else {
-                    insert(conn, process);
-                }
-            } catch (SQLException e) {
-                throw new EdcPersistenceException(e);
             }
         });
     }
@@ -164,7 +210,7 @@ public class SqlTransferProcessStore extends AbstractSqlStore implements Transfe
         });
     }
 
-    public DataRequest mapDataRequest(ResultSet resultSet) throws SQLException {
+    private DataRequest mapDataRequest(ResultSet resultSet) throws SQLException {
         return DataRequest.Builder.newInstance()
                 .id(resultSet.getString("edc_data_request_id"))
                 .assetId(resultSet.getString(statements.getAssetIdColumn()))
@@ -173,9 +219,13 @@ public class SqlTransferProcessStore extends AbstractSqlStore implements Transfe
                 .connectorId(resultSet.getString(statements.getConnectorIdColumn()))
                 .connectorAddress(resultSet.getString(statements.getConnectorAddressColumn()))
                 .contractId(resultSet.getString(statements.getContractIdColumn()))
-                .managedResources(resultSet.getBoolean(statements.getManagedResourcesColumn()))
                 .processId(resultSet.getString(statements.getProcessIdColumn()))
                 .build();
+    }
+
+    private QuerySpec correlationIdQuerySpec(String correlationId) {
+        var criterion = criterion("dataRequest.id", "=", correlationId);
+        return QuerySpec.Builder.newInstance().filter(criterion).build();
     }
 
     private @Nullable TransferProcess findByIdInternal(Connection conn, String id) {
@@ -221,7 +271,6 @@ public class SqlTransferProcessStore extends AbstractSqlStore implements Transfe
                 dataRequest.getAssetId(),
                 dataRequest.getContractId(),
                 toJson(dataRequest.getDataDestination()),
-                dataRequest.isManagedResources(),
                 existingDataRequestId);
     }
 
@@ -278,8 +327,7 @@ public class SqlTransferProcessStore extends AbstractSqlStore implements Transfe
                 dr.getContractId(),
                 toJson(dr.getDataDestination()),
                 processId,
-                dr.getProtocol(),
-                dr.isManagedResources());
+                dr.getProtocol());
     }
 
     private TransferProcess mapTransferProcess(ResultSet resultSet) throws SQLException {

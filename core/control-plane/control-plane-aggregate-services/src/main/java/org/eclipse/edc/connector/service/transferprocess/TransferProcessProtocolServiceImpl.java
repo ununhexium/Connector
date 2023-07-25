@@ -37,6 +37,7 @@ import org.eclipse.edc.spi.iam.ClaimToken;
 import org.eclipse.edc.spi.monitor.Monitor;
 import org.eclipse.edc.spi.result.Result;
 import org.eclipse.edc.spi.telemetry.Telemetry;
+import org.eclipse.edc.spi.types.domain.DataAddress;
 import org.eclipse.edc.transaction.spi.TransactionContext;
 import org.jetbrains.annotations.NotNull;
 
@@ -46,6 +47,7 @@ import java.util.function.Function;
 
 import static java.lang.String.format;
 import static java.util.UUID.randomUUID;
+import static org.eclipse.edc.connector.transfer.dataplane.spi.TransferDataPlaneConstants.HTTP_PROXY;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcess.Type.CONSUMER;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcess.Type.PROVIDER;
 
@@ -86,9 +88,12 @@ public class TransferProcessProtocolServiceImpl implements TransferProcessProtoc
             return ServiceResult.badRequest("ContractId is not valid: " + contractIdResult.getFailureDetail());
         }
 
-        var validDestination = dataAddressValidator.validate(message.getDataDestination());
-        if (validDestination.failed()) {
-            return ServiceResult.badRequest(validDestination.getFailureMessages());
+        var destination = message.getDataDestination();
+        if (destination != null) {
+            var validDestination = dataAddressValidator.validate(destination);
+            if (validDestination.failed()) {
+                return ServiceResult.badRequest(validDestination.getFailureMessages());
+            }
         }
 
         return transactionContext.execute(() ->
@@ -132,12 +137,14 @@ public class TransferProcessProtocolServiceImpl implements TransferProcessProtoc
     @NotNull
     private ServiceResult<TransferProcess> requestedAction(TransferRequestMessage message, ContractId contractId) {
         var assetId = contractId.assetIdPart();
-
+        
+        var destination = message.getDataDestination() != null ? message.getDataDestination() :
+                DataAddress.Builder.newInstance().type(HTTP_PROXY).build();
         var dataRequest = DataRequest.Builder.newInstance()
                 .id(message.getProcessId())
                 .protocol(message.getProtocol())
                 .connectorAddress(message.getCallbackAddress())
-                .dataDestination(message.getDataDestination())
+                .dataDestination(destination)
                 .assetId(assetId)
                 .contractId(message.getContractId())
                 .build();
@@ -204,21 +211,21 @@ public class TransferProcessProtocolServiceImpl implements TransferProcessProtoc
     }
 
     private ServiceResult<TransferProcess> onMessageDo(TransferRemoteMessage message, Function<TransferProcess, ServiceResult<TransferProcess>> action) {
-        return transactionContext.execute(() -> Optional.of(message.getProcessId())
-                .map(transferProcessStore::findForCorrelationId)
-                .map(action)
-                .orElse(ServiceResult.notFound(format("TransferProcess with DataRequest id %s not found", message.getProcessId()))));
+        return transactionContext.execute(() -> transferProcessStore
+                .findByCorrelationIdAndLease(message.getProcessId())
+                .flatMap(ServiceResult::from)
+                .compose(action));
     }
     
     private boolean validateCounterParty(ClaimToken claimToken, TransferProcess transferProcess) {
-        return Optional.ofNullable(negotiationStore.findContractAgreement(transferProcess.getDataRequest().getContractId()))
+        return Optional.ofNullable(negotiationStore.findContractAgreement(transferProcess.getContractId()))
                 .map(agreement -> contractValidationService.validateRequest(claimToken, agreement))
                 .filter(Result::succeeded)
                 .isPresent();
     }
 
     private void update(TransferProcess transferProcess) {
-        transferProcessStore.updateOrCreate(transferProcess);
+        transferProcessStore.save(transferProcess);
         monitor.debug(format("TransferProcess %s is now in state %s", transferProcess.getId(), TransferProcessStates.from(transferProcess.getState())));
     }
 

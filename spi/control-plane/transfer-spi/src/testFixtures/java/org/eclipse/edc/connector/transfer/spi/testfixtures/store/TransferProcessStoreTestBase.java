@@ -23,6 +23,7 @@ import org.eclipse.edc.connector.transfer.spi.types.TransferProcess;
 import org.eclipse.edc.spi.query.Criterion;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.eclipse.edc.spi.query.SortOrder;
+import org.eclipse.edc.spi.result.StoreFailure;
 import org.eclipse.edc.spi.types.domain.callback.CallbackAddress;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -49,7 +50,10 @@ import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.PROVISIONING;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.STARTED;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.TERMINATED;
+import static org.eclipse.edc.junit.assertions.AbstractResultAssert.assertThat;
 import static org.eclipse.edc.spi.persistence.StateEntityStore.hasState;
+import static org.eclipse.edc.spi.result.StoreFailure.Reason.ALREADY_LEASED;
+import static org.eclipse.edc.spi.result.StoreFailure.Reason.NOT_FOUND;
 import static org.hamcrest.Matchers.hasSize;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -62,6 +66,20 @@ public abstract class TransferProcessStoreTestBase {
     public TransferProcessStoreTestBase() {
         System.setProperty("transferprocessstore.supports.operator.like", String.valueOf(supportsLikeOperator()));
         System.setProperty("transferprocessstore.supports.collectionQuery", String.valueOf(supportsCollectionQuery()));
+    }
+
+    @Test
+    void find_queryByState() {
+        var tp = createTransferProcessBuilder("testprocess1").state(800).build();
+        getTransferProcessStore().save(tp);
+
+        var query = QuerySpec.Builder.newInstance()
+                .filter(List.of(new Criterion("state", "=", 800)))
+                .build();
+
+        var result = getTransferProcessStore().findAll(query).toList();
+        assertThat(result).hasSize(1).usingRecursiveFieldByFieldElementComparator().containsExactly(tp);
+
     }
 
     @Test
@@ -114,7 +132,7 @@ public abstract class TransferProcessStoreTestBase {
                 .hasSize(5)
                 .extracting(TransferProcess::getId)
                 .isSubsetOf(all.stream().map(TransferProcess::getId).collect(Collectors.toList()))
-                .allMatch(id -> isLockedBy(id, CONNECTOR_NAME));
+                .allMatch(id -> isLeasedBy(id, CONNECTOR_NAME));
     }
 
     @Test
@@ -126,7 +144,7 @@ public abstract class TransferProcessStoreTestBase {
                 .collect(Collectors.toList());
 
         // lease a few
-        var leasedTp = all.stream().skip(5).peek(tp -> lockEntity(tp.getId(), CONNECTOR_NAME)).toList();
+        var leasedTp = all.stream().skip(5).peek(tp -> leaseEntity(tp.getId(), CONNECTOR_NAME)).toList();
 
         // should not contain leased TPs
         assertThat(getTransferProcessStore().nextNotLeased(10, hasState(state.code())))
@@ -210,7 +228,7 @@ public abstract class TransferProcessStoreTestBase {
 
         getTransferProcessStore().nextNotLeased(100, hasState(INITIAL.code()));
 
-        assertThat(isLockedBy(t.getId(), CONNECTOR_NAME)).isTrue();
+        assertThat(isLeasedBy(t.getId(), CONNECTOR_NAME)).isTrue();
     }
 
     @Test
@@ -218,7 +236,7 @@ public abstract class TransferProcessStoreTestBase {
         var t = createTransferProcess("id1", INITIAL);
         getTransferProcessStore().updateOrCreate(t);
 
-        lockEntity(t.getId(), CONNECTOR_NAME, Duration.ofMillis(100));
+        leaseEntity(t.getId(), CONNECTOR_NAME, Duration.ofMillis(100));
 
         Awaitility.await().atLeast(Duration.ofMillis(100))
                 .atMost(Duration.ofMillis(500))
@@ -327,7 +345,7 @@ public abstract class TransferProcessStoreTestBase {
         var t1 = createTransferProcess("id1");
         getTransferProcessStore().updateOrCreate(t1);
         // acquire lease
-        lockEntity(t1.getId(), CONNECTOR_NAME);
+        leaseEntity(t1.getId(), CONNECTOR_NAME);
 
         t1.transitionProvisioning(ResourceManifest.Builder.newInstance().build()); //modify
         getTransferProcessStore().updateOrCreate(t1);
@@ -343,7 +361,7 @@ public abstract class TransferProcessStoreTestBase {
         var tpId = "id1";
         var t1 = createTransferProcess(tpId);
         getTransferProcessStore().updateOrCreate(t1);
-        lockEntity(tpId, "someone");
+        leaseEntity(tpId, "someone");
 
         t1.transitionProvisioning(ResourceManifest.Builder.newInstance().build()); //modify
 
@@ -364,7 +382,7 @@ public abstract class TransferProcessStoreTestBase {
     void delete_isLeasedBySelf_shouldThrowException() {
         var t1 = createTransferProcess("id1");
         getTransferProcessStore().updateOrCreate(t1);
-        lockEntity(t1.getId(), CONNECTOR_NAME);
+        leaseEntity(t1.getId(), CONNECTOR_NAME);
 
 
         assertThatThrownBy(() -> getTransferProcessStore().delete("id1")).isInstanceOf(IllegalStateException.class);
@@ -375,7 +393,7 @@ public abstract class TransferProcessStoreTestBase {
         var t1 = createTransferProcess("id1");
         getTransferProcessStore().updateOrCreate(t1);
 
-        lockEntity(t1.getId(), "someone-else");
+        leaseEntity(t1.getId(), "someone-else");
 
         assertThatThrownBy(() -> getTransferProcessStore().delete("id1")).isInstanceOf(IllegalStateException.class);
     }
@@ -904,6 +922,68 @@ public abstract class TransferProcessStoreTestBase {
     }
 
     @Test
+    void findByIdAndLease_shouldReturnTheEntityAndLeaseIt() {
+        var id = UUID.randomUUID().toString();
+        getTransferProcessStore().updateOrCreate(createTransferProcess(id));
+
+        var result = getTransferProcessStore().findByIdAndLease(id);
+
+        assertThat(result).isSucceeded();
+        assertThat(isLeasedBy(id, CONNECTOR_NAME)).isTrue();
+    }
+
+    @Test
+    void findByIdAndLease_shouldReturnNotFound_whenEntityDoesNotExist() {
+        var result = getTransferProcessStore().findByIdAndLease("unexistent");
+
+        assertThat(result).isFailed().extracting(StoreFailure::getReason).isEqualTo(NOT_FOUND);
+    }
+
+    @Test
+    void findByIdAndLease_shouldReturnAlreadyLeased_whenEntityIsAlreadyLeased() {
+        var id = UUID.randomUUID().toString();
+        getTransferProcessStore().updateOrCreate(createTransferProcess(id));
+        leaseEntity(id, "other owner");
+
+        var result = getTransferProcessStore().findByIdAndLease(id);
+
+        assertThat(result).isFailed().extracting(StoreFailure::getReason).isEqualTo(ALREADY_LEASED);
+    }
+
+    @Test
+    void findByCorrelationIdAndLease_shouldReturnTheEntityAndLeaseIt() {
+        var id = UUID.randomUUID().toString();
+        var correlationId = UUID.randomUUID().toString();
+        var dataRequest = createDataRequestBuilder().id(correlationId).build();
+        getTransferProcessStore().save(createTransferProcessBuilder(id).dataRequest(dataRequest).build());
+
+        var result = getTransferProcessStore().findByCorrelationIdAndLease(correlationId);
+
+        assertThat(result).isSucceeded();
+        assertThat(isLeasedBy(id, CONNECTOR_NAME)).isTrue();
+    }
+
+    @Test
+    void findByCorrelationIdAndLease_shouldReturnNotFound_whenEntityDoesNotExist() {
+        var result = getTransferProcessStore().findByCorrelationIdAndLease("unexistent");
+
+        assertThat(result).isFailed().extracting(StoreFailure::getReason).isEqualTo(NOT_FOUND);
+    }
+
+    @Test
+    void findByCorrelationIdAndLease_shouldReturnAlreadyLeased_whenEntityIsAlreadyLeased() {
+        var id = UUID.randomUUID().toString();
+        var correlationId = UUID.randomUUID().toString();
+        var dataRequest = createDataRequestBuilder().id(correlationId).build();
+        getTransferProcessStore().save(createTransferProcessBuilder(id).dataRequest(dataRequest).build());
+        leaseEntity(id, "other owner");
+
+        var result = getTransferProcessStore().findByCorrelationIdAndLease(correlationId);
+
+        assertThat(result).isFailed().extracting(StoreFailure::getReason).isEqualTo(ALREADY_LEASED);
+    }
+
+    @Test
     protected void findAll_verifySorting_invalidProperty() {
         range(0, 10).forEach(i -> getTransferProcessStore().updateOrCreate(createTransferProcess("test-neg-" + i)));
 
@@ -911,6 +991,20 @@ public abstract class TransferProcessStoreTestBase {
 
         assertThat(getTransferProcessStore().findAll(query).collect(Collectors.toList())).isEmpty();
     }
+
+    protected abstract boolean supportsCollectionQuery();
+
+    protected abstract boolean supportsLikeOperator();
+
+    protected abstract TransferProcessStore getTransferProcessStore();
+
+    protected abstract void leaseEntity(String negotiationId, String owner, Duration duration);
+
+    protected void leaseEntity(String negotiationId, String owner) {
+        leaseEntity(negotiationId, owner, Duration.ofSeconds(60));
+    }
+
+    protected abstract boolean isLeasedBy(String negotiationId, String owner);
 
     private void delayByTenMillis(TransferProcess t) {
         try {
@@ -920,19 +1014,5 @@ public abstract class TransferProcessStoreTestBase {
         }
         t.updateStateTimestamp();
     }
-
-    protected abstract boolean supportsCollectionQuery();
-
-    protected abstract boolean supportsLikeOperator();
-
-    protected abstract TransferProcessStore getTransferProcessStore();
-
-    protected abstract void lockEntity(String negotiationId, String owner, Duration duration);
-
-    protected void lockEntity(String negotiationId, String owner) {
-        lockEntity(negotiationId, owner, Duration.ofSeconds(60));
-    }
-
-    protected abstract boolean isLockedBy(String negotiationId, String owner);
 
 }

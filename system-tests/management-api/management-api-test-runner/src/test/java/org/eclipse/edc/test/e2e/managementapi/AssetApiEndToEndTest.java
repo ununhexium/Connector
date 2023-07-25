@@ -15,19 +15,16 @@
 package org.eclipse.edc.test.e2e.managementapi;
 
 import io.restassured.http.ContentType;
-import io.restassured.specification.RequestSpecification;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
 import org.eclipse.edc.junit.annotations.EndToEndTest;
 import org.eclipse.edc.spi.asset.AssetIndex;
 import org.eclipse.edc.spi.types.domain.DataAddress;
 import org.eclipse.edc.spi.types.domain.asset.Asset;
-import org.eclipse.edc.spi.types.domain.asset.AssetEntry;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static io.restassured.RestAssured.given;
 import static jakarta.json.Json.createArrayBuilder;
 import static jakarta.json.Json.createObjectBuilder;
 import static java.util.Collections.emptyList;
@@ -37,14 +34,14 @@ import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.ID;
 import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.TYPE;
 import static org.eclipse.edc.spi.CoreConstants.EDC_NAMESPACE;
 import static org.eclipse.edc.spi.CoreConstants.EDC_PREFIX;
-import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 
+/**
+ * Asset V3 endpoints end-to-end tests
+ */
 @EndToEndTest
 public class AssetApiEndToEndTest extends BaseManagementApiEndToEndTest {
-
-    private static final String BASE_PATH = "/management/v2/assets";
 
     private static final String TEST_ASSET_ID = "test-asset-id";
     private static final String TEST_ASSET_CONTENTTYPE = "application/json";
@@ -56,11 +53,10 @@ public class AssetApiEndToEndTest extends BaseManagementApiEndToEndTest {
     void getAssetById() {
         //insert one asset into the index
         controlPlane.getContext().getService(AssetIndex.class)
-                .create(new AssetEntry(createAsset().build(),
-                        createDataAddress().build()));
+                .create(createAsset().dataAddress(createDataAddress().type("addressType").build()).build());
 
         var body = baseRequest()
-                .get("/" + TEST_ASSET_ID)
+                .get("/v3/assets/" + TEST_ASSET_ID)
                 .then()
                 .statusCode(200)
                 .extract().body().jsonPath();
@@ -73,34 +69,27 @@ public class AssetApiEndToEndTest extends BaseManagementApiEndToEndTest {
                 .containsEntry("edc:description", TEST_ASSET_DESCRIPTION)
                 .containsEntry("edc:contenttype", TEST_ASSET_CONTENTTYPE)
                 .containsEntry("edc:version", TEST_ASSET_VERSION);
+        assertThat(body.getMap("'edc:dataAddress'"))
+                .containsEntry("edc:type", "addressType");
     }
 
     @Test
     void createAsset_shouldBeStored() {
-
         var assetJson = createObjectBuilder()
                 .add(CONTEXT, createObjectBuilder().add(EDC_PREFIX, EDC_NAMESPACE))
                 .add(TYPE, "Asset")
                 .add(ID, TEST_ASSET_ID)
                 .add("properties", createPropertiesBuilder().build())
-                .build();
-
-        var dataAddressJson = createObjectBuilder()
-                .add(CONTEXT, createObjectBuilder().add(EDC_PREFIX, EDC_NAMESPACE))
-                .add(TYPE, "DataAddress")
-                .add("type", "test-type").build();
-
-        var assetNewJson = createObjectBuilder()
-                .add(CONTEXT, createObjectBuilder().add(EDC_PREFIX, EDC_NAMESPACE))
-                .add(TYPE, "AssetEntryDto")
-                .add("asset", assetJson)
-                .add("dataAddress", dataAddressJson)
+                .add("dataAddress", createObjectBuilder()
+                        .add(TYPE, "DataAddress")
+                        .add("type", "test-type")
+                        .build())
                 .build();
 
         baseRequest()
                 .contentType(ContentType.JSON)
-                .body(assetNewJson)
-                .post()
+                .body(assetJson)
+                .post("/v3/assets")
                 .then()
                 .log().ifError()
                 .statusCode(200)
@@ -120,16 +109,10 @@ public class AssetApiEndToEndTest extends BaseManagementApiEndToEndTest {
                 .add("properties", createPropertiesBuilder().build())
                 .build();
 
-        var assetNewJson = createObjectBuilder()
-                .add(CONTEXT, createObjectBuilder().add(EDC_PREFIX, EDC_NAMESPACE))
-                .add(TYPE, "AssetEntryDto")
-                .add("asset", assetJson)
-                .build();
-
         baseRequest()
                 .contentType(ContentType.JSON)
-                .body(assetNewJson)
-                .post()
+                .body(assetJson)
+                .post("/v3/assets")
                 .then()
                 .log().ifError()
                 .statusCode(400);
@@ -147,25 +130,17 @@ public class AssetApiEndToEndTest extends BaseManagementApiEndToEndTest {
                 .add(ID, TEST_ASSET_ID)
                 .add("properties", createPropertiesBuilder()
                         .add("unprefixed-key", "test-value").build())
-                .build();
-
-        var dataAddressJson = createObjectBuilder()
-                .add(CONTEXT, createObjectBuilder().add(EDC_PREFIX, EDC_NAMESPACE))
-                .add(TYPE, "DataAddress")
-                .add("type", "test-type")
-                .add("unprefixed-key", "test-value").build();
-
-        var assetNewJson = createObjectBuilder()
-                .add(CONTEXT, createObjectBuilder().add(EDC_PREFIX, EDC_NAMESPACE))
-                .add(TYPE, "AssetEntryDto")
-                .add("asset", assetJson)
-                .add("dataAddress", dataAddressJson)
+                .add("dataAddress", createObjectBuilder()
+                        .add(TYPE, "DataAddress")
+                        .add("type", "test-type")
+                        .add("unprefixed-key", "test-value")
+                        .build())
                 .build();
 
         baseRequest()
                 .contentType(ContentType.JSON)
-                .body(assetNewJson)
-                .post()
+                .body(assetJson)
+                .post("/v3/assets")
                 .then()
                 .log().ifError()
                 .statusCode(200)
@@ -191,9 +166,9 @@ public class AssetApiEndToEndTest extends BaseManagementApiEndToEndTest {
     @Test
     void queryAsset_byContentType() {
         //insert one asset into the index
+        var asset = Asset.Builder.newInstance().id("test-asset").contentType("application/octet-stream").dataAddress(createDataAddress().build()).build();
         controlPlane.getContext().getService(AssetIndex.class)
-                .create(new AssetEntry(Asset.Builder.newInstance().id("test-asset").contentType("application/octet-stream").build(),
-                        createDataAddress().build()));
+                .create(asset);
 
         var query = createObjectBuilder()
                         .add(CONTEXT, createObjectBuilder().add(EDC_PREFIX, EDC_NAMESPACE))
@@ -207,7 +182,7 @@ public class AssetApiEndToEndTest extends BaseManagementApiEndToEndTest {
         baseRequest()
                 .contentType(ContentType.JSON)
                 .body(query)
-                .post("/request")
+                .post("/v3/assets/request")
                 .then()
                 .log().ifError()
                 .statusCode(200)
@@ -218,19 +193,19 @@ public class AssetApiEndToEndTest extends BaseManagementApiEndToEndTest {
     void queryAsset_byCustomStringProperty() {
         //insert one asset into the index
         var assetIndex = controlPlane.getContext().getService(AssetIndex.class);
-        assetIndex.create(new AssetEntry(Asset.Builder.newInstance()
+        assetIndex.create(Asset.Builder.newInstance()
                 .id("test-asset")
                 .contentType("application/octet-stream")
                 .property("myProp", "myVal")
-                .build(),
-                createDataAddress().build()));
+                .dataAddress(createDataAddress().build())
+                .build());
 
         var query = createSingleFilterQuery("myProp", "=", "myVal");
 
         baseRequest()
                 .contentType(ContentType.JSON)
                 .body(query)
-                .post("/request")
+                .post("/v3/assets/request")
                 .then()
                 .log().ifError()
                 .statusCode(200)
@@ -241,13 +216,13 @@ public class AssetApiEndToEndTest extends BaseManagementApiEndToEndTest {
     void queryAsset_byCustomComplexProperty_whenJsonPathQuery_expectNoResult() {
         //insert one asset into the index
         var assetIndex = controlPlane.getContext().getService(AssetIndex.class);
-        assetIndex.create(new AssetEntry(Asset.Builder.newInstance()
+        assetIndex.create(Asset.Builder.newInstance()
                 .id("test-asset")
                 .contentType("application/octet-stream")
                 // use a custom, complex object type
                 .property("myProp", new TestObject("test desc", 42))
-                .build(),
-                createDataAddress().build()));
+                .dataAddress(createDataAddress().build())
+                .build());
 
         var query = createSingleFilterQuery("myProp.description", "=", "test desc");
 
@@ -255,7 +230,7 @@ public class AssetApiEndToEndTest extends BaseManagementApiEndToEndTest {
         baseRequest()
                 .contentType(ContentType.JSON)
                 .body(query)
-                .post("/request")
+                .post("/v3/assets/request")
                 .then()
                 .log().ifError()
                 .statusCode(200)
@@ -266,13 +241,13 @@ public class AssetApiEndToEndTest extends BaseManagementApiEndToEndTest {
     void queryAsset_byCustomComplexProperty_whenLikeOperator_expectException() {
         //insert one asset into the index
         var assetIndex = controlPlane.getContext().getService(AssetIndex.class);
-        assetIndex.create(new AssetEntry(Asset.Builder.newInstance()
+        assetIndex.create(Asset.Builder.newInstance()
                 .id("test-asset")
                 .contentType("application/octet-stream")
                 // use a custom, complex object type
                 .property("myProp", new TestObject("test desc", 42))
-                .build(),
-                createDataAddress().build()));
+                .dataAddress(createDataAddress().build())
+                .build());
 
         var query = createSingleFilterQuery("myProp", "LIKE", "test desc");
 
@@ -280,7 +255,7 @@ public class AssetApiEndToEndTest extends BaseManagementApiEndToEndTest {
         baseRequest()
                 .contentType(ContentType.JSON)
                 .body(query)
-                .post("/request")
+                .post("/v3/assets/request")
                 .then()
                 .log().ifError()
                 .statusCode(500);
@@ -290,7 +265,7 @@ public class AssetApiEndToEndTest extends BaseManagementApiEndToEndTest {
     void updateAsset() {
         var asset = createAsset();
         var assetIndex = controlPlane.getContext().getService(AssetIndex.class);
-        assetIndex.create(new AssetEntry(asset.build(), createDataAddress().build()));
+        assetIndex.create(asset.build());
 
         var assetJson = createObjectBuilder()
                 .add(CONTEXT, createObjectBuilder().add(EDC_PREFIX, EDC_NAMESPACE))
@@ -298,12 +273,14 @@ public class AssetApiEndToEndTest extends BaseManagementApiEndToEndTest {
                 .add(ID, TEST_ASSET_ID)
                 .add("properties", createPropertiesBuilder()
                         .add("some-new-property", "some-new-value").build())
+                .add("dataAddress", createObjectBuilder()
+                        .add("type", "addressType"))
                 .build();
 
         baseRequest()
                 .contentType(ContentType.JSON)
                 .body(assetJson)
-                .put()
+                .put("/v3/assets")
                 .then()
                 .log().all()
                 .statusCode(204)
@@ -312,20 +289,7 @@ public class AssetApiEndToEndTest extends BaseManagementApiEndToEndTest {
         var dbAsset = assetIndex.findById(TEST_ASSET_ID);
         assertThat(dbAsset).isNotNull();
         assertThat(dbAsset.getProperties()).containsEntry(EDC_NAMESPACE + "some-new-property", "some-new-value");
-    }
-
-    @Test
-    void getDataAddress() {
-        controlPlane.getContext().getService(AssetIndex.class)
-                .create(new AssetEntry(Asset.Builder.newInstance().id("test-asset").build(),
-                        DataAddress.Builder.newInstance().type("test-type").property(EDC_NAMESPACE + "another-key", "another-value").build()));
-
-        baseRequest()
-                .get("/test-asset/dataaddress")
-                .then()
-                .statusCode(200)
-                .body("'edc:type'", equalTo("test-type"))
-                .body("'edc:another-key'", equalTo("another-value"));
+        assertThat(dbAsset.getDataAddress().getType()).isEqualTo("addressType");
     }
 
     private DataAddress.Builder createDataAddress() {
@@ -338,7 +302,8 @@ public class AssetApiEndToEndTest extends BaseManagementApiEndToEndTest {
                 .name(TEST_ASSET_NAME)
                 .description(TEST_ASSET_DESCRIPTION)
                 .contentType(TEST_ASSET_CONTENTTYPE)
-                .version(TEST_ASSET_VERSION);
+                .version(TEST_ASSET_VERSION)
+                .dataAddress(createDataAddress().build());
     }
 
     private JsonObjectBuilder createPropertiesBuilder() {
@@ -352,7 +317,7 @@ public class AssetApiEndToEndTest extends BaseManagementApiEndToEndTest {
     private JsonObject createSingleFilterQuery(String leftOperand, String operator, String rightOperand) {
         var criteria = createArrayBuilder()
                 .add(createObjectBuilder()
-                        .add(TYPE, "CriterionDto")
+                        .add(TYPE, "Criterion")
                         .add("operandLeft", leftOperand)
                         .add("operator", operator)
                         .add("operandRight", rightOperand)
@@ -360,33 +325,10 @@ public class AssetApiEndToEndTest extends BaseManagementApiEndToEndTest {
 
         return createObjectBuilder()
                 .add(CONTEXT, createObjectBuilder().add(EDC_PREFIX, EDC_NAMESPACE))
-                .add(TYPE, "QuerySpecDto")
+                .add(TYPE, "QuerySpec")
                 .add("filterExpression", criteria)
                 .build();
     }
 
-    private RequestSpecification baseRequest() {
-        return given()
-                .port(PORT)
-                .basePath(BASE_PATH)
-                .when();
-    }
-
-    private static class TestObject {
-        private final String description;
-        private final int number;
-
-        TestObject(String description, int number) {
-            this.description = description;
-            this.number = number;
-        }
-
-        public String getDescription() {
-            return description;
-        }
-
-        public int getNumber() {
-            return number;
-        }
-    }
+    private record TestObject(String description, int number) { }
 }

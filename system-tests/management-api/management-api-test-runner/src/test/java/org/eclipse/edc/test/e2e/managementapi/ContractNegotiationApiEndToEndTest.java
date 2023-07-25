@@ -14,7 +14,6 @@
 
 package org.eclipse.edc.test.e2e.managementapi;
 
-import io.restassured.specification.RequestSpecification;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
@@ -32,11 +31,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static io.restassured.RestAssured.given;
 import static io.restassured.http.ContentType.JSON;
 import static jakarta.json.Json.createObjectBuilder;
 import static java.util.UUID.randomUUID;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationStates.REQUESTED;
 import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.CONTEXT;
 import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.ID;
 import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.TYPE;
@@ -50,6 +49,8 @@ import static org.hamcrest.Matchers.is;
 @EndToEndTest
 public class ContractNegotiationApiEndToEndTest extends BaseManagementApiEndToEndTest {
 
+    private final String protocolUrl = "http://localhost:" + PROTOCOL_PORT + "/protocol";
+
     @Test
     void getAll() {
         var store = controlPlane.getContext().getService(ContractNegotiationStore.class);
@@ -58,16 +59,14 @@ public class ContractNegotiationApiEndToEndTest extends BaseManagementApiEndToEn
 
         var jsonPath = baseRequest()
                 .contentType(JSON)
-                .post("/request")
+                .post("/v2/contractnegotiations/request")
                 .then()
                 .statusCode(200)
                 .contentType(JSON)
                 .body("size()", is(2))
                 .extract().jsonPath();
 
-        // must use bracket notation when using keys with a colon
-        // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Property_accessors
-        assertThat(jsonPath.getString("[0]['edc:counterPartyAddress']")).isEqualTo("address");
+        assertThat(jsonPath.getString("[0]['edc:counterPartyAddress']")).isEqualTo(protocolUrl);
         assertThat(jsonPath.getString("[0].@id")).isIn("cn1", "cn2");
         assertThat(jsonPath.getString("[1].@id")).isIn("cn1", "cn2");
         assertThat(jsonPath.getString("[0]['edc:protocol']")).isEqualTo("dataspace-protocol-http");
@@ -81,7 +80,7 @@ public class ContractNegotiationApiEndToEndTest extends BaseManagementApiEndToEn
 
         var json = baseRequest()
                 .contentType(JSON)
-                .get("cn1")
+                .get("/v2/contractnegotiations/cn1")
                 .then()
                 .statusCode(200)
                 .contentType(JSON)
@@ -99,7 +98,7 @@ public class ContractNegotiationApiEndToEndTest extends BaseManagementApiEndToEn
 
         baseRequest()
                 .contentType(JSON)
-                .get("cn1/state")
+                .get("/v2/contractnegotiations/cn1/state")
                 .then()
                 .statusCode(200)
                 .contentType(JSON)
@@ -114,7 +113,7 @@ public class ContractNegotiationApiEndToEndTest extends BaseManagementApiEndToEn
 
         var json = baseRequest()
                 .contentType(JSON)
-                .get("cn1/agreement")
+                .get("/v2/contractnegotiations/cn1/agreement")
                 .then()
                 .statusCode(200)
                 .contentType(JSON)
@@ -130,12 +129,10 @@ public class ContractNegotiationApiEndToEndTest extends BaseManagementApiEndToEn
 
         var requestJson = createObjectBuilder()
                 .add(CONTEXT, createObjectBuilder().add(EDC_PREFIX, EDC_NAMESPACE))
-                .add(TYPE, "NegotiationInitiateRequestDto")
+                .add(TYPE, "ContractRequest")
                 .add("connectorAddress", "test-address")
                 .add("protocol", "test-protocol")
-                .add("connectorId", "test-conn-id")
                 .add("providerId", "test-provider-id")
-                .add("consumerId", "test-consumer-id")
                 .add("callbackAddresses", createCallbackAddress())
                 .add("offer", createObjectBuilder()
                         .add("offerId", "test-offer-id")
@@ -147,7 +144,7 @@ public class ContractNegotiationApiEndToEndTest extends BaseManagementApiEndToEn
         var id = baseRequest()
                 .contentType(JSON)
                 .body(requestJson)
-                .post()
+                .post("/v2/contractnegotiations")
                 .then()
                 .statusCode(200)
                 .contentType(JSON)
@@ -159,13 +156,32 @@ public class ContractNegotiationApiEndToEndTest extends BaseManagementApiEndToEn
     }
 
     @Test
+    void terminate() {
+        var store = controlPlane.getContext().getService(ContractNegotiationStore.class);
+        store.save(createContractNegotiationBuilder("cn1").build());
+        var requestBody = createObjectBuilder()
+                .add(CONTEXT, createObjectBuilder().add(EDC_PREFIX, EDC_NAMESPACE).build())
+                .add(ID, "cn1")
+                .add("reason", "any good reason")
+                .build();
+
+        baseRequest()
+                .body(requestBody)
+                .contentType(JSON)
+                .post("/v2/contractnegotiations/cn1/terminate")
+                .then()
+                .log().ifError()
+                .statusCode(204);
+    }
+
+    @Test
     void cancel() {
         var store = controlPlane.getContext().getService(ContractNegotiationStore.class);
         store.save(createContractNegotiationBuilder("cn1").build());
 
         baseRequest()
                 .contentType(JSON)
-                .post("cn1/cancel")
+                .post("/v2/contractnegotiations/cn1/cancel")
                 .then()
                 .statusCode(204);
     }
@@ -177,16 +193,9 @@ public class ContractNegotiationApiEndToEndTest extends BaseManagementApiEndToEn
 
         baseRequest()
                 .contentType(JSON)
-                .post("cn1/decline")
+                .post("/v2/contractnegotiations/cn1/decline")
                 .then()
                 .statusCode(204);
-    }
-
-    private RequestSpecification baseRequest() {
-        return given()
-                .port(PORT)
-                .basePath("/management/v2/contractnegotiations")
-                .when();
     }
 
     private ContractNegotiation createContractNegotiation(String negotiationId) {
@@ -197,13 +206,15 @@ public class ContractNegotiationApiEndToEndTest extends BaseManagementApiEndToEn
     private ContractNegotiation.Builder createContractNegotiationBuilder(String negotiationId) {
         return ContractNegotiation.Builder.newInstance()
                 .id(negotiationId)
+                .correlationId(negotiationId)
                 .counterPartyId(randomUUID().toString())
-                .counterPartyAddress("address")
+                .counterPartyAddress(protocolUrl)
                 .callbackAddresses(List.of(CallbackAddress.Builder.newInstance()
                         .uri("local://test")
                         .events(Set.of("test-event1", "test-event2"))
                         .build()))
                 .protocol("dataspace-protocol-http")
+                .state(REQUESTED.code())
                 .contractOffer(contractOfferBuilder().build());
     }
 
