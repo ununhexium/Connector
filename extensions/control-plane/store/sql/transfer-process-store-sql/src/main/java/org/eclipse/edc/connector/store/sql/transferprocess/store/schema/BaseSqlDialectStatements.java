@@ -25,22 +25,26 @@ import static java.lang.String.format;
  */
 public abstract class BaseSqlDialectStatements implements TransferProcessStoreStatements {
 
-    private static final String DELETE_STATEMENT = "DELETE FROM %s WHERE %s = ?;";
-
     @Override
     public String getDeleteLeaseTemplate() {
-        return format(DELETE_STATEMENT, getLeaseTableName(), getLeaseIdColumn());
+        return executeStatement().delete(getLeaseTableName(), getLeaseIdColumn());
     }
 
     @Override
     public String getInsertLeaseTemplate() {
-        return format("INSERT INTO %s (%s, %s, %s, %s)" +
-                "VALUES (?,?,?,?);", getLeaseTableName(), getLeaseIdColumn(), getLeasedByColumn(), getLeasedAtColumn(), getLeaseDurationColumn());
+        return executeStatement()
+                .column(getLeaseIdColumn())
+                .column(getLeasedByColumn())
+                .column(getLeasedAtColumn())
+                .column(getLeaseDurationColumn())
+                .insertInto(getLeaseTableName());
     }
 
     @Override
     public String getUpdateLeaseTemplate() {
-        return format("UPDATE %s SET %s=? WHERE %s = ?;", getTransferProcessTableName(), getLeaseIdColumn(), getIdColumn());
+        return executeStatement()
+                .column(getLeaseIdColumn())
+                .update(getTransferProcessTableName(), getIdColumn());
     }
 
     @Override
@@ -51,39 +55,62 @@ public abstract class BaseSqlDialectStatements implements TransferProcessStoreSt
 
     @Override
     public String getInsertStatement() {
-        return format("INSERT INTO %s (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) VALUES (?, ?, ?, ?, ?, ?, ?%s, ?, ?%s, ?%s, ?%s, ?, ?%s, ?%s, ?%s);",
-                // keys
-                getTransferProcessTableName(), getIdColumn(), getStateColumn(), getStateCountColumn(), getStateTimestampColumn(),
-                getCreatedAtColumn(), getUpdatedAtColumn(),
-                getTraceContextColumn(), getErrorDetailColumn(), getResourceManifestColumn(),
-                getProvisionedResourceSetColumn(), getContentDataAddressColumn(), getTypeColumn(), getDeprovisionedResourcesColumn(),
-                getPrivatePropertiesColumn(), getCallbackAddressesColumn(),
-                // values
-                getFormatAsJsonOperator(), getFormatAsJsonOperator(), getFormatAsJsonOperator(), getFormatAsJsonOperator(),
-                getFormatAsJsonOperator(), getFormatAsJsonOperator(), getFormatAsJsonOperator());
+        return executeStatement()
+                .column(getIdColumn())
+                .column(getStateColumn())
+                .column(getStateCountColumn())
+                .column(getStateTimestampColumn())
+                .column(getCreatedAtColumn())
+                .column(getUpdatedAtColumn())
+                .jsonColumn(getTraceContextColumn())
+                .column(getErrorDetailColumn())
+                .jsonColumn(getResourceManifestColumn())
+                .jsonColumn(getProvisionedResourceSetColumn())
+                .jsonColumn(getContentDataAddressColumn())
+                .column(getTypeColumn())
+                .jsonColumn(getDeprovisionedResourcesColumn())
+                .jsonColumn(getPrivatePropertiesColumn())
+                .jsonColumn(getCallbackAddressesColumn())
+                .column(getPendingColumn())
+                .insertInto(getTransferProcessTableName());
     }
 
     @Override
     public String getDeleteTransferProcessTemplate() {
-        return format(DELETE_STATEMENT, getTransferProcessTableName(), getIdColumn());
+        return executeStatement().delete(getTransferProcessTableName(), getIdColumn());
     }
 
     @Override
     public String getUpdateTransferProcessTemplate() {
-        return format("UPDATE %s SET %s=?, %s=?, %s=?, %s=?%s, %s=?, %s=?%s, %s=?%s, %s=?%s, %s=?%s, %s=?%s, %s=? WHERE %s=?",
-                getTransferProcessTableName(), getStateColumn(), getStateCountColumn(), getStateTimestampColumn(),
-                getTraceContextColumn(), getFormatAsJsonOperator(), getErrorDetailColumn(),
-                getResourceManifestColumn(), getFormatAsJsonOperator(), getProvisionedResourceSetColumn(), getFormatAsJsonOperator(),
-                getContentDataAddressColumn(), getFormatAsJsonOperator(), getDeprovisionedResourcesColumn(), getFormatAsJsonOperator(),
-                getCallbackAddressesColumn(), getFormatAsJsonOperator(), getUpdatedAtColumn(), getIdColumn());
+        return executeStatement()
+                .column(getStateColumn())
+                .column(getStateCountColumn())
+                .column(getStateTimestampColumn())
+                .column(getUpdatedAtColumn())
+                .jsonColumn(getTraceContextColumn())
+                .column(getErrorDetailColumn())
+                .jsonColumn(getResourceManifestColumn())
+                .jsonColumn(getProvisionedResourceSetColumn())
+                .jsonColumn(getContentDataAddressColumn())
+                .jsonColumn(getDeprovisionedResourcesColumn())
+                .jsonColumn(getCallbackAddressesColumn())
+                .column(getPendingColumn())
+                .update(getTransferProcessTableName(), getIdColumn());
     }
 
     @Override
     public String getInsertDataRequestTemplate() {
-        return format("INSERT INTO %s (%s, %s, %s, %s, %s, %s, %s, %s, %s) VALUES (?, ?, ?, ?, ?, ?, ?%s, ?, ?);",
-                getDataRequestTable(), getDataRequestIdColumn(), getProcessIdColumn(), getConnectorAddressColumn(),
-                getConnectorIdColumn(), getAssetIdColumn(), getContractIdColumn(), getDataDestinationColumn(),
-                getTransferProcessIdFkColumn(), getProtocolColumn(), getFormatAsJsonOperator());
+        return executeStatement()
+                .column(getDataRequestIdColumn())
+                .column(getProcessIdColumn())
+                .column(getConnectorAddressColumn())
+                .column(getConnectorIdColumn())
+                .column(getAssetIdColumn())
+                .column(getContractIdColumn())
+                .jsonColumn(getDataDestinationColumn())
+                .column(getTransferProcessIdFkColumn())
+                .column(getProtocolColumn())
+                .insertInto(getDataRequestTable());
     }
 
     @Override
@@ -94,14 +121,21 @@ public abstract class BaseSqlDialectStatements implements TransferProcessStoreSt
 
     @Override
     public String getUpdateDataRequestTemplate() {
-        return format("UPDATE %s SET %s=?, %s=?, %s=?, %s=?, %s=?, %s=?, %s=?, %s=?%s WHERE %s=?",
-                getDataRequestTable(),
-                getDataRequestIdColumn(), getProcessIdColumn(), getConnectorAddressColumn(), getProtocolColumn(), getConnectorIdColumn(), getAssetIdColumn(), getContractIdColumn(),
-                getDataDestinationColumn(), getFormatAsJsonOperator(), getDataRequestIdColumn());
+        return executeStatement()
+                .column(getDataRequestIdColumn())
+                .column(getProcessIdColumn())
+                .column(getConnectorAddressColumn())
+                .column(getProtocolColumn())
+                .column(getConnectorIdColumn())
+                .column(getAssetIdColumn())
+                .column(getContractIdColumn())
+                .jsonColumn(getDataDestinationColumn())
+                .update(getDataRequestTable(), getDataRequestIdColumn());
     }
 
     @Override
     public SqlQueryStatement createQuery(QuerySpec querySpec) {
         return new SqlQueryStatement(getSelectTemplate(), querySpec, new TransferProcessMapping(this));
     }
+
 }

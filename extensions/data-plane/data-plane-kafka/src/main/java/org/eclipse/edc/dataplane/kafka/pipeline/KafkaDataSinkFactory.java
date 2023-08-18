@@ -51,14 +51,14 @@ public class KafkaDataSinkFactory implements DataSinkFactory {
     }
 
     @Override
-    public @NotNull Result<Boolean> validate(DataFlowRequest request) {
+    public @NotNull Result<Void> validateRequest(DataFlowRequest request) {
         var destination = request.getDestinationDataAddress();
-        return validation.apply(destination).map(it -> true);
+        return validation.apply(destination);
     }
 
     @Override
     public DataSink createSink(DataFlowRequest request) {
-        var validationResult = validate(request);
+        var validationResult = validateRequest(request);
         if (validationResult.failed()) {
             throw new EdcException(validationResult.getFailureDetail());
         }
@@ -67,7 +67,7 @@ public class KafkaDataSinkFactory implements DataSinkFactory {
         var producerProps = propertiesFactory.getProducerProperties(destination.getProperties())
                 .orElseThrow(failure -> new IllegalArgumentException(failure.getFailureDetail()));
 
-        var topic = Optional.ofNullable(destination.getProperty(TOPIC))
+        var topic = Optional.ofNullable(destination.getStringProperty(TOPIC))
                 .orElseThrow(() -> new IllegalArgumentException(format("Missing `%s` config", TOPIC)));
 
         return KafkaDataSink.Builder.newInstance()

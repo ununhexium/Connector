@@ -19,13 +19,13 @@ import org.eclipse.edc.spi.system.ServiceExtensionContext;
 import org.eclipse.edc.spi.system.configuration.Config;
 import org.eclipse.edc.spi.system.injection.ObjectFactory;
 import org.eclipse.edc.spi.types.TypeManager;
+import org.eclipse.edc.transaction.datasource.spi.DataSourceRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.eclipse.edc.connector.dataplane.selector.store.sql.SqlDataPlaneInstanceStoreExtension.DATASOURCE_SETTING_NAME;
-import static org.eclipse.edc.connector.dataplane.selector.store.sql.SqlDataPlaneInstanceStoreExtension.DEFAULT_DATASOURCE_NAME;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -55,6 +55,6 @@ public class SqlDataPlaneInstanceStoreExtensionTest {
         var store = extension.dataPlaneInstanceStore(context);
         assertThat(store).isInstanceOf(SqlDataPlaneInstanceStore.class);
 
-        verify(config).getString(DATASOURCE_SETTING_NAME, DEFAULT_DATASOURCE_NAME);
+        verify(config).getString(DATASOURCE_SETTING_NAME, DataSourceRegistry.DEFAULT_DATASOURCE);
     }
 }
