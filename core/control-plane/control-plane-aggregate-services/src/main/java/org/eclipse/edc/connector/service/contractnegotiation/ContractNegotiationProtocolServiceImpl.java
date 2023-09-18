@@ -22,7 +22,6 @@ import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreementM
 import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreementVerificationMessage;
 import org.eclipse.edc.connector.contract.spi.types.agreement.ContractNegotiationEventMessage;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiation;
-import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationStates;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationTerminationMessage;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractOfferMessage;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractRequestMessage;
@@ -40,7 +39,6 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Optional;
 import java.util.UUID;
 
-import static java.lang.String.format;
 import static org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiation.Type.PROVIDER;
 
 public class ContractNegotiationProtocolServiceImpl implements ContractNegotiationProtocolService {
@@ -69,9 +67,11 @@ public class ContractNegotiationProtocolServiceImpl implements ContractNegotiati
     @NotNull
     public ServiceResult<ContractNegotiation> notifyRequested(ContractRequestMessage message, ClaimToken claimToken) {
         return transactionContext.execute(() -> validateOffer(message, claimToken)
-                    .compose(validatedOffer -> createNegotiation(message, validatedOffer))
+                    .compose(validatedOffer -> getNegotiation(message)
+                            .recover(f -> createNegotiation(message, validatedOffer))
+                            .onSuccess(n -> n.addContractOffer(validatedOffer.getOffer()))
+                    )
                     .onSuccess(negotiation -> {
-                        monitor.debug(() -> "[Provider] Contract offer received.");
                         negotiation.transitionRequested();
                         update(negotiation);
                         observable.invokeForEach(l -> l.requested(negotiation));
@@ -85,7 +85,6 @@ public class ContractNegotiationProtocolServiceImpl implements ContractNegotiati
         return transactionContext.execute(() -> getNegotiation(message)
                 .compose(negotiation -> validateRequest(claimToken, negotiation))
                 .onSuccess(negotiation -> {
-                    monitor.debug(() -> "[Consumer] Contract offer received.");
                     negotiation.addContractOffer(message.getContractOffer());
                     negotiation.transitionOffered();
                     update(negotiation);
@@ -97,7 +96,13 @@ public class ContractNegotiationProtocolServiceImpl implements ContractNegotiati
     @WithSpan
     @NotNull
     public ServiceResult<ContractNegotiation> notifyAccepted(ContractNegotiationEventMessage message, ClaimToken claimToken) {
-        throw new UnsupportedOperationException("not implemented");
+        return transactionContext.execute(() -> getNegotiation(message)
+                .compose(negotiation -> validateRequest(claimToken, negotiation))
+                .onSuccess(negotiation -> {
+                    negotiation.transitionAccepted();
+                    update(negotiation);
+                    observable.invokeForEach(l -> l.accepted(negotiation));
+                }));
     }
 
     @Override
@@ -107,7 +112,6 @@ public class ContractNegotiationProtocolServiceImpl implements ContractNegotiati
         return transactionContext.execute(() -> getNegotiation(message)
                 .compose(negotiation -> validateAgreed(message, claimToken, negotiation))
                 .onSuccess(negotiation -> {
-                    monitor.debug("[Consumer] Contract agreement received. Validation successful.");
                     negotiation.setContractAgreement(message.getContractAgreement());
                     negotiation.transitionAgreed();
                     update(negotiation);
@@ -159,9 +163,8 @@ public class ContractNegotiationProtocolServiceImpl implements ContractNegotiati
     @NotNull
     public ServiceResult<ContractNegotiation> findById(String id, ClaimToken claimToken) {
         return transactionContext.execute(() -> Optional.ofNullable(store.findById(id))
-                .map(negotiation -> validateGetRequest(claimToken, negotiation))
-                .map(ServiceResult::success)
-                .orElse(ServiceResult.notFound(format("No negotiation with id %s found", id))));
+                .map(negotiation -> validateRequest(claimToken, negotiation))
+                .orElse(ServiceResult.notFound("No negotiation with id %s found".formatted(id))));
     }
 
     @NotNull
@@ -174,7 +177,6 @@ public class ContractNegotiationProtocolServiceImpl implements ContractNegotiati
                 .protocol(message.getProtocol())
                 .traceContext(telemetry.getCurrentTraceContext())
                 .type(PROVIDER)
-                .contractOffer(validatedOffer.getOffer())
                 .build();
 
         return ServiceResult.success(negotiation);
@@ -215,15 +217,6 @@ public class ContractNegotiationProtocolServiceImpl implements ContractNegotiati
             return ServiceResult.success(negotiation);
         }
     }
-    
-    private ContractNegotiation validateGetRequest(ClaimToken claimToken, ContractNegotiation negotiation) {
-        var result = validationService.validateRequest(claimToken, negotiation);
-        if (result.failed()) {
-            return null;
-        } else {
-            return negotiation;
-        }
-    }
 
     private ServiceResult<ContractNegotiation> getNegotiation(ContractRemoteMessage message) {
         return store.findByCorrelationIdAndLease(message.getProcessId()).flatMap(ServiceResult::from);
@@ -231,8 +224,8 @@ public class ContractNegotiationProtocolServiceImpl implements ContractNegotiati
 
     private void update(ContractNegotiation negotiation) {
         store.save(negotiation);
-        monitor.debug(String.format("[%s] ContractNegotiation %s is now in state %s.",
-                negotiation.getType(), negotiation.getId(), ContractNegotiationStates.from(negotiation.getState())));
+        monitor.debug(() -> "[%s] ContractNegotiation %s is now in state %s."
+                .formatted(negotiation.getType(), negotiation.getId(), negotiation.stateAsString()));
     }
 
 }

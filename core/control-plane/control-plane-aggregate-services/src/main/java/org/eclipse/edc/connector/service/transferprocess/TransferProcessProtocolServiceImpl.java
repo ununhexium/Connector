@@ -16,7 +16,6 @@
 package org.eclipse.edc.connector.service.transferprocess;
 
 import io.opentelemetry.instrumentation.annotations.WithSpan;
-import org.eclipse.edc.connector.contract.spi.ContractId;
 import org.eclipse.edc.connector.contract.spi.negotiation.store.ContractNegotiationStore;
 import org.eclipse.edc.connector.contract.spi.validation.ContractValidationService;
 import org.eclipse.edc.connector.spi.transferprocess.TransferProcessProtocolService;
@@ -83,11 +82,6 @@ public class TransferProcessProtocolServiceImpl implements TransferProcessProtoc
     @WithSpan
     @NotNull
     public ServiceResult<TransferProcess> notifyRequested(TransferRequestMessage message, ClaimToken claimToken) {
-        var contractIdResult = ContractId.parseId(message.getContractId());
-        if (contractIdResult.failed()) {
-            return ServiceResult.badRequest("ContractId is not valid: " + contractIdResult.getFailureDetail());
-        }
-
         var destination = message.getDataDestination();
         if (destination != null) {
             var validDestination = dataAddressValidator.validate(destination);
@@ -99,7 +93,7 @@ public class TransferProcessProtocolServiceImpl implements TransferProcessProtoc
         return transactionContext.execute(() ->
                 Optional.ofNullable(negotiationStore.findContractAgreement(message.getContractId()))
                         .filter(agreement -> contractValidationService.validateAgreement(claimToken, agreement).succeeded())
-                        .map(agreement -> requestedAction(message, contractIdResult.getContent()))
+                        .map(agreement -> requestedAction(message, agreement.getAssetId()))
                         .orElse(ServiceResult.conflict(format("Cannot process %s because %s", message.getClass().getSimpleName(), "agreement not found or not valid"))));
     }
 
@@ -107,37 +101,34 @@ public class TransferProcessProtocolServiceImpl implements TransferProcessProtoc
     @WithSpan
     @NotNull
     public ServiceResult<TransferProcess> notifyStarted(TransferStartMessage message, ClaimToken claimToken) {
-        return onMessageDo(message, transferProcess -> startedAction(message, transferProcess));
+        return onMessageDo(message, claimToken, transferProcess -> startedAction(message, transferProcess));
     }
 
     @Override
     @WithSpan
     @NotNull
     public ServiceResult<TransferProcess> notifyCompleted(TransferCompletionMessage message, ClaimToken claimToken) {
-        return onMessageDo(message, transferProcess -> completedAction(message, transferProcess));
+        return onMessageDo(message, claimToken, transferProcess -> completedAction(message, transferProcess));
     }
 
     @Override
     @WithSpan
     @NotNull
     public ServiceResult<TransferProcess> notifyTerminated(TransferTerminationMessage message, ClaimToken claimToken) {
-        return onMessageDo(message, transferProcess -> terminatedAction(message, transferProcess));
+        return onMessageDo(message, claimToken, transferProcess -> terminatedAction(message, transferProcess));
     }
-    
+
     @Override
     @WithSpan
     @NotNull
     public ServiceResult<TransferProcess> findById(String id, ClaimToken claimToken) {
         return transactionContext.execute(() -> Optional.ofNullable(transferProcessStore.findById(id))
-                .filter(tp -> validateCounterParty(claimToken, tp))
-                .map(ServiceResult::success)
-                .orElse(ServiceResult.notFound(format("No negotiation with id %s found", id))));
+                .map(tp -> validateCounterParty(claimToken, tp))
+                .orElse(notFound(id)));
     }
-    
+
     @NotNull
-    private ServiceResult<TransferProcess> requestedAction(TransferRequestMessage message, ContractId contractId) {
-        var assetId = contractId.assetIdPart();
-        
+    private ServiceResult<TransferProcess> requestedAction(TransferRequestMessage message, String assetId) {
         var destination = message.getDataDestination() != null ? message.getDataDestination() :
                 DataAddress.Builder.newInstance().type(HTTP_PROXY).build();
         var dataRequest = DataRequest.Builder.newInstance()
@@ -210,18 +201,30 @@ public class TransferProcessProtocolServiceImpl implements TransferProcessProtoc
         }
     }
 
-    private ServiceResult<TransferProcess> onMessageDo(TransferRemoteMessage message, Function<TransferProcess, ServiceResult<TransferProcess>> action) {
+    private ServiceResult<TransferProcess> onMessageDo(TransferRemoteMessage message, ClaimToken claimToken, Function<TransferProcess, ServiceResult<TransferProcess>> action) {
         return transactionContext.execute(() -> transferProcessStore
                 .findByCorrelationIdAndLease(message.getProcessId())
                 .flatMap(ServiceResult::from)
-                .compose(action));
+                .compose(transferProcess -> validateCounterParty(claimToken, transferProcess)
+                        .compose(action)
+                        .onFailure(f -> breakLease(transferProcess))));
     }
-    
-    private boolean validateCounterParty(ClaimToken claimToken, TransferProcess transferProcess) {
+
+    private ServiceResult<TransferProcess> validateCounterParty(ClaimToken claimToken, TransferProcess transferProcess) {
         return Optional.ofNullable(negotiationStore.findContractAgreement(transferProcess.getContractId()))
                 .map(agreement -> contractValidationService.validateRequest(claimToken, agreement))
                 .filter(Result::succeeded)
-                .isPresent();
+                .map(e -> ServiceResult.success(transferProcess))
+                .orElse(notFound(transferProcess.getId()));
+
+    }
+
+    private ServiceResult<TransferProcess> notFound(String transferProcessId) {
+        return ServiceResult.notFound(format("No transfer process with id %s found", transferProcessId));
+    }
+
+    private void breakLease(TransferProcess process) {
+        transferProcessStore.save(process);
     }
 
     private void update(TransferProcess transferProcess) {

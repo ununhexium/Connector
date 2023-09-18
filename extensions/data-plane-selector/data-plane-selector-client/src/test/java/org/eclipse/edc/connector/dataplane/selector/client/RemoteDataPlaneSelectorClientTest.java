@@ -31,12 +31,14 @@ import org.eclipse.edc.junit.annotations.ComponentTest;
 import org.eclipse.edc.spi.types.TypeManager;
 import org.eclipse.edc.spi.types.domain.DataAddress;
 import org.eclipse.edc.transform.spi.TypeTransformerRegistry;
+import org.eclipse.edc.validator.spi.JsonObjectValidatorRegistry;
 import org.eclipse.edc.web.jersey.jsonld.JerseyJsonLdInterceptor;
 import org.eclipse.edc.web.jersey.testfixtures.RestControllerTestBase;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 
@@ -57,6 +59,7 @@ class RemoteDataPlaneSelectorClientTest extends RestControllerTestBase {
     private static final DataPlaneSelectorService SELECTOR_SERVICE_MOCK = mock();
     private static final TypeManager TYPE_MANAGER = new TypeManager();
     private final TypeTransformerRegistry typeTransformerRegistry = new TypeTransformerRegistryImpl();
+    private final JsonObjectValidatorRegistry validator = mock(JsonObjectValidatorRegistry.class);
     private RemoteDataPlaneSelectorClient client;
 
     @BeforeAll
@@ -105,7 +108,7 @@ class RemoteDataPlaneSelectorClientTest extends RestControllerTestBase {
 
     @Override
     protected Object controller() {
-        return new DataplaneSelectorApiController(SELECTOR_SERVICE_MOCK, typeTransformerRegistry);
+        return new DataplaneSelectorApiController(SELECTOR_SERVICE_MOCK, typeTransformerRegistry, validator, Clock.systemUTC());
     }
 
     @Override

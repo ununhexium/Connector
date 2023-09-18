@@ -19,13 +19,11 @@
 package org.eclipse.edc.connector.contract.negotiation;
 
 import io.opentelemetry.instrumentation.annotations.WithSpan;
-import org.eclipse.edc.connector.contract.spi.ContractId;
 import org.eclipse.edc.connector.contract.spi.negotiation.ConsumerContractNegotiationManager;
 import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreement;
 import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreementMessage;
 import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreementVerificationMessage;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiation;
-import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationTerminationMessage;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractRequest;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractRequestMessage;
 import org.eclipse.edc.spi.response.StatusResult;
@@ -130,13 +128,12 @@ public class ConsumerContractNegotiationManagerImpl extends AbstractContractNego
                 .counterPartyAddress(negotiation.getCounterPartyAddress())
                 .callbackAddress(protocolWebhook.url())
                 .protocol(negotiation.getProtocol())
-                .processId(negotiation.getId())
+                .processId(negotiation.getCorrelationId())
                 .type(ContractRequestMessage.Type.INITIAL)
                 .build();
 
         return entityRetryProcessFactory.doAsyncStatusResultProcess(negotiation, () -> dispatcherRegistry.dispatch(Object.class, request))
                 .entityRetrieve(negotiationStore::findById)
-                .onDelay(this::breakLease)
                 .onSuccess((n, result) -> transitionToRequested(n))
                 .onFailure((n, throwable) -> transitionToRequesting(n))
                 .onFatalError((n, failure) -> transitionToTerminated(n, failure.getFailureDetail()))
@@ -156,16 +153,8 @@ public class ConsumerContractNegotiationManagerImpl extends AbstractContractNego
     private boolean processAccepting(ContractNegotiation negotiation) {
         var lastOffer = negotiation.getLastContractOffer();
 
-        var contractIdResult = ContractId.parseId(lastOffer.getId());
-        if (contractIdResult.failed()) {
-            monitor.severe("ConsumerContractNegotiationManagerImpl.approveContractOffers(): Offer Id not correctly formatted: " + contractIdResult.getFailureDetail());
-            return false;
-        }
-        var contractId = contractIdResult.getContent();
-
         var policy = lastOffer.getPolicy();
         var agreement = ContractAgreement.Builder.newInstance()
-                .id(contractId.derive().toString())
                 .contractSigningDate(clock.instant().getEpochSecond())
                 .providerId(negotiation.getCounterPartyId())
                 .consumerId(participantId)
@@ -177,12 +166,11 @@ public class ConsumerContractNegotiationManagerImpl extends AbstractContractNego
                 .protocol(negotiation.getProtocol())
                 .counterPartyAddress(negotiation.getCounterPartyAddress())
                 .contractAgreement(agreement)
-                .processId(negotiation.getId())
+                .processId(negotiation.getCorrelationId())
                 .build();
 
         return entityRetryProcessFactory.doAsyncStatusResultProcess(negotiation, () -> dispatcherRegistry.dispatch(Object.class, request))
                 .entityRetrieve(negotiationStore::findById)
-                .onDelay(this::breakLease)
                 .onSuccess((n, result) -> transitionToAccepted(n))
                 .onFailure((n, throwable) -> transitionToAccepting(n))
                 .onFatalError((n, failure) -> transitionToTerminated(n, failure.getFailureDetail()))
@@ -213,45 +201,17 @@ public class ConsumerContractNegotiationManagerImpl extends AbstractContractNego
         var message = ContractAgreementVerificationMessage.Builder.newInstance()
                 .protocol(negotiation.getProtocol())
                 .counterPartyAddress(negotiation.getCounterPartyAddress())
-                .processId(negotiation.getId())
+                .processId(negotiation.getCorrelationId())
                 .policy(negotiation.getContractAgreement().getPolicy())
                 .build();
 
         return entityRetryProcessFactory.doAsyncStatusResultProcess(negotiation, () -> dispatcherRegistry.dispatch(Object.class, message))
                 .entityRetrieve(negotiationStore::findById)
-                .onDelay(this::breakLease)
                 .onSuccess((n, result) -> transitionToVerified(n))
                 .onFailure((n, throwable) -> transitionToVerifying(n))
                 .onFatalError((n, failure) -> transitionToTerminated(n, failure.getFailureDetail()))
                 .onRetryExhausted((n, throwable) -> transitionToTerminating(n, format("Failed to send %s to provider: %s", message.getClass().getSimpleName(), throwable.getMessage())))
                 .execute(format("[consumer] send %s", message.getClass().getSimpleName()));
-    }
-
-    /**
-     * Processes {@link ContractNegotiation} in state TERMINATING. Tries to send a contract rejection to the respective
-     * provider. If this succeeds, the ContractNegotiation is transitioned to state TERMINATED. Else, it is transitioned
-     * to TERMINATING for a retry.
-     *
-     * @return true if processed, false otherwise
-     */
-    @WithSpan
-    private boolean processTerminating(ContractNegotiation negotiation) {
-        var rejection = ContractNegotiationTerminationMessage.Builder.newInstance()
-                .protocol(negotiation.getProtocol())
-                .counterPartyAddress(negotiation.getCounterPartyAddress())
-                .processId(negotiation.getId())
-                .rejectionReason(negotiation.getErrorDetail())
-                .policy(negotiation.getLastContractOffer().getPolicy())
-                .build();
-
-        return entityRetryProcessFactory.doAsyncStatusResultProcess(negotiation, () -> dispatcherRegistry.dispatch(Object.class, rejection))
-                .entityRetrieve(negotiationStore::findById)
-                .onDelay(this::breakLease)
-                .onSuccess((n, result) -> transitionToTerminated(n))
-                .onFailure((n, throwable) -> transitionToTerminating(n))
-                .onFatalError((n, failure) -> transitionToTerminated(n, failure.getFailureDetail()))
-                .onRetryExhausted((n, throwable) -> transitionToTerminated(n, format("Failed to send %s to provider: %s", rejection.getClass().getSimpleName(), throwable.getMessage())))
-                .execute("[Consumer] send rejection");
     }
 
     /**

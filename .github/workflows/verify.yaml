@@ -23,7 +23,7 @@ jobs:
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-build
 
       - name: Run Checkstyle
@@ -32,28 +32,24 @@ jobs:
   Javadoc:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-build
 
       - name: Run Javadoc
         run: ./gradlew javadoc
-
-
 
   Unit-Tests:
     runs-on: ubuntu-latest
     env:
       JACOCO: true
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-build
 
       - name: Run unit tests
         uses: ./.github/actions/run-tests
         with:
           command: ./gradlew test jacocoTestReport
-
-
 
   Daps-Integration-Tests:
     runs-on: ubuntu-latest
@@ -62,7 +58,7 @@ jobs:
       - name: reset permissions to permit checkout (because the omejdn volumes)
         run: sudo chown -R $USER:$USER ${{ github.workspace }}
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-build
 
       - run: |
@@ -86,7 +82,7 @@ jobs:
           POSTGRES_PASSWORD: password
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-build
 
       - name: Postgresql Tests
@@ -94,25 +90,23 @@ jobs:
         with:
           command: ./gradlew test -DincludeTags="PostgresqlIntegrationTest"
 
-
   End-To-End-Tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-build
 
       - name: End to End Integration Tests
         uses: ./.github/actions/run-tests
         with:
-          command: ./gradlew test -DincludeTags="EndToEndTest"
-
+          command: ./gradlew test jacocoTestReport -DincludeTags="EndToEndTest"
 
   Component-Tests:
     env:
       JACOCO: true
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-build
 
       - name: Component Tests
@@ -125,7 +119,7 @@ jobs:
       JACOCO: true
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-build
 
       - name: Component Tests
@@ -143,7 +137,7 @@ jobs:
           - 9092:9092
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-build
 
       - name: 'Kafka Integration Tests'
@@ -184,12 +178,13 @@ jobs:
       - API-Tests
       - Unit-Tests
       - Component-Tests
+      - End-To-End-Tests
 
     runs-on: ubuntu-latest
     if: always()
     steps:
       # Sources are needed for Codecov report
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Download Artifacts
         uses: actions/download-artifact@v3
         with:

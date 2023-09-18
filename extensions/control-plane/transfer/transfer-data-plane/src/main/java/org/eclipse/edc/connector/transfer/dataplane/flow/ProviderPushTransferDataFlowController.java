@@ -15,14 +15,12 @@
 package org.eclipse.edc.connector.transfer.dataplane.flow;
 
 import org.eclipse.edc.connector.dataplane.spi.client.DataPlaneClient;
-import org.eclipse.edc.connector.transfer.spi.callback.ControlPlaneApiUrl;
+import org.eclipse.edc.connector.transfer.spi.callback.ControlApiUrl;
 import org.eclipse.edc.connector.transfer.spi.flow.DataFlowController;
 import org.eclipse.edc.connector.transfer.spi.types.DataFlowResponse;
-import org.eclipse.edc.connector.transfer.spi.types.DataRequest;
+import org.eclipse.edc.connector.transfer.spi.types.TransferProcess;
 import org.eclipse.edc.policy.model.Policy;
-import org.eclipse.edc.spi.response.ResponseStatus;
 import org.eclipse.edc.spi.response.StatusResult;
-import org.eclipse.edc.spi.types.domain.DataAddress;
 import org.eclipse.edc.spi.types.domain.transfer.DataFlowRequest;
 import org.jetbrains.annotations.NotNull;
 
@@ -32,38 +30,31 @@ import static org.eclipse.edc.connector.transfer.dataplane.spi.TransferDataPlane
 
 public class ProviderPushTransferDataFlowController implements DataFlowController {
 
-    private final ControlPlaneApiUrl callbackUrl;
+    private final ControlApiUrl callbackUrl;
     private final DataPlaneClient dataPlaneClient;
 
-    public ProviderPushTransferDataFlowController(ControlPlaneApiUrl callbackUrl, DataPlaneClient dataPlaneClient) {
+    public ProviderPushTransferDataFlowController(ControlApiUrl callbackUrl, DataPlaneClient dataPlaneClient) {
         this.callbackUrl = callbackUrl;
         this.dataPlaneClient = dataPlaneClient;
     }
 
     @Override
-    public boolean canHandle(DataRequest dataRequest, DataAddress contentAddress) {
-        return !HTTP_PROXY.equals(dataRequest.getDestinationType());
+    public boolean canHandle(TransferProcess transferProcess) {
+        return !HTTP_PROXY.equals(transferProcess.getDestinationType());
     }
 
     @Override
-    public @NotNull StatusResult<DataFlowResponse> initiateFlow(DataRequest dataRequest, DataAddress contentAddress, Policy policy) {
-        var dataFlowRequest = createRequest(dataRequest, contentAddress);
-        var result = dataPlaneClient.transfer(dataFlowRequest);
-        if (result.failed()) {
-            return StatusResult.failure(ResponseStatus.FATAL_ERROR, "Failed to delegate data transfer to Data Plane: " + result.getFailureDetail());
-        }
-        return StatusResult.success(DataFlowResponse.Builder.newInstance().build());
-    }
-
-    private DataFlowRequest createRequest(DataRequest dataRequest, DataAddress sourceAddress) {
-        return DataFlowRequest.Builder.newInstance()
+    public @NotNull StatusResult<DataFlowResponse> initiateFlow(TransferProcess transferProcess, Policy policy) {
+        var dataFlowRequest = DataFlowRequest.Builder.newInstance()
                 .id(UUID.randomUUID().toString())
-                .processId(dataRequest.getProcessId())
+                .processId(transferProcess.getId())
                 .trackable(true)
-                .sourceDataAddress(sourceAddress)
-                .destinationType(dataRequest.getDestinationType())
-                .destinationDataAddress(dataRequest.getDataDestination())
+                .sourceDataAddress(transferProcess.getContentDataAddress())
+                .destinationDataAddress(transferProcess.getDataDestination())
                 .callbackAddress(callbackUrl != null ? callbackUrl.get() : null)
                 .build();
+
+        return dataPlaneClient.transfer(dataFlowRequest).map(it -> DataFlowResponse.Builder.newInstance().build());
     }
+
 }

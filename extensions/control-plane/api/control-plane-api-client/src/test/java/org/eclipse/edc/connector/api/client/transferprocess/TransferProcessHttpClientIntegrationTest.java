@@ -18,7 +18,7 @@ import org.eclipse.edc.connector.dataplane.spi.manager.DataPlaneManager;
 import org.eclipse.edc.connector.dataplane.spi.pipeline.StreamResult;
 import org.eclipse.edc.connector.dataplane.spi.pipeline.TransferService;
 import org.eclipse.edc.connector.dataplane.spi.registry.TransferServiceRegistry;
-import org.eclipse.edc.connector.transfer.spi.callback.ControlPlaneApiUrl;
+import org.eclipse.edc.connector.transfer.spi.callback.ControlApiUrl;
 import org.eclipse.edc.connector.transfer.spi.store.TransferProcessStore;
 import org.eclipse.edc.connector.transfer.spi.types.DataRequest;
 import org.eclipse.edc.connector.transfer.spi.types.TransferProcess;
@@ -39,7 +39,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import java.net.URL;
+import java.net.URI;
 import java.util.Map;
 import java.util.UUID;
 
@@ -59,7 +59,7 @@ import static org.mockito.Mockito.when;
 public class TransferProcessHttpClientIntegrationTest {
 
     private final int port = getFreePort();
-    private final TransferService service = mock(TransferService.class);
+    private final TransferService service = mock();
 
     @BeforeEach
     void setUp(EdcExtension extension) {
@@ -69,24 +69,26 @@ public class TransferProcessHttpClientIntegrationTest {
                 "web.http.port", String.valueOf(getFreePort()),
                 "web.http.path", "/api",
                 "web.http.control.port", String.valueOf(port),
-                "web.http.control.path", "/control"
+                "web.http.control.path", "/control",
+                "edc.core.retry.retries.max", "0",
+                "edc.dataplane.send.retry.limit", "0"
         ));
 
         extension.registerSystemExtension(ServiceExtension.class, new TransferServiceMockExtension(service));
-        extension.registerServiceMock(ProtocolWebhook.class, mock(ProtocolWebhook.class));
+        extension.registerServiceMock(ProtocolWebhook.class, mock());
         var registry = mock(RemoteMessageDispatcherRegistry.class);
         when(registry.dispatch(any(), any())).thenReturn(completedFuture(StatusResult.success("any")));
         extension.registerServiceMock(RemoteMessageDispatcherRegistry.class, registry);
     }
 
     @Test
-    void shouldCallTransferProcessApiWithComplete(TransferProcessStore store, DataPlaneManager manager, ControlPlaneApiUrl callbackUrl) {
+    void shouldCallTransferProcessApiWithComplete(TransferProcessStore store, DataPlaneManager manager, ControlApiUrl callbackUrl) {
         when(service.transfer(any())).thenReturn(completedFuture(StreamResult.success()));
         var id = "tp-id";
         store.save(createTransferProcess(id));
         var dataFlowRequest = createDataFlowRequest(id, callbackUrl.get());
 
-        manager.initiateTransfer(dataFlowRequest);
+        manager.initiate(dataFlowRequest);
 
         await().untilAsserted(() -> {
             var transferProcess = store.findById("tp-id");
@@ -96,13 +98,13 @@ public class TransferProcessHttpClientIntegrationTest {
     }
 
     @Test
-    void shouldCallTransferProcessApiWithFailed(TransferProcessStore store, DataPlaneManager manager, ControlPlaneApiUrl callbackUrl) {
+    void shouldCallTransferProcessApiWithFailed(TransferProcessStore store, DataPlaneManager manager, ControlApiUrl callbackUrl) {
         when(service.transfer(any())).thenReturn(completedFuture(StreamResult.error("error")));
         var id = "tp-id";
         store.save(createTransferProcess(id));
         var dataFlowRequest = createDataFlowRequest(id, callbackUrl.get());
 
-        manager.initiateTransfer(dataFlowRequest);
+        manager.initiate(dataFlowRequest);
 
         await().untilAsserted(() -> {
             var transferProcess = store.findById("tp-id");
@@ -114,13 +116,13 @@ public class TransferProcessHttpClientIntegrationTest {
     }
 
     @Test
-    void shouldCallTransferProcessApiWithException(TransferProcessStore store, DataPlaneManager manager, ControlPlaneApiUrl callbackUrl) {
+    void shouldCallTransferProcessApiWithException(TransferProcessStore store, DataPlaneManager manager, ControlApiUrl callbackUrl) {
         when(service.transfer(any())).thenReturn(failedFuture(new EdcException("error")));
         var id = "tp-id";
         store.save(createTransferProcess(id));
         var dataFlowRequest = createDataFlowRequest(id, callbackUrl.get());
 
-        manager.initiateTransfer(dataFlowRequest);
+        manager.initiate(dataFlowRequest);
 
         await().untilAsserted(() -> {
             var transferProcess = store.findById("tp-id");
@@ -145,7 +147,7 @@ public class TransferProcessHttpClientIntegrationTest {
                 .build();
     }
 
-    private DataFlowRequest createDataFlowRequest(String processId, URL callbackAddress) {
+    private DataFlowRequest createDataFlowRequest(String processId, URI callbackAddress) {
         return DataFlowRequest.Builder.newInstance()
                 .id(UUID.randomUUID().toString())
                 .processId(processId)

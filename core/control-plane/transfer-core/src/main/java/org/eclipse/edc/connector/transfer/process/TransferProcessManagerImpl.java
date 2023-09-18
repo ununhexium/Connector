@@ -20,6 +20,7 @@ import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.eclipse.edc.connector.policy.spi.store.PolicyArchive;
 import org.eclipse.edc.connector.transfer.provision.DeprovisionResponsesHandler;
 import org.eclipse.edc.connector.transfer.provision.ProvisionResponsesHandler;
+import org.eclipse.edc.connector.transfer.provision.ResponsesHandler;
 import org.eclipse.edc.connector.transfer.spi.TransferProcessManager;
 import org.eclipse.edc.connector.transfer.spi.TransferProcessPendingGuard;
 import org.eclipse.edc.connector.transfer.spi.flow.DataFlowManager;
@@ -31,8 +32,6 @@ import org.eclipse.edc.connector.transfer.spi.status.StatusCheckerRegistry;
 import org.eclipse.edc.connector.transfer.spi.store.TransferProcessStore;
 import org.eclipse.edc.connector.transfer.spi.types.DataFlowResponse;
 import org.eclipse.edc.connector.transfer.spi.types.DataRequest;
-import org.eclipse.edc.connector.transfer.spi.types.DeprovisionedResource;
-import org.eclipse.edc.connector.transfer.spi.types.ProvisionResponse;
 import org.eclipse.edc.connector.transfer.spi.types.ResourceManifest;
 import org.eclipse.edc.connector.transfer.spi.types.TransferProcess;
 import org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates;
@@ -144,9 +143,9 @@ public class TransferProcessManagerImpl implements TransferProcessManager {
                 .processor(processTransfersInState(INITIAL, this::processInitial))
                 .processor(processTransfersInState(PROVISIONING, this::processProvisioning))
                 .processor(processTransfersInState(PROVISIONED, this::processProvisioned))
-                .processor(processTransfersInState(REQUESTING, this::processRequesting))
-                .processor(processTransfersInState(STARTING, this::processStarting))
-                .processor(processTransfersInState(STARTED, this::processStarted))
+                .processor(processConsumerTransfersInState(REQUESTING, this::processRequesting))
+                .processor(processProviderTransfersInState(STARTING, this::processStarting))
+                .processor(processConsumerTransfersInState(STARTED, this::processStarted))
                 .processor(processTransfersInState(COMPLETING, this::processCompleting))
                 .processor(processTransfersInState(TERMINATING, this::processTerminating))
                 .processor(processTransfersInState(DEPROVISIONING, this::processDeprovisioning))
@@ -200,24 +199,6 @@ public class TransferProcessManagerImpl implements TransferProcessManager {
         monitor.debug("Process " + process.getId() + " is now " + TransferProcessStates.from(process.getState()));
 
         return StatusResult.success(process);
-    }
-
-    private void handleProvisionResult(TransferProcess transferProcess, List<StatusResult<ProvisionResponse>> responses) {
-        if (provisionResponsesHandler.handle(transferProcess, responses)) {
-            update(transferProcess);
-            provisionResponsesHandler.postActions(transferProcess);
-        } else {
-            breakLease(transferProcess);
-        }
-    }
-
-    private void handleDeprovisionResult(TransferProcess transferProcess, List<StatusResult<DeprovisionedResource>> responses) {
-        if (deprovisionResponsesHandler.handle(transferProcess, responses)) {
-            update(transferProcess);
-            deprovisionResponsesHandler.postActions(transferProcess);
-        } else {
-            breakLease(transferProcess);
-        }
     }
 
     /**
@@ -288,7 +269,7 @@ public class TransferProcessManagerImpl implements TransferProcessManager {
 
         return entityRetryProcessFactory.doAsyncProcess(process, () -> provisionManager.provision(resources, policy))
                 .entityRetrieve(transferProcessStore::findById)
-                .onSuccess(this::handleProvisionResult)
+                .onSuccess((transferProcess, responses) -> handleResult(transferProcess, responses, provisionResponsesHandler))
                 .onFailure((t, throwable) -> transitionToProvisioning(t))
                 .onRetryExhausted((t, throwable) -> {
                     if (t.getType() == PROVIDER) {
@@ -297,7 +278,6 @@ public class TransferProcessManagerImpl implements TransferProcessManager {
                         transitionToTerminated(t, format("Error during provisioning: %s", throwable.getMessage()));
                     }
                 })
-                .onDelay(this::breakLease)
                 .execute("Provisioning");
     }
 
@@ -325,10 +305,6 @@ public class TransferProcessManagerImpl implements TransferProcessManager {
      */
     @WithSpan
     private boolean processRequesting(TransferProcess process) {
-        if (process.getType() == PROVIDER) {
-            return false; // should never happen: a provider transfer cannot be REQUESTING
-        }
-
         var originalDestination = process.getDataDestination();
         var dataDestination = Optional.ofNullable(originalDestination.getKeyName())
                 .flatMap(key -> Optional.ofNullable(vault.resolveSecret(key)))
@@ -352,7 +328,6 @@ public class TransferProcessManagerImpl implements TransferProcessManager {
                 .onRetryExhausted(this::transitionToTerminated)
                 .onFailure((t, throwable) -> transitionToRequesting(t))
                 .onFatalError((n, failure) -> transitionToTerminated(n, failure.getFailureDetail()))
-                .onDelay(this::breakLease)
                 .execute(description);
     }
 
@@ -364,23 +339,15 @@ public class TransferProcessManagerImpl implements TransferProcessManager {
      */
     @WithSpan
     private boolean processStarting(TransferProcess process) {
-        if (CONSUMER == process.getType()) {
-            // should never happen: a consumer transfer cannot be STARTING
-            return false;
-        }
-
-        var contentAddress = process.getContentDataAddress();
-
         var policy = policyArchive.findPolicyForContract(process.getContractId());
 
         var description = "Initiate data flow";
 
-        return entityRetryProcessFactory.doSyncProcess(process, () -> dataFlowManager.initiate(process.getDataRequest(), contentAddress, policy))
+        return entityRetryProcessFactory.doSyncProcess(process, () -> dataFlowManager.initiate(process, policy))
                 .onSuccess((p, dataFlowResponse) -> sendTransferStartMessage(p, dataFlowResponse, policy))
                 .onFatalError((p, failure) -> transitionToTerminating(p, failure.getFailureDetail()))
                 .onFailure((t, failure) -> transitionToStarting(t))
                 .onRetryExhausted((p, failure) -> transitionToTerminating(p, failure.getFailureDetail()))
-                .onDelay(this::breakLease)
                 .execute(description);
     }
 
@@ -402,7 +369,6 @@ public class TransferProcessManagerImpl implements TransferProcessManager {
                 .onFailure((t, throwable) -> transitionToStarting(t))
                 .onFatalError((n, failure) -> transitionToTerminated(n, failure.getFailureDetail()))
                 .onRetryExhausted((t, throwable) -> transitionToTerminating(t, throwable.getMessage(), throwable))
-                .onDelay(this::breakLease)
                 .execute(description);
     }
 
@@ -415,13 +381,7 @@ public class TransferProcessManagerImpl implements TransferProcessManager {
      */
     @WithSpan
     private boolean processStarted(TransferProcess transferProcess) {
-        if (transferProcess.getType() != CONSUMER) {
-            breakLease(transferProcess);
-            return false;
-        }
-
         return entityRetryProcessFactory.doSimpleProcess(transferProcess, () -> checkCompletion(transferProcess))
-                .onDelay(this::breakLease)
                 .execute("Check completion");
     }
 
@@ -438,7 +398,6 @@ public class TransferProcessManagerImpl implements TransferProcessManager {
                 return true;
             } else {
                 monitor.debug(format("Transfer process %s not COMPLETED yet. The process will stay in STARTED.", transferProcess.getId()));
-                breakLease(transferProcess);
                 return false;
             }
         }
@@ -455,7 +414,7 @@ public class TransferProcessManagerImpl implements TransferProcessManager {
         var message = TransferCompletionMessage.Builder.newInstance()
                 .protocol(process.getProtocol())
                 .counterPartyAddress(process.getConnectorAddress())
-                .processId(process.getId())
+                .processId(process.getCorrelationId())
                 .policy(policyArchive.findPolicyForContract(process.getContractId()))
                 .build();
 
@@ -466,7 +425,6 @@ public class TransferProcessManagerImpl implements TransferProcessManager {
                 .onFailure((t, throwable) -> transitionToCompleting(t))
                 .onFatalError((n, failure) -> transitionToTerminated(n, failure.getFailureDetail()))
                 .onRetryExhausted((t, throwable) -> transitionToTerminating(t, throwable.getMessage(), throwable))
-                .onDelay(this::breakLease)
                 .execute(description);
     }
 
@@ -487,7 +445,7 @@ public class TransferProcessManagerImpl implements TransferProcessManager {
         var message = TransferTerminationMessage.Builder.newInstance()
                 .counterPartyAddress(process.getConnectorAddress())
                 .protocol(process.getProtocol())
-                .processId(process.getId())
+                .processId(process.getCorrelationId())
                 .policy(policyArchive.findPolicyForContract(process.getContractId()))
                 .build();
 
@@ -498,7 +456,6 @@ public class TransferProcessManagerImpl implements TransferProcessManager {
                 .onFailure((t, throwable) -> transitionToTerminating(t, throwable.getMessage(), throwable))
                 .onFatalError((n, failure) -> transitionToTerminated(n, failure.getFailureDetail()))
                 .onRetryExhausted(this::transitionToTerminated)
-                .onDelay(this::breakLease)
                 .execute(description);
     }
 
@@ -519,18 +476,41 @@ public class TransferProcessManagerImpl implements TransferProcessManager {
 
         return entityRetryProcessFactory.doAsyncProcess(process, () -> provisionManager.deprovision(resourcesToDeprovision, policy))
                 .entityRetrieve(transferProcessStore::findById)
-                .onDelay(this::breakLease)
-                .onSuccess(this::handleDeprovisionResult)
+                .onSuccess((transferProcess, responses) -> handleResult(transferProcess, responses, deprovisionResponsesHandler))
                 .onFailure((t, throwable) -> transitionToDeprovisioning(t))
                 .onRetryExhausted((t, throwable) -> transitionToDeprovisioningError(t, throwable.getMessage()))
                 .execute("deprovisioning");
     }
 
+    private <T> void handleResult(TransferProcess transferProcess, List<StatusResult<T>> responses, ResponsesHandler<StatusResult<T>> handler) {
+        if (handler.handle(transferProcess, responses)) {
+            update(transferProcess);
+            handler.postActions(transferProcess);
+        } else {
+            breakLease(transferProcess);
+        }
+    }
+
+    private Processor processConsumerTransfersInState(TransferProcessStates state, Function<TransferProcess, Boolean> function) {
+        var filter = new Criterion[]{ hasState(state.code()), isNotPending(), Criterion.criterion("type", "=", CONSUMER.name()) };
+        return createProcessor(function, filter);
+    }
+
+    private Processor processProviderTransfersInState(TransferProcessStates state, Function<TransferProcess, Boolean> function) {
+        var filter = new Criterion[]{ hasState(state.code()), isNotPending(), Criterion.criterion("type", "=", PROVIDER.name()) };
+        return createProcessor(function, filter);
+    }
+
     private Processor processTransfersInState(TransferProcessStates state, Function<TransferProcess, Boolean> function) {
         var filter = new Criterion[]{ hasState(state.code()), isNotPending() };
+        return createProcessor(function, filter);
+    }
+
+    private ProcessorImpl<TransferProcess> createProcessor(Function<TransferProcess, Boolean> function, Criterion[] filter) {
         return ProcessorImpl.Builder.newInstance(() -> transferProcessStore.nextNotLeased(batchSize, filter))
                 .process(telemetry.contextPropagationMiddleware(function))
                 .guard(pendingGuard, this::setPending)
+                .onNotProcessed(this::breakLease)
                 .build();
     }
 

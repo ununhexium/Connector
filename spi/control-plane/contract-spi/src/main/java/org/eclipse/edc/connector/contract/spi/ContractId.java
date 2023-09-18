@@ -23,10 +23,13 @@ import java.util.UUID;
 import static java.lang.String.format;
 
 /**
- * Handles contract ID generation for contract offers and agreements originating in an EDC runtime.
+ * Handles contract ID generation for contract offers and agreement originating in an EDC runtime.
  * Ids are architected to allow the contract definition which generated the contract to be de-referenced.
  * The id format follows the following scheme: <code>[definition-id]:[asset-id]:[UUID]</code>
+ *
+ * @deprecated please use {@link ContractOfferId}.
  */
+@Deprecated(since = "0.2.1", forRemoval = true)
 public final class ContractId {
 
     private static final String DELIMITER = ":";
@@ -161,4 +164,5 @@ public final class ContractId {
     public ContractId derive() {
         return create(definitionId, assetId);
     }
+
 }

@@ -163,7 +163,7 @@ public class EndToEndTransferParticipant extends Participant {
                 .when()
                 .post("/v2/dataplanes")
                 .then()
-                .statusCode(204);
+                .statusCode(200);
     }
 
     public Map<String, String> controlPlaneConfiguration() {
@@ -182,7 +182,6 @@ public class EndToEndTransferParticipant extends Participant {
                 put("edc.vault", resourceAbsolutePath(getName() + "-vault.properties"));
                 put("edc.keystore", resourceAbsolutePath("certs/cert.pfx"));
                 put("edc.keystore.password", "123456");
-                put("ids.webhook.address", protocolEndpoint.getUrl().toString());
                 put("edc.receiver.http.endpoint", backendService + "/api/consumer/dataReference");
                 put("edc.transfer.proxy.token.signer.privatekey.alias", "1");
                 put("edc.transfer.proxy.token.verifier.publickey.alias", "public-key");
@@ -200,7 +199,7 @@ public class EndToEndTransferParticipant extends Participant {
             }
         };
     }
-    
+
     public Map<String, String> controlPlanePostgresConfiguration() {
         var baseConfiguration = controlPlaneConfiguration();
 
@@ -236,6 +235,22 @@ public class EndToEndTransferParticipant extends Participant {
                 put("edc.dataplane.token.validation.endpoint", controlPlaneControl + "/token");
             }
         };
+    }
+
+    public Map<String, String> dataPlanePostgresConfiguration() {
+        var baseConfiguration = dataPlaneConfiguration();
+
+        var postgresConfiguration = new HashMap<String, String>() {
+            {
+                put("edc.datasource.default.url", jdbcUrl());
+                put("edc.datasource.default.user", PostgresConstants.USER);
+                put("edc.datasource.default.password", PostgresConstants.PASSWORD);
+            }
+        };
+
+        baseConfiguration.putAll(postgresConfiguration);
+
+        return baseConfiguration;
     }
 
     @NotNull

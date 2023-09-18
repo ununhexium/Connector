@@ -16,7 +16,7 @@
 package org.eclipse.edc.connector.contract.negotiation;
 
 import org.eclipse.edc.connector.contract.observe.ContractNegotiationObservableImpl;
-import org.eclipse.edc.connector.contract.spi.ContractId;
+import org.eclipse.edc.connector.contract.spi.ContractOfferId;
 import org.eclipse.edc.connector.contract.spi.negotiation.ContractNegotiationPendingGuard;
 import org.eclipse.edc.connector.contract.spi.negotiation.observe.ContractNegotiationListener;
 import org.eclipse.edc.connector.contract.spi.negotiation.store.ContractNegotiationStore;
@@ -58,6 +58,7 @@ import static java.util.concurrent.CompletableFuture.completedFuture;
 import static java.util.concurrent.CompletableFuture.failedFuture;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
+import static org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationStates.ACCEPTED;
 import static org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationStates.AGREED;
 import static org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationStates.AGREEING;
 import static org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationStates.FINALIZED;
@@ -130,6 +131,20 @@ class ProviderContractNegotiationManagerImplTest {
     void requested_shouldTransitionToAgreeing() {
         var negotiation = contractNegotiationBuilder().state(REQUESTED.code()).build();
         when(store.nextNotLeased(anyInt(), stateIs(REQUESTED.code()))).thenReturn(List.of(negotiation)).thenReturn(emptyList());
+        when(store.findById(negotiation.getId())).thenReturn(negotiation);
+
+        manager.start();
+
+        await().untilAsserted(() -> {
+            verify(store).save(argThat(p -> p.getState() == AGREEING.code()));
+            verifyNoInteractions(dispatcherRegistry);
+        });
+    }
+
+    @Test
+    void accepted_shouldTransitionToAgreeing() {
+        var negotiation = contractNegotiationBuilder().state(ACCEPTED.code()).build();
+        when(store.nextNotLeased(anyInt(), stateIs(ACCEPTED.code()))).thenReturn(List.of(negotiation)).thenReturn(emptyList());
         when(store.findById(negotiation.getId())).thenReturn(negotiation);
 
         manager.start();
@@ -259,7 +274,7 @@ class ProviderContractNegotiationManagerImplTest {
 
     private ContractAgreement.Builder contractAgreementBuilder() {
         return ContractAgreement.Builder.newInstance()
-                .id(ContractId.create(UUID.randomUUID().toString(), "test-asset-id").toString())
+                .id(ContractOfferId.create(UUID.randomUUID().toString(), "test-asset-id").toString())
                 .providerId("any")
                 .consumerId("any")
                 .assetId("default")
@@ -268,7 +283,7 @@ class ProviderContractNegotiationManagerImplTest {
 
     private ContractOffer contractOffer() {
         return ContractOffer.Builder.newInstance()
-                .id(ContractId.create("1", "test-asset-id").toString())
+                .id(ContractOfferId.create("1", "test-asset-id").toString())
                 .policy(Policy.Builder.newInstance().build())
                 .assetId("assetId")
                 .build();
