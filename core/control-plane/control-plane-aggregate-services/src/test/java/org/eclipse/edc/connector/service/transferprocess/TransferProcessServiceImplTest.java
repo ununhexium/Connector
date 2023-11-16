@@ -25,18 +25,18 @@ import org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates;
 import org.eclipse.edc.connector.transfer.spi.types.TransferRequest;
 import org.eclipse.edc.connector.transfer.spi.types.command.DeprovisionRequest;
 import org.eclipse.edc.connector.transfer.spi.types.command.TerminateTransferCommand;
-import org.eclipse.edc.service.spi.result.ServiceFailure;
-import org.eclipse.edc.service.spi.result.ServiceResult;
 import org.eclipse.edc.spi.command.CommandHandlerRegistry;
 import org.eclipse.edc.spi.command.CommandResult;
-import org.eclipse.edc.spi.dataaddress.DataAddressValidator;
 import org.eclipse.edc.spi.query.Criterion;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.eclipse.edc.spi.response.StatusResult;
-import org.eclipse.edc.spi.result.Result;
+import org.eclipse.edc.spi.result.ServiceFailure;
+import org.eclipse.edc.spi.result.ServiceResult;
 import org.eclipse.edc.spi.types.domain.DataAddress;
 import org.eclipse.edc.transaction.spi.NoopTransactionContext;
 import org.eclipse.edc.transaction.spi.TransactionContext;
+import org.eclipse.edc.validator.spi.DataAddressValidatorRegistry;
+import org.eclipse.edc.validator.spi.ValidationResult;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -50,9 +50,10 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.eclipse.edc.junit.assertions.AbstractResultAssert.assertThat;
-import static org.eclipse.edc.service.spi.result.ServiceFailure.Reason.BAD_REQUEST;
-import static org.eclipse.edc.service.spi.result.ServiceFailure.Reason.NOT_FOUND;
 import static org.eclipse.edc.spi.query.Criterion.criterion;
+import static org.eclipse.edc.spi.result.ServiceFailure.Reason.BAD_REQUEST;
+import static org.eclipse.edc.spi.result.ServiceFailure.Reason.NOT_FOUND;
+import static org.eclipse.edc.validator.spi.Violation.violation;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.isA;
@@ -71,7 +72,7 @@ class TransferProcessServiceImplTest {
     private final TransferProcessStore store = mock();
     private final TransferProcessManager manager = mock();
     private final TransactionContext transactionContext = spy(new NoopTransactionContext());
-    private final DataAddressValidator dataAddressValidator = mock();
+    private final DataAddressValidatorRegistry dataAddressValidator = mock();
     private final CommandHandlerRegistry commandHandlerRegistry = mock();
 
     private final TransferProcessService service = new TransferProcessServiceImpl(store, manager, transactionContext,
@@ -130,7 +131,7 @@ class TransferProcessServiceImplTest {
     void initiateTransfer() {
         var transferRequest = transferRequest();
         var transferProcess = transferProcess();
-        when(dataAddressValidator.validate(any())).thenReturn(Result.success());
+        when(dataAddressValidator.validateDestination(any())).thenReturn(ValidationResult.success());
         when(manager.initiateConsumerRequest(transferRequest)).thenReturn(StatusResult.success(transferProcess));
 
         var result = service.initiateTransfer(transferRequest);
@@ -142,7 +143,7 @@ class TransferProcessServiceImplTest {
 
     @Test
     void initiateTransfer_consumer_invalidDestination_shouldNotInitiateTransfer() {
-        when(dataAddressValidator.validate(any())).thenReturn(Result.failure("invalid data address"));
+        when(dataAddressValidator.validateDestination(any())).thenReturn(ValidationResult.failure(violation("invalid data address", "path")));
 
         var result = service.initiateTransfer(transferRequest());
 

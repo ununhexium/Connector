@@ -22,6 +22,8 @@ import org.eclipse.edc.connector.core.event.EventRouterImpl;
 import org.eclipse.edc.connector.core.health.HealthCheckServiceConfiguration;
 import org.eclipse.edc.connector.core.health.HealthCheckServiceImpl;
 import org.eclipse.edc.connector.core.security.DefaultPrivateKeyParseFunction;
+import org.eclipse.edc.connector.core.security.KeyPairFactoryImpl;
+import org.eclipse.edc.connector.core.validator.DataAddressValidatorRegistryImpl;
 import org.eclipse.edc.connector.core.validator.JsonObjectValidatorRegistryImpl;
 import org.eclipse.edc.core.transform.TypeTransformerRegistryImpl;
 import org.eclipse.edc.policy.engine.PolicyEngineImpl;
@@ -39,7 +41,9 @@ import org.eclipse.edc.spi.agent.ParticipantAgentService;
 import org.eclipse.edc.spi.command.CommandHandlerRegistry;
 import org.eclipse.edc.spi.event.EventRouter;
 import org.eclipse.edc.spi.message.RemoteMessageDispatcherRegistry;
+import org.eclipse.edc.spi.security.KeyPairFactory;
 import org.eclipse.edc.spi.security.PrivateKeyResolver;
+import org.eclipse.edc.spi.security.Vault;
 import org.eclipse.edc.spi.system.ExecutorInstrumentation;
 import org.eclipse.edc.spi.system.Hostname;
 import org.eclipse.edc.spi.system.ServiceExtension;
@@ -47,6 +51,7 @@ import org.eclipse.edc.spi.system.ServiceExtensionContext;
 import org.eclipse.edc.spi.system.health.HealthCheckService;
 import org.eclipse.edc.spi.types.TypeManager;
 import org.eclipse.edc.transform.spi.TypeTransformerRegistry;
+import org.eclipse.edc.validator.spi.DataAddressValidatorRegistry;
 import org.eclipse.edc.validator.spi.JsonObjectValidatorRegistry;
 
 import java.security.PrivateKey;
@@ -84,6 +89,9 @@ public class CoreServicesExtension implements ServiceExtension {
 
     @Inject
     private PrivateKeyResolver privateKeyResolver;
+
+    @Inject
+    private Vault vault;
 
     @Inject
     private EventExecutorServiceContainer eventExecutorServiceContainer;
@@ -168,6 +176,11 @@ public class CoreServicesExtension implements ServiceExtension {
     }
 
     @Provider
+    public KeyPairFactory keyPairFactory() {
+        return new KeyPairFactoryImpl(privateKeyResolver, vault);
+    }
+
+    @Provider
     public HealthCheckService healthCheckService() {
         return healthCheckService;
     }
@@ -180,6 +193,11 @@ public class CoreServicesExtension implements ServiceExtension {
     @Provider
     public JsonObjectValidatorRegistry jsonObjectValidator() {
         return new JsonObjectValidatorRegistryImpl();
+    }
+
+    @Provider
+    public DataAddressValidatorRegistry dataAddressValidatorRegistry(ServiceExtensionContext context) {
+        return new DataAddressValidatorRegistryImpl(context.getMonitor());
     }
 
     private HealthCheckServiceConfiguration getHealthCheckConfig(ServiceExtensionContext context) {

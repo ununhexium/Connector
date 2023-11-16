@@ -33,8 +33,10 @@ import org.eclipse.edc.connector.api.management.contractnegotiation.model.Negoti
 
 import java.util.List;
 
+import static io.swagger.v3.oas.annotations.media.Schema.RequiredMode.REQUIRED;
 import static org.eclipse.edc.connector.contract.spi.types.command.TerminateNegotiationCommand.TERMINATE_NEGOTIATION_TYPE;
 import static org.eclipse.edc.connector.contract.spi.types.negotiation.ContractRequest.CONTRACT_REQUEST_TYPE;
+import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.CONTEXT;
 import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.ID;
 import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.TYPE;
 
@@ -117,69 +119,43 @@ public interface ContractNegotiationApi {
     )
     void terminateNegotiation(String id, JsonObject terminateNegotiation);
 
-    @Operation(description = "Requests aborting the contract negotiation. Due to the asynchronous nature of contract negotiations, a successful " +
-            "response only indicates that the request was successfully received. Clients must poll the /{id}/state endpoint to track the state.",
-            responses = {
-                    @ApiResponse(responseCode = "200", description = "Request to cancel the Contract negotiation was successfully received",
-                            links = @Link(name = "poll-state", operationId = "getNegotiationState")),
-                    @ApiResponse(responseCode = "400", description = "Request was malformed, e.g. id was null",
-                            content = @Content(array = @ArraySchema(schema = @Schema(implementation = ApiCoreSchema.ApiErrorDetailSchema.class)))),
-                    @ApiResponse(responseCode = "404", description = "A contract negotiation with the given ID does not exist",
-                            content = @Content(array = @ArraySchema(schema = @Schema(implementation = ApiCoreSchema.ApiErrorDetailSchema.class))))
-            })
-    @Deprecated(since = "0.1.3")
-    void cancelNegotiation(String id);
-
-    @Operation(description = "Requests cancelling the contract negotiation. Due to the asynchronous nature of contract negotiations, a successful " +
-            "response only indicates that the request was successfully received. Clients must poll the /{id}/state endpoint to track the state.",
-            responses = {
-                    @ApiResponse(responseCode = "200", description = "Request to decline the Contract negotiation was successfully received",
-                            links = @Link(name = "poll-state", operationId = "getNegotiationState")),
-                    @ApiResponse(responseCode = "400", description = "Request was malformed, e.g. id was null",
-                            content = @Content(array = @ArraySchema(schema = @Schema(implementation = ApiCoreSchema.ApiErrorDetailSchema.class)))),
-                    @ApiResponse(responseCode = "404", description = "A contract negotiation with the given ID does not exist",
-                            content = @Content(array = @ArraySchema(schema = @Schema(implementation = ApiCoreSchema.ApiErrorDetailSchema.class))))
-            }
-    )
-    @Deprecated(since = "0.1.3")
-    void declineNegotiation(String id);
-
     @Schema(name = "ContractRequest", example = ContractRequestSchema.CONTRACT_REQUEST_EXAMPLE)
     record ContractRequestSchema(
+            @Schema(name = CONTEXT, requiredMode = REQUIRED)
+            Object context,
             @Schema(name = TYPE, example = CONTRACT_REQUEST_TYPE)
             String type,
+            @Schema(requiredMode = REQUIRED)
             String protocol,
+            @Deprecated(since = "0.3.2")
+            @Schema(deprecated = true, description = "please use counterPartyAddress instead")
             String connectorAddress,
-            @Deprecated(since = "0.1.3")
-            @Schema(deprecated = true, description = "please use providerId instead")
-            String connectorId,
-            @Deprecated(since = "0.1.3")
-            @Schema(deprecated = true, description = "this field is not used anymore")
-            String consumerId,
+            @Schema(requiredMode = REQUIRED)
+            String counterPartyAddress,
+            @Schema(requiredMode = REQUIRED)
             String providerId,
+            @Deprecated(since = "0.3.2")
+            @Schema(deprecated = true, description = "please use policy instead of offer")
             ContractOfferDescriptionSchema offer,
+            ManagementApiSchema.PolicySchema policy,
             List<ManagementApiSchema.CallbackAddressSchema> callbackAddresses) {
 
         // policy example took from https://w3c.github.io/odrl/bp/
         public static final String CONTRACT_REQUEST_EXAMPLE = """
                 {
-                    "@context": { "edc": "https://w3id.org/edc/v0.0.1/ns/" },
+                    "@context": { "@vocab": "https://w3id.org/edc/v0.0.1/ns/" },
                     "@type": "https://w3id.org/edc/v0.0.1/ns/ContractRequest",
-                    "connectorAddress": "http://provider-address",
+                    "counterPartyAddress": "http://provider-address",
                     "protocol": "dataspace-protocol-http",
                     "providerId": "provider-id",
-                    "offer": {
-                        "offerId": "offer-id",
-                        "assetId": "asset-id",
-                        "policy": {
-                            "@context": "http://www.w3.org/ns/odrl.jsonld",
-                            "@type": "Set",
-                            "@id": "offer-id",
-                            "permission": [{
-                                "target": "asset-id",
-                                "action": "display"
-                            }]
-                        }
+                    "policy": {
+                        "@context": "http://www.w3.org/ns/odrl.jsonld",
+                        "@type": "Set",
+                        "@id": "policy-id",
+                        "permission": [],
+                        "prohibition": [],
+                        "obligation": [],
+                        "target": "assetId"
                     },
                     "callbackAddresses": [{
                         "transactional": false,
@@ -200,7 +176,7 @@ public interface ContractNegotiationApi {
     ) {
         public static final String NEGOTIATION_STATE_EXAMPLE = """
                 {
-                    "@context": { "edc": "https://w3id.org/edc/v0.0.1/ns/" },
+                    "@context": { "@vocab": "https://w3id.org/edc/v0.0.1/ns/" },
                     "@type": "https://w3id.org/edc/v0.0.1/ns/NegotiationState",
                     "state": "REQUESTED"
                 }
@@ -228,7 +204,7 @@ public interface ContractNegotiationApi {
     ) {
         public static final String TERMINATE_NEGOTIATION_EXAMPLE = """
                 {
-                    "@context": { "edc": "https://w3id.org/edc/v0.0.1/ns/" },
+                    "@context": { "@vocab": "https://w3id.org/edc/v0.0.1/ns/" },
                     "@type": "https://w3id.org/edc/v0.0.1/ns/TerminateNegotiation",
                     "@id": "negotiation-id",
                     "reason": "a reason to terminate"

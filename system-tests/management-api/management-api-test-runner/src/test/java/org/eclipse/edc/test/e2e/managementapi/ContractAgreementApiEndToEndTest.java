@@ -15,12 +15,12 @@
 package org.eclipse.edc.test.e2e.managementapi;
 
 import org.eclipse.edc.connector.contract.spi.negotiation.store.ContractNegotiationStore;
-import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreement;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiation;
-import org.eclipse.edc.connector.contract.spi.types.offer.ContractOffer;
 import org.eclipse.edc.junit.annotations.EndToEndTest;
 import org.eclipse.edc.policy.model.Policy;
+import org.eclipse.edc.spi.types.domain.agreement.ContractAgreement;
 import org.eclipse.edc.spi.types.domain.callback.CallbackAddress;
+import org.eclipse.edc.spi.types.domain.offer.ContractOffer;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -51,8 +51,8 @@ public class ContractAgreementApiEndToEndTest extends BaseManagementApiEndToEndT
                 .body("size()", is(2))
                 .extract().jsonPath();
 
-        assertThat(jsonPath.getString("[0]['edc:assetId']")).isNotNull();
-        assertThat(jsonPath.getString("[1]['edc:assetId']")).isNotNull();
+        assertThat(jsonPath.getString("[0].assetId")).isNotNull();
+        assertThat(jsonPath.getString("[1].assetId")).isNotNull();
         assertThat(jsonPath.getString("[0].@id")).isIn("cn1", "cn2");
         assertThat(jsonPath.getString("[1].@id")).isIn("cn1", "cn2");
     }
@@ -71,7 +71,7 @@ public class ContractAgreementApiEndToEndTest extends BaseManagementApiEndToEndT
                 .extract().jsonPath();
 
         assertThat(json.getString("@id")).isEqualTo("cn1");
-        assertThat(json.getString("'edc:assetId'")).isNotNull();
+        assertThat(json.getString("assetId")).isNotNull();
     }
 
     @Test

@@ -31,10 +31,12 @@ dependencies {
     implementation(project(":core:common:state-machine"))
     implementation(project(":core:common:transform-core"))
     implementation(project(":core:common:util"))
+    implementation(project(":core:common:validator-core"))
 
     implementation(libs.dnsOverHttps)
     implementation(libs.bouncyCastle.bcpkixJdk18on)
-
+    implementation(libs.nimbus.jwt)
+    
     testImplementation(project(":core:common:junit"))
     testImplementation(libs.awaitility)
     testImplementation(libs.junit.jupiter.api)

@@ -28,9 +28,11 @@ import org.eclipse.edc.api.model.ApiCoreSchema;
 
 import java.util.List;
 
+import static io.swagger.v3.oas.annotations.media.Schema.RequiredMode.REQUIRED;
 import static org.eclipse.edc.connector.api.management.contractdefinition.ContractDefinitionApi.ContractDefinitionInputSchema.CONTRACT_DEFINITION_INPUT_EXAMPLE;
 import static org.eclipse.edc.connector.api.management.contractdefinition.ContractDefinitionApi.ContractDefinitionOutputSchema.CONTRACT_DEFINITION_OUTPUT_EXAMPLE;
 import static org.eclipse.edc.connector.contract.spi.types.offer.ContractDefinition.CONTRACT_DEFINITION_TYPE;
+import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.CONTEXT;
 import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.ID;
 import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.TYPE;
 
@@ -99,17 +101,22 @@ public interface ContractDefinitionApi {
 
     @Schema(name = "ContractDefinitionInput", example = CONTRACT_DEFINITION_INPUT_EXAMPLE)
     record ContractDefinitionInputSchema(
+            @Schema(name = CONTEXT, requiredMode = REQUIRED)
+            Object context,
             @Schema(name = ID)
             String id,
             @Schema(name = TYPE, example = CONTRACT_DEFINITION_TYPE)
             String type,
+            @Schema(requiredMode = REQUIRED)
             String accessPolicyId,
+            @Schema(requiredMode = REQUIRED)
             String contractPolicyId,
+            @Schema(requiredMode = REQUIRED)
             List<ApiCoreSchema.CriterionSchema> assetsSelector) {
 
         public static final String CONTRACT_DEFINITION_INPUT_EXAMPLE = """
                 {
-                    "@context": { "edc": "https://w3id.org/edc/v0.0.1/ns/" },
+                    "@context": { "@vocab": "https://w3id.org/edc/v0.0.1/ns/" },
                     "@id": "definition-id",
                     "accessPolicyId": "asset-policy-id",
                     "contractPolicyId": "contract-policy-id",
@@ -131,12 +138,12 @@ public interface ContractDefinitionApi {
 
         public static final String CONTRACT_DEFINITION_OUTPUT_EXAMPLE = """
                 {
-                    "@context": { "edc": "https://w3id.org/edc/v0.0.1/ns/" },
+                    "@context": { "@vocab": "https://w3id.org/edc/v0.0.1/ns/" },
                     "@id": "definition-id",
-                    "edc:accessPolicyId": "asset-policy-id",
-                    "edc:contractPolicyId": "contract-policy-id",
-                    "edc:assetsSelector": [],
-                    "edc:createdAt": 1688465655
+                    "accessPolicyId": "asset-policy-id",
+                    "contractPolicyId": "contract-policy-id",
+                    "assetsSelector": [],
+                    "createdAt": 1688465655
                 }
                 """;
     }

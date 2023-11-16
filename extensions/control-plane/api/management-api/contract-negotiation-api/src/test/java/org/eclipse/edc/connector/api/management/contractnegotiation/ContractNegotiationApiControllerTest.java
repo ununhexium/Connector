@@ -21,18 +21,18 @@ import jakarta.json.Json;
 import jakarta.json.JsonObject;
 import org.eclipse.edc.api.model.IdResponse;
 import org.eclipse.edc.connector.api.management.contractnegotiation.model.NegotiationState;
-import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreement;
 import org.eclipse.edc.connector.contract.spi.types.command.TerminateNegotiationCommand;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiation;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractRequest;
-import org.eclipse.edc.connector.contract.spi.types.offer.ContractOffer;
 import org.eclipse.edc.connector.spi.contractnegotiation.ContractNegotiationService;
 import org.eclipse.edc.junit.annotations.ApiTest;
 import org.eclipse.edc.policy.model.Policy;
-import org.eclipse.edc.service.spi.result.ServiceResult;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.eclipse.edc.spi.result.Result;
+import org.eclipse.edc.spi.result.ServiceResult;
+import org.eclipse.edc.spi.types.domain.agreement.ContractAgreement;
 import org.eclipse.edc.spi.types.domain.callback.CallbackAddress;
+import org.eclipse.edc.spi.types.domain.offer.ContractOffer;
 import org.eclipse.edc.transform.spi.TypeTransformerRegistry;
 import org.eclipse.edc.validator.spi.JsonObjectValidatorRegistry;
 import org.eclipse.edc.validator.spi.ValidationResult;
@@ -51,6 +51,8 @@ import static org.eclipse.edc.connector.api.management.contractnegotiation.model
 import static org.eclipse.edc.connector.contract.spi.types.command.TerminateNegotiationCommand.TERMINATE_NEGOTIATION_TYPE;
 import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.ID;
 import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.TYPE;
+import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.VOCAB;
+import static org.eclipse.edc.spi.CoreConstants.EDC_NAMESPACE;
 import static org.eclipse.edc.spi.query.QuerySpec.EDC_QUERY_SPEC_TYPE;
 import static org.eclipse.edc.validator.spi.Violation.violation;
 import static org.hamcrest.Matchers.is;
@@ -255,8 +257,9 @@ class ContractNegotiationApiControllerTest extends RestControllerTestBase {
     @Test
     void getSingleContractNegotiationState() {
         var compacted = createObjectBuilder()
+                .add(VOCAB, EDC_NAMESPACE)
                 .add(TYPE, NEGOTIATION_STATE_TYPE)
-                .add("edc:state", "REQUESTED")
+                .add("state", "REQUESTED")
                 .build();
 
         when(service.getState(eq("cn1"))).thenReturn("REQUESTED");
@@ -268,7 +271,7 @@ class ContractNegotiationApiControllerTest extends RestControllerTestBase {
                 .then()
                 .statusCode(200)
                 .contentType(JSON)
-                .body("'edc:state'", is("REQUESTED"));
+                .body("state", is("REQUESTED"));
         verify(service).getState(eq("cn1"));
         verify(transformerRegistry).transform(any(NegotiationState.class), eq(JsonObject.class));
         verifyNoMoreInteractions(service, transformerRegistry);
@@ -324,7 +327,7 @@ class ContractNegotiationApiControllerTest extends RestControllerTestBase {
     }
 
     @Test
-    void initiate() {
+    void initiate_with_contractOffer() {
         when(validatorRegistry.validate(any(), any())).thenReturn(ValidationResult.success());
         var contractNegotiation = createContractNegotiation("cn1");
         var responseBody = createObjectBuilder().add(TYPE, ID_RESPONSE_TYPE).add(ID, contractNegotiation.getId()).build();
@@ -339,6 +342,39 @@ class ContractNegotiationApiControllerTest extends RestControllerTestBase {
                                 .assetId(randomUUID().toString())
                                 .policy(Policy.Builder.newInstance().build())
                                 .build())
+                        .build()));
+
+        when(transformerRegistry.transform(any(), eq(JsonObject.class))).thenReturn(Result.success(responseBody));
+        when(service.initiateNegotiation(any(ContractRequest.class))).thenReturn(contractNegotiation);
+
+        when(transformerRegistry.transform(any(IdResponse.class), eq(JsonObject.class))).thenReturn(Result.success(responseBody));
+
+        baseRequest()
+                .contentType(JSON)
+                .body(createObjectBuilder().build())
+                .post()
+                .then()
+                .statusCode(200)
+                .body(ID, is(contractNegotiation.getId()));
+
+        verify(service).initiateNegotiation(any());
+        verify(transformerRegistry).transform(any(JsonObject.class), eq(ContractRequest.class));
+        verify(transformerRegistry).transform(any(IdResponse.class), eq(JsonObject.class));
+        verifyNoMoreInteractions(transformerRegistry, service);
+    }
+
+    @Test
+    void initiate_with_policy() {
+        when(validatorRegistry.validate(any(), any())).thenReturn(ValidationResult.success());
+        var contractNegotiation = createContractNegotiation("cn1");
+        var responseBody = createObjectBuilder().add(TYPE, ID_RESPONSE_TYPE).add(ID, contractNegotiation.getId()).build();
+
+        when(transformerRegistry.transform(any(JsonObject.class), eq(ContractRequest.class))).thenReturn(Result.success(
+                ContractRequest.Builder.newInstance()
+                        .protocol("test-protocol")
+                        .providerId("test-provider-id")
+                        .counterPartyAddress("test-cb")
+                        .policy(Policy.Builder.newInstance().build())
                         .build()));
 
         when(transformerRegistry.transform(any(), eq(JsonObject.class))).thenReturn(Result.success(responseBody));
@@ -449,94 +485,6 @@ class ContractNegotiationApiControllerTest extends RestControllerTestBase {
 
         verify(validatorRegistry).validate(eq(TERMINATE_NEGOTIATION_TYPE), any());
         verifyNoInteractions(transformerRegistry, service);
-    }
-
-    @Test
-    void cancel() {
-        when(service.terminate(any())).thenReturn(ServiceResult.success());
-
-        baseRequest()
-                .contentType(JSON)
-                .post("/cn1/cancel")
-                .then()
-                .statusCode(204);
-    }
-
-    @Test
-    void cancel_failed() {
-        when(service.terminate(any())).thenReturn(ServiceResult.badRequest("test-failure"));
-
-        baseRequest()
-                .contentType(JSON)
-                .post("/cn1/cancel")
-                .then()
-                .statusCode(400);
-    }
-
-    @Test
-    void cancel_notFound() {
-        when(service.terminate(any())).thenReturn(ServiceResult.notFound("test-failure"));
-
-        baseRequest()
-                .contentType(JSON)
-                .post("/cn1/cancel")
-                .then()
-                .statusCode(404);
-    }
-
-    @Test
-    void cancel_conflict() {
-        when(service.terminate(any())).thenReturn(ServiceResult.conflict("test-failure"));
-
-        baseRequest()
-                .contentType(JSON)
-                .post("/cn1/cancel")
-                .then()
-                .statusCode(409);
-    }
-
-    @Test
-    void decline() {
-        when(service.terminate(any())).thenReturn(ServiceResult.success());
-
-        baseRequest()
-                .contentType(JSON)
-                .post("/cn1/decline")
-                .then()
-                .statusCode(204);
-    }
-
-    @Test
-    void decline_failed() {
-        when(service.terminate(any())).thenReturn(ServiceResult.badRequest("test-failure"));
-
-        baseRequest()
-                .contentType(JSON)
-                .post("/cn1/decline")
-                .then()
-                .statusCode(400);
-    }
-
-    @Test
-    void decline_notFound() {
-        when(service.terminate(any())).thenReturn(ServiceResult.notFound("test-failure"));
-
-        baseRequest()
-                .contentType(JSON)
-                .post("/cn1/decline")
-                .then()
-                .statusCode(404);
-    }
-
-    @Test
-    void decline_conflict() {
-        when(service.terminate(any())).thenReturn(ServiceResult.conflict("test-failure"));
-
-        baseRequest()
-                .contentType(JSON)
-                .post("/cn1/decline")
-                .then()
-                .statusCode(409);
     }
 
     @Override

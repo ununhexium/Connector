@@ -26,7 +26,9 @@ import jakarta.ws.rs.container.AsyncResponse;
 import jakarta.ws.rs.container.Suspended;
 import org.eclipse.edc.api.model.ApiCoreSchema;
 
+import static io.swagger.v3.oas.annotations.media.Schema.RequiredMode.REQUIRED;
 import static org.eclipse.edc.catalog.spi.CatalogRequest.CATALOG_REQUEST_TYPE;
+import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.CONTEXT;
 import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.TYPE;
 
 @OpenAPIDefinition
@@ -57,18 +59,22 @@ public interface CatalogApi {
 
     @Schema(name = "CatalogRequest", example = CatalogRequestSchema.CATALOG_REQUEST_EXAMPLE)
     record CatalogRequestSchema(
+            @Schema(name = CONTEXT, requiredMode = REQUIRED)
+            Object context,
             @Schema(name = TYPE, example = CATALOG_REQUEST_TYPE)
             String type,
             @Deprecated(since = "0.2.0")
             @Schema(deprecated = true, description = "please use counterPartyAddress instead")
             String providerUrl,
+            @Schema(requiredMode = REQUIRED)
             String counterPartyAddress,
+            @Schema(requiredMode = REQUIRED)
             String protocol,
             ApiCoreSchema.QuerySpecSchema querySpec) {
 
         public static final String CATALOG_REQUEST_EXAMPLE = """
                 {
-                    "@context": { "edc": "https://w3id.org/edc/v0.0.1/ns/" },
+                    "@context": { "@vocab": "https://w3id.org/edc/v0.0.1/ns/" },
                     "@type": "CatalogRequest",
                     "counterPartyAddress": "http://provider-address",
                     "protocol": "dataspace-protocol-http",
@@ -93,7 +99,7 @@ public interface CatalogApi {
 
         public static final String DATASET_REQUEST_EXAMPLE = """
                 {
-                    "@context": { "edc": "https://w3id.org/edc/v0.0.1/ns/" },
+                    "@context": { "@vocab": "https://w3id.org/edc/v0.0.1/ns/" },
                     "@type": "DatasetRequest",
                     "@id": "dataset-id",
                     "counterPartyAddress": "http://counter-party-address",
@@ -152,8 +158,8 @@ public interface CatalogApi {
                                 "dcat:accessService": "5e839777-d93e-4785-8972-1005f51cf367"
                             }
                         ],
-                        "edc:description": "description",
-                        "edc:id": "bcca61be-e82e-4da6-bfec-9716a56cef35"
+                        "description": "description",
+                        "id": "bcca61be-e82e-4da6-bfec-9716a56cef35"
                     },
                     "dcat:service": {
                         "@id": "5e839777-d93e-4785-8972-1005f51cf367",
@@ -161,8 +167,9 @@ public interface CatalogApi {
                         "dct:terms": "connector",
                         "dct:endpointUrl": "http://localhost:16806/protocol"
                     },
-                    "edc:participantId": "urn:connector:provider",
+                    "participantId": "urn:connector:provider",
                     "@context": {
+                        "@vocab": "https://w3id.org/edc/v0.0.1/ns/",
                         "dct": "https://purl.org/dc/terms/",
                         "edc": "https://w3id.org/edc/v0.0.1/ns/",
                         "dcat": "https://www.w3.org/ns/dcat/",
@@ -220,9 +227,10 @@ public interface CatalogApi {
                             "dcat:accessService": "5e839777-d93e-4785-8972-1005f51cf367"
                         }
                     ],
-                    "edc:description": "description",
-                    "edc:id": "bcca61be-e82e-4da6-bfec-9716a56cef35",
+                    "description": "description",
+                    "id": "bcca61be-e82e-4da6-bfec-9716a56cef35",
                     "@context": {
+                        "@vocab": "https://w3id.org/edc/v0.0.1/ns/",
                         "dct": "https://purl.org/dc/terms/",
                         "edc": "https://w3id.org/edc/v0.0.1/ns/",
                         "dcat": "https://www.w3.org/ns/dcat/",

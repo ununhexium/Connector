@@ -20,8 +20,8 @@ import org.eclipse.edc.connector.transfer.spi.types.ProvisionResponse;
 import org.eclipse.edc.connector.transfer.spi.types.TransferProcess;
 import org.eclipse.edc.connector.transfer.spi.types.TransferRequest;
 import org.eclipse.edc.connector.transfer.spi.types.command.TerminateTransferCommand;
-import org.eclipse.edc.service.spi.result.ServiceResult;
 import org.eclipse.edc.spi.query.QuerySpec;
+import org.eclipse.edc.spi.result.ServiceResult;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -57,22 +57,6 @@ public interface TransferProcessService {
      */
     @Nullable
     String getState(String transferProcessId);
-
-    /**
-     * Asynchronously requests termination of the transfer process.
-     * <p>
-     * The return result status only reflects the successful submission of the command.
-     *
-     * @param transferProcessId id of the transferProcess
-     * @param reason reason for the termination
-     * @return a result that is successful if the transfer process was found and is in a state that can be terminated
-     * @deprecated please use {@link #terminate(TerminateTransferCommand)}
-     */
-    @NotNull
-    @Deprecated(since = "0.1.3")
-    default ServiceResult<Void> terminate(String transferProcessId, String reason) {
-        return terminate(new TerminateTransferCommand(transferProcessId, reason));
-    }
 
     /**
      * Asynchronously requests completion of the transfer process.

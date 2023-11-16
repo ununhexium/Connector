@@ -14,11 +14,11 @@
 
 package org.eclipse.edc.connector.dataplane.http;
 
+import org.eclipse.edc.connector.dataplane.http.spi.HttpDataAddress;
 import org.eclipse.edc.connector.dataplane.http.spi.HttpRequestParamsProvider;
 import org.eclipse.edc.connector.dataplane.spi.pipeline.PipelineService;
 import org.eclipse.edc.connector.dataplane.spi.pipeline.StreamResult;
 import org.eclipse.edc.junit.extensions.EdcExtension;
-import org.eclipse.edc.spi.types.domain.HttpDataAddress;
 import org.eclipse.edc.spi.types.domain.transfer.DataFlowRequest;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -58,7 +58,7 @@ public class DataPlaneHttpExtensionTest {
     }
 
     @Test
-    void transferSourceToDestination(PipelineService pipeline) {
+    void transferSourceToDestination(PipelineService pipelineService) {
         var source = HttpDataAddress.Builder.newInstance()
                 .baseUrl("http://localhost:" + SOURCE_PORT)
                 .build();
@@ -74,7 +74,8 @@ public class DataPlaneHttpExtensionTest {
                 .destinationDataAddress(destination)
                 .traceContext(emptyMap())
                 .build();
-        var future = pipeline.transfer(request);
+
+        var future = pipelineService.transfer(request);
 
         assertThat(future).succeedsWithin(10, SECONDS)
                 .matches(StreamResult::succeeded);
@@ -83,7 +84,7 @@ public class DataPlaneHttpExtensionTest {
     }
 
     @Test
-    void transferSourceToDestinationAddHeaders(PipelineService pipeline, HttpRequestParamsProvider paramsProvider) {
+    void transferSourceToDestinationAddHeaders(PipelineService pipelineService, HttpRequestParamsProvider paramsProvider) {
         paramsProvider.registerSourceDecorator((request, address, builder) -> builder.header("customSourceHeader", "customValue"));
         paramsProvider.registerSinkDecorator((request, address, builder) -> builder.header("customSinkHeader", "customValue"));
         var source = HttpDataAddress.Builder.newInstance()
@@ -101,7 +102,8 @@ public class DataPlaneHttpExtensionTest {
                 .destinationDataAddress(destination)
                 .traceContext(emptyMap())
                 .build();
-        var future = pipeline.transfer(request);
+
+        var future = pipelineService.transfer(request);
 
         assertThat(future).succeedsWithin(10, SECONDS)
                 .matches(StreamResult::succeeded);

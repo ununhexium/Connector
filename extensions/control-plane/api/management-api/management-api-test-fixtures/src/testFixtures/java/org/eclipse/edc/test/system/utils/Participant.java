@@ -36,17 +36,16 @@ import java.util.concurrent.atomic.AtomicReference;
 import static io.restassured.RestAssured.given;
 import static io.restassured.http.ContentType.JSON;
 import static jakarta.json.Json.createObjectBuilder;
-import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationStates.FINALIZED;
 import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.CONTEXT;
 import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.ID;
 import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.TYPE;
+import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.VOCAB;
 import static org.eclipse.edc.jsonld.spi.PropertyAndTypeNames.DCAT_DATASET_ATTRIBUTE;
 import static org.eclipse.edc.jsonld.spi.PropertyAndTypeNames.ODRL_POLICY_ATTRIBUTE;
 import static org.eclipse.edc.spi.CoreConstants.EDC_NAMESPACE;
-import static org.eclipse.edc.spi.CoreConstants.EDC_PREFIX;
 
 /**
  * Essentially a wrapper around the management API enabling to test interactions with other participants, eg. catalog, transfer...
@@ -80,7 +79,7 @@ public class Participant {
      */
     public String createAsset(String assetId, Map<String, Object> properties, Map<String, Object> dataAddressProperties) {
         var requestBody = createObjectBuilder()
-                .add(CONTEXT, createObjectBuilder().add(EDC_PREFIX, EDC_NAMESPACE))
+                .add(CONTEXT, createObjectBuilder().add(VOCAB, EDC_NAMESPACE))
                 .add(ID, assetId)
                 .add("properties", createObjectBuilder(properties))
                 .add("dataAddress", createObjectBuilder(dataAddressProperties))
@@ -92,6 +91,7 @@ public class Participant {
                 .when()
                 .post("/v3/assets")
                 .then()
+                .log().ifError()
                 .statusCode(200)
                 .contentType(JSON)
                 .extract().jsonPath().getString(ID);
@@ -105,7 +105,7 @@ public class Participant {
      */
     public String createPolicyDefinition(JsonObject policy) {
         var requestBody = createObjectBuilder()
-                .add(CONTEXT, createObjectBuilder().add(EDC_PREFIX, EDC_NAMESPACE))
+                .add(CONTEXT, createObjectBuilder().add(VOCAB, EDC_NAMESPACE))
                 .add(TYPE, "PolicyDefinitionDto")
                 .add("policy", policy)
                 .build();
@@ -165,7 +165,7 @@ public class Participant {
     public JsonArray getCatalogDatasets(Participant provider) {
         var datasetReference = new AtomicReference<JsonArray>();
         var requestBody = createObjectBuilder()
-                .add(CONTEXT, createObjectBuilder().add(EDC_PREFIX, EDC_NAMESPACE))
+                .add(CONTEXT, createObjectBuilder().add(VOCAB, EDC_NAMESPACE))
                 .add(TYPE, "CatalogRequest")
                 .add("counterPartyAddress", provider.protocolEndpoint.url.toString())
                 .add("protocol", DSP_PROTOCOL)
@@ -205,7 +205,7 @@ public class Participant {
     public JsonObject getDatasetForAsset(Participant provider, String assetId) {
         var datasetReference = new AtomicReference<JsonObject>();
         var requestBody = createObjectBuilder()
-                .add(CONTEXT, createObjectBuilder().add(EDC_PREFIX, EDC_NAMESPACE))
+                .add(CONTEXT, createObjectBuilder().add(VOCAB, EDC_NAMESPACE))
                 .add(TYPE, "DatasetRequest")
                 .add(ID, assetId)
                 .add("counterPartyAddress", provider.protocolEndpoint.url.toString())
@@ -244,10 +244,10 @@ public class Participant {
      */
     public String negotiateContract(Participant provider, String offerId, String assetId, JsonObject policy) {
         var requestBody = createObjectBuilder()
-                .add(CONTEXT, createObjectBuilder().add(EDC_PREFIX, EDC_NAMESPACE))
+                .add(CONTEXT, createObjectBuilder().add(VOCAB, EDC_NAMESPACE))
                 .add(TYPE, "ContractRequestDto")
                 .add("providerId", provider.id)
-                .add("connectorAddress", provider.protocolEndpoint.url.toString())
+                .add("counterPartyAddress", provider.protocolEndpoint.url.toString())
                 .add("protocol", DSP_PROTOCOL)
                 .add("offer", createObjectBuilder()
                         .add("offerId", offerId)
@@ -285,14 +285,14 @@ public class Participant {
      */
     public String initiateTransfer(Participant provider, String contractAgreementId, String assetId, JsonObject privateProperties, JsonObject destination) {
         var requestBody = createObjectBuilder()
-                .add(CONTEXT, createObjectBuilder().add(EDC_PREFIX, EDC_NAMESPACE))
+                .add(CONTEXT, createObjectBuilder().add(VOCAB, EDC_NAMESPACE))
                 .add(TYPE, "TransferRequest")
                 .add("dataDestination", destination)
                 .add("protocol", DSP_PROTOCOL)
                 .add("assetId", assetId)
                 .add("contractId", contractAgreementId)
                 .add("connectorId", provider.id)
-                .add("connectorAddress", provider.protocolEndpoint.url.toString())
+                .add("counterPartyAddress", provider.protocolEndpoint.url.toString())
                 .add("privateProperties", privateProperties)
                 .build();
 
@@ -343,7 +343,7 @@ public class Participant {
                 .get("/v2/transferprocesses/{id}/state", id)
                 .then()
                 .statusCode(200)
-                .extract().body().jsonPath().getString("'edc:state'");
+                .extract().body().jsonPath().getString("state");
     }
 
     private ContractOfferId extractContractDefinitionId(JsonObject dataset) {
@@ -358,7 +358,7 @@ public class Participant {
                 .get("/v2/contractnegotiations/{id}/state", id)
                 .then()
                 .statusCode(200)
-                .extract().body().jsonPath().getString("'edc:state'");
+                .extract().body().jsonPath().getString("state");
     }
 
 
@@ -385,7 +385,7 @@ public class Participant {
                 .then()
                 .statusCode(200)
                 .extract().body().jsonPath()
-                .getString(format("'edc:%s'", fieldName));
+                .getString(fieldName);
     }
 
     /**

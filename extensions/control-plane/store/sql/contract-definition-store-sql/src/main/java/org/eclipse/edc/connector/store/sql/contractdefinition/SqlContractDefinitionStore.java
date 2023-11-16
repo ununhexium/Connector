@@ -12,6 +12,7 @@
  *       Microsoft Corporation - refactoring, bugfixing
  *       Fraunhofer Institute for Software and Systems Engineering - added method
  *       Bayerische Motoren Werke Aktiengesellschaft (BMW AG) - improvements
+ *       SAP SE - add private properties to contract definition
  *
  */
 
@@ -23,7 +24,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.eclipse.edc.connector.contract.spi.offer.store.ContractDefinitionStore;
 import org.eclipse.edc.connector.contract.spi.types.offer.ContractDefinition;
 import org.eclipse.edc.connector.store.sql.contractdefinition.schema.ContractDefinitionStatements;
-import org.eclipse.edc.spi.asset.AssetSelectorExpression;
 import org.eclipse.edc.spi.persistence.EdcPersistenceException;
 import org.eclipse.edc.spi.query.Criterion;
 import org.eclipse.edc.spi.query.QuerySpec;
@@ -38,6 +38,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Stream;
 
@@ -45,9 +46,12 @@ import static java.lang.String.format;
 
 public class SqlContractDefinitionStore extends AbstractSqlStore implements ContractDefinitionStore {
 
+    private final ContractDefinitionStatements statements;
     public static final TypeReference<List<Criterion>> CRITERION_LIST = new TypeReference<>() {
     };
-    private final ContractDefinitionStatements statements;
+
+    private static final TypeReference<Map<String, Object>> PRIVATE_PROPERTIES_TYPE = new TypeReference<>() {
+    };
 
     public SqlContractDefinitionStore(DataSourceRegistry dataSourceRegistry, String dataSourceName,
                                       TransactionContext transactionContext, ContractDefinitionStatements statements,
@@ -137,20 +141,13 @@ public class SqlContractDefinitionStore extends AbstractSqlStore implements Cont
     }
 
     private ContractDefinition mapResultSet(ResultSet resultSet) throws Exception {
-        List<Criterion> assetsSelector;
-        try {
-            assetsSelector = fromJson(resultSet.getString(statements.getAssetsSelectorColumn()), CRITERION_LIST);
-        } catch (EdcPersistenceException e) {
-            // this fallback is to avoid breaking changes as json fields cannot be migrated.
-            assetsSelector = fromJson(resultSet.getString(statements.getAssetsSelectorColumn()), AssetSelectorExpression.class).getCriteria();
-        }
-
         return ContractDefinition.Builder.newInstance()
                 .id(resultSet.getString(statements.getIdColumn()))
                 .createdAt(resultSet.getLong(statements.getCreatedAtColumn()))
                 .accessPolicyId(resultSet.getString(statements.getAccessPolicyIdColumn()))
                 .contractPolicyId(resultSet.getString(statements.getContractPolicyIdColumn()))
-                .assetsSelector(assetsSelector)
+                .assetsSelector(fromJson(resultSet.getString(statements.getAssetsSelectorColumn()), CRITERION_LIST))
+                .privateProperties(fromJson(resultSet.getString(statements.getPrivatePropertiesColumn()), PRIVATE_PROPERTIES_TYPE))
                 .build();
     }
 
@@ -161,7 +158,8 @@ public class SqlContractDefinitionStore extends AbstractSqlStore implements Cont
                     definition.getAccessPolicyId(),
                     definition.getContractPolicyId(),
                     toJson(definition.getAssetsSelector()),
-                    definition.getCreatedAt());
+                    definition.getCreatedAt(),
+                    toJson(definition.getPrivateProperties()));
         });
     }
 
@@ -173,6 +171,7 @@ public class SqlContractDefinitionStore extends AbstractSqlStore implements Cont
                 definition.getContractPolicyId(),
                 toJson(definition.getAssetsSelector()),
                 definition.getCreatedAt(),
+                toJson(definition.getPrivateProperties()),
                 definition.getId());
     }
 
@@ -191,5 +190,4 @@ public class SqlContractDefinitionStore extends AbstractSqlStore implements Cont
         var sql = statements.getFindByTemplate();
         return queryExecutor.single(connection, false, this::mapResultSet, sql, id);
     }
-
 }

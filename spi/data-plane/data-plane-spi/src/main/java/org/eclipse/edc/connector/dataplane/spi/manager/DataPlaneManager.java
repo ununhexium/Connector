@@ -15,10 +15,10 @@
 package org.eclipse.edc.connector.dataplane.spi.manager;
 
 import org.eclipse.edc.connector.dataplane.spi.DataFlowStates;
-import org.eclipse.edc.connector.dataplane.spi.pipeline.DataSink;
 import org.eclipse.edc.connector.dataplane.spi.pipeline.StreamResult;
 import org.eclipse.edc.runtime.metamodel.annotation.ExtensionPoint;
 import org.eclipse.edc.spi.entity.StateEntityManager;
+import org.eclipse.edc.spi.response.StatusResult;
 import org.eclipse.edc.spi.result.Result;
 import org.eclipse.edc.spi.types.domain.transfer.DataFlowRequest;
 
@@ -29,7 +29,7 @@ import java.util.concurrent.CompletableFuture;
  * For example:
  * <p>
  * <pre>
- * dataPlaneManager.transfer(sink, flowRequest).whenComplete((result, throwable) -&gt; {
+ * dataPlaneManager.transfer(request).whenComplete((result, throwable) -&gt; {
  *      if (result != null &amp;&amp; result.failed()) {
  *          switch (result.reason()) {
  *              case NOT_FOUND:
@@ -64,10 +64,18 @@ public interface DataPlaneManager extends StateEntityManager {
     /**
      * Performs a data transfer using the supplied data sink.
      */
-    CompletableFuture<StreamResult<Void>> transfer(DataSink sink, DataFlowRequest request);
+    CompletableFuture<StreamResult<Object>> transfer(DataFlowRequest request);
 
     /**
      * Returns the transfer state for the process.
      */
     DataFlowStates transferState(String processId);
+
+    /**
+     * Terminate the data flow.
+     *
+     * @param dataFlowId the data flow id.
+     * @return success if data flow is terminated, failed otherwise.
+     */
+    StatusResult<Void> terminate(String dataFlowId);
 }

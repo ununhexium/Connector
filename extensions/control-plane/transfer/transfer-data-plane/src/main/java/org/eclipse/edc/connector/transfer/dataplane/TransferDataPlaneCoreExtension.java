@@ -16,17 +16,14 @@
 package org.eclipse.edc.connector.transfer.dataplane;
 
 import org.eclipse.edc.connector.api.control.configuration.ControlApiConfiguration;
-import org.eclipse.edc.connector.contract.spi.negotiation.store.ContractNegotiationStore;
 import org.eclipse.edc.connector.dataplane.selector.spi.client.DataPlaneSelectorClient;
 import org.eclipse.edc.connector.dataplane.spi.client.DataPlaneClient;
 import org.eclipse.edc.connector.transfer.dataplane.api.ConsumerPullTransferTokenValidationApiController;
 import org.eclipse.edc.connector.transfer.dataplane.flow.ConsumerPullTransferDataFlowController;
 import org.eclipse.edc.connector.transfer.dataplane.flow.ProviderPushTransferDataFlowController;
 import org.eclipse.edc.connector.transfer.dataplane.proxy.ConsumerPullDataPlaneProxyResolver;
-import org.eclipse.edc.connector.transfer.dataplane.security.ConsumerPullKeyPairFactory;
 import org.eclipse.edc.connector.transfer.dataplane.spi.security.DataEncrypter;
 import org.eclipse.edc.connector.transfer.dataplane.spi.token.ConsumerPullTokenExpirationDateFunction;
-import org.eclipse.edc.connector.transfer.dataplane.validation.ContractValidationRule;
 import org.eclipse.edc.connector.transfer.dataplane.validation.ExpirationDateValidationRule;
 import org.eclipse.edc.connector.transfer.spi.callback.ControlApiUrl;
 import org.eclipse.edc.connector.transfer.spi.flow.DataFlowManager;
@@ -37,11 +34,14 @@ import org.eclipse.edc.jwt.spi.TokenValidationService;
 import org.eclipse.edc.runtime.metamodel.annotation.Extension;
 import org.eclipse.edc.runtime.metamodel.annotation.Inject;
 import org.eclipse.edc.spi.EdcException;
+import org.eclipse.edc.spi.security.KeyPairFactory;
 import org.eclipse.edc.spi.security.PrivateKeyResolver;
 import org.eclipse.edc.spi.security.Vault;
 import org.eclipse.edc.spi.system.ServiceExtension;
 import org.eclipse.edc.spi.system.ServiceExtensionContext;
 import org.eclipse.edc.spi.types.TypeManager;
+import org.eclipse.edc.validator.spi.DataAddressValidatorRegistry;
+import org.eclipse.edc.validator.spi.ValidationResult;
 import org.eclipse.edc.web.spi.WebService;
 
 import java.security.KeyPair;
@@ -56,9 +56,6 @@ import static org.eclipse.edc.connector.transfer.dataplane.TransferDataPlaneConf
 public class TransferDataPlaneCoreExtension implements ServiceExtension {
 
     public static final String NAME = "Transfer Data Plane Core";
-
-    @Inject
-    private ContractNegotiationStore contractNegotiationStore;
 
     @Inject
     private Vault vault;
@@ -96,6 +93,12 @@ public class TransferDataPlaneCoreExtension implements ServiceExtension {
     @Inject
     private TypeManager typeManager;
 
+    @Inject
+    private KeyPairFactory keyPairFactory;
+
+    @Inject
+    private DataAddressValidatorRegistry dataAddressValidatorRegistry;
+
     @Override
     public String name() {
         return NAME;
@@ -110,10 +113,11 @@ public class TransferDataPlaneCoreExtension implements ServiceExtension {
         var resolver = new ConsumerPullDataPlaneProxyResolver(dataEncrypter, typeManager, new TokenGenerationServiceImpl(keyPair.getPrivate()), tokenExpirationDateFunction);
         dataFlowManager.register(new ConsumerPullTransferDataFlowController(selectorClient, resolver));
         dataFlowManager.register(new ProviderPushTransferDataFlowController(callbackUrl, dataPlaneClient));
+
+        dataAddressValidatorRegistry.registerDestinationValidator("HttpProxy", dataAddress -> ValidationResult.success());
     }
 
     private KeyPair keyPairFromConfig(ServiceExtensionContext context) {
-        var keyPairFactory = new ConsumerPullKeyPairFactory(privateKeyResolver, vault);
         var pubKeyAlias = context.getSetting(TOKEN_VERIFIER_PUBLIC_KEY_ALIAS, null);
         var privKeyAlias = context.getSetting(TOKEN_SIGNER_PRIVATE_KEY_ALIAS, null);
         if (pubKeyAlias == null && privKeyAlias == null) {
@@ -128,7 +132,6 @@ public class TransferDataPlaneCoreExtension implements ServiceExtension {
 
     private TokenValidationService tokenValidationService(PublicKey publicKey) {
         var registry = new TokenValidationRulesRegistryImpl();
-        registry.addRule(new ContractValidationRule(contractNegotiationStore, clock));
         registry.addRule(new ExpirationDateValidationRule(clock));
         return new TokenValidationServiceImpl(id -> publicKey, registry);
     }

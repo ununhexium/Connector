@@ -14,7 +14,6 @@
 
 package org.eclipse.edc.connector.policy.monitor.manager;
 
-import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreement;
 import org.eclipse.edc.connector.core.entity.AbstractStateEntityManager;
 import org.eclipse.edc.connector.policy.monitor.spi.PolicyMonitorEntry;
 import org.eclipse.edc.connector.policy.monitor.spi.PolicyMonitorEntryStates;
@@ -22,9 +21,12 @@ import org.eclipse.edc.connector.policy.monitor.spi.PolicyMonitorManager;
 import org.eclipse.edc.connector.policy.monitor.spi.PolicyMonitorStore;
 import org.eclipse.edc.connector.spi.contractagreement.ContractAgreementService;
 import org.eclipse.edc.connector.spi.transferprocess.TransferProcessService;
+import org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates;
+import org.eclipse.edc.connector.transfer.spi.types.command.TerminateTransferCommand;
 import org.eclipse.edc.policy.engine.spi.PolicyContextImpl;
 import org.eclipse.edc.policy.engine.spi.PolicyEngine;
 import org.eclipse.edc.spi.query.Criterion;
+import org.eclipse.edc.spi.types.domain.agreement.ContractAgreement;
 import org.eclipse.edc.statemachine.Processor;
 import org.eclipse.edc.statemachine.ProcessorImpl;
 import org.eclipse.edc.statemachine.StateMachineManager;
@@ -32,6 +34,7 @@ import org.eclipse.edc.statemachine.StateMachineManager;
 import java.time.Instant;
 import java.util.function.Function;
 
+import static org.eclipse.edc.connector.policy.monitor.PolicyMonitorExtension.POLICY_MONITOR_SCOPE;
 import static org.eclipse.edc.connector.policy.monitor.spi.PolicyMonitorEntryStates.STARTED;
 import static org.eclipse.edc.spi.persistence.StateEntityStore.hasState;
 
@@ -69,6 +72,19 @@ public class PolicyMonitorManagerImpl extends AbstractStateEntityManager<PolicyM
     }
 
     private boolean processMonitoring(PolicyMonitorEntry entry) {
+        var transferProcess = transferProcessService.findById(entry.getId());
+        if (transferProcess == null) {
+            entry.transitionToFailed("TransferProcess %s does not exist".formatted(entry.getId()));
+            update(entry);
+            return true;
+        }
+
+        if (transferProcess.getState() >= TransferProcessStates.COMPLETING.code()) {
+            entry.transitionToCompleted();
+            update(entry);
+            return true;
+        }
+
         var contractAgreement = contractAgreementService.findById(entry.getContractId());
         if (contractAgreement == null) {
             entry.transitionToFailed("ContractAgreement %s does not exist".formatted(entry.getContractId()));
@@ -82,18 +98,20 @@ public class PolicyMonitorManagerImpl extends AbstractStateEntityManager<PolicyM
                 .additional(ContractAgreement.class, contractAgreement)
                 .build();
 
-        var result = policyEngine.evaluate("transfer.process", policy, policyContext);
+        var result = policyEngine.evaluate(POLICY_MONITOR_SCOPE, policy, policyContext);
         if (result.failed()) {
             monitor.debug(() -> "[policy-monitor] Policy evaluation for TP %s failed: %s".formatted(entry.getId(), result.getFailureDetail()));
-            var completeResult = transferProcessService.complete(entry.getId());
-            if (completeResult.succeeded()) {
+            var command = new TerminateTransferCommand(entry.getId(), result.getFailureDetail());
+            var terminationResult = transferProcessService.terminate(command);
+            if (terminationResult.succeeded()) {
                 entry.transitionToCompleted();
                 update(entry);
                 return true;
             }
         }
 
-        return false;
+        breakLease(entry);
+        return true;
     }
 
     private Processor processEntriesInState(PolicyMonitorEntryStates state, Function<PolicyMonitorEntry, Boolean> function) {

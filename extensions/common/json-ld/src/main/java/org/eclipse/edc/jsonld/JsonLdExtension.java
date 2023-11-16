@@ -34,14 +34,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 
 import static java.lang.String.format;
-import static org.eclipse.edc.jsonld.spi.Namespaces.DCAT_PREFIX;
-import static org.eclipse.edc.jsonld.spi.Namespaces.DCAT_SCHEMA;
-import static org.eclipse.edc.jsonld.spi.Namespaces.DCT_PREFIX;
-import static org.eclipse.edc.jsonld.spi.Namespaces.DCT_SCHEMA;
-import static org.eclipse.edc.jsonld.spi.Namespaces.DSPACE_PREFIX;
-import static org.eclipse.edc.jsonld.spi.Namespaces.DSPACE_SCHEMA;
-import static org.eclipse.edc.policy.model.OdrlNamespace.ODRL_PREFIX;
-import static org.eclipse.edc.policy.model.OdrlNamespace.ODRL_SCHEMA;
+import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.VOCAB;
 import static org.eclipse.edc.spi.CoreConstants.EDC_NAMESPACE;
 import static org.eclipse.edc.spi.CoreConstants.EDC_PREFIX;
 import static org.eclipse.edc.spi.CoreConstants.JSON_LD;
@@ -66,6 +59,9 @@ public class JsonLdExtension implements ServiceExtension {
     private static final String HTTP_ENABLE_SETTING = "edc.jsonld.http.enabled";
     @Setting(value = "If set enable https json-ld document resolution", type = "boolean", defaultValue = DEFAULT_HTTP_HTTPS_RESOLUTION + "")
     private static final String HTTPS_ENABLE_SETTING = "edc.jsonld.https.enabled";
+    private static final String DEFAULT_AVOID_VOCAB_CONTEXT = "false";
+    @Setting(value = "If true disable the @vocab context definition. This could be used to avoid api breaking changes", type = "boolean", defaultValue = DEFAULT_AVOID_VOCAB_CONTEXT)
+    private static final String AVOID_VOCAB_CONTEXT = "edc.jsonld.vocab.disable";
     @Inject
     private TypeManager typeManager;
 
@@ -88,11 +84,10 @@ public class JsonLdExtension implements ServiceExtension {
                 .build();
         var monitor = context.getMonitor();
         var service = new TitaniumJsonLd(monitor, configuration);
+        if (!config.getBoolean(AVOID_VOCAB_CONTEXT, Boolean.valueOf(DEFAULT_AVOID_VOCAB_CONTEXT))) {
+            service.registerNamespace(VOCAB, EDC_NAMESPACE);
+        }
         service.registerNamespace(EDC_PREFIX, EDC_NAMESPACE);
-        service.registerNamespace(DCAT_PREFIX, DCAT_SCHEMA);
-        service.registerNamespace(DCT_PREFIX, DCT_SCHEMA);
-        service.registerNamespace(ODRL_PREFIX, ODRL_SCHEMA);
-        service.registerNamespace(DSPACE_PREFIX, DSPACE_SCHEMA);
 
         getResourceUri("document" + File.separator + "odrl.jsonld")
                 .onSuccess(uri -> service.registerCachedDocument("http://www.w3.org/ns/odrl.jsonld", uri))

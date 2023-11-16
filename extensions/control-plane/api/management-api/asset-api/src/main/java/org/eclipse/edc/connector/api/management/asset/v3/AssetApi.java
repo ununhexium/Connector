@@ -28,8 +28,8 @@ import jakarta.json.JsonObject;
 import org.eclipse.edc.api.model.ApiCoreSchema;
 import org.eclipse.edc.connector.api.management.configuration.ManagementApiSchema;
 
-import java.util.Map;
-
+import static io.swagger.v3.oas.annotations.media.Schema.RequiredMode.REQUIRED;
+import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.CONTEXT;
 import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.ID;
 import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.TYPE;
 import static org.eclipse.edc.spi.types.domain.asset.Asset.EDC_ASSET_TYPE;
@@ -94,7 +94,7 @@ public interface AssetApi {
             "DANGER ZONE: Note that updating assets can have unexpected results, especially for contract offers that have been sent out or are ongoing in contract negotiations.",
             requestBody = @RequestBody(content = @Content(schema = @Schema(implementation = AssetInputSchema.class))),
             responses = {
-                    @ApiResponse(responseCode = "200", description = "Asset was updated successfully"),
+                    @ApiResponse(responseCode = "204", description = "Asset was updated successfully"),
                     @ApiResponse(responseCode = "404", description = "Asset could not be updated, because it does not exist."),
                     @ApiResponse(responseCode = "400", description = "Request was malformed, e.g. id was null",
                             content = @Content(array = @ArraySchema(schema = @Schema(implementation = ApiCoreSchema.ApiErrorDetailSchema.class)))),
@@ -103,17 +103,21 @@ public interface AssetApi {
 
     @Schema(name = "AssetInput", example = AssetInputSchema.ASSET_INPUT_EXAMPLE)
     record AssetInputSchema(
+            @Schema(name = CONTEXT, requiredMode = REQUIRED)
+            Object context,
             @Schema(name = ID)
             String id,
             @Schema(name = TYPE, example = EDC_ASSET_TYPE)
             String type,
-            Map<String, Object> properties,
-            Map<String, Object> privateProperties,
+            @Schema(requiredMode = REQUIRED)
+            ManagementApiSchema.FreeFormPropertiesSchema properties,
+            ManagementApiSchema.FreeFormPropertiesSchema privateProperties,
+            @Schema(requiredMode = REQUIRED)
             ManagementApiSchema.DataAddressSchema dataAddress
     ) {
         public static final String ASSET_INPUT_EXAMPLE = """
                 {
-                    "@context": { "edc": "https://w3id.org/edc/v0.0.1/ns/" },
+                    "@context": { "@vocab": "https://w3id.org/edc/v0.0.1/ns/" },
                     "@id": "asset-id",
                     "properties": {
                         "key": "value"
@@ -122,7 +126,8 @@ public interface AssetApi {
                         "privateKey": "privateValue"
                     },
                     "dataAddress": {
-                        "type": "HttpData"
+                        "type": "HttpData",
+                        "baseUrl": "https://jsonplaceholder.typicode.com/todos"
                     }
                 }
                 """;
@@ -135,25 +140,26 @@ public interface AssetApi {
             String id,
             @Schema(name = TYPE, example = EDC_ASSET_TYPE)
             String type,
-            Map<String, Object> properties,
-            Map<String, Object> privateProperties,
+            ManagementApiSchema.FreeFormPropertiesSchema properties,
+            ManagementApiSchema.FreeFormPropertiesSchema privateProperties,
             ManagementApiSchema.DataAddressSchema dataAddress,
             long createdAt
     ) {
         public static final String ASSET_OUTPUT_EXAMPLE = """
                 {
-                    "@context": { "edc": "https://w3id.org/edc/v0.0.1/ns/" },
+                    "@context": { "@vocab": "https://w3id.org/edc/v0.0.1/ns/" },
                     "@id": "asset-id",
-                    "edc:properties": {
-                        "edc:key": "value"
+                    "properties": {
+                        "key": "value"
                     },
-                    "edc:privateProperties": {
-                        "edc:privateKey": "privateValue"
+                    "privateProperties": {
+                        "privateKey": "privateValue"
                     },
-                    "edc:dataAddress": {
-                        "edc:type": "HttpData"
+                    "dataAddress": {
+                        "type": "HttpData",
+                        "baseUrl": "https://jsonplaceholder.typicode.com/todos"
                     },
-                    "edc:createdAt": 1688465655
+                    "createdAt": 1688465655
                 }
                 """;
     }

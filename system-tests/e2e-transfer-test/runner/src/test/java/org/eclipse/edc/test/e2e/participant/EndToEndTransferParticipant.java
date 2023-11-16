@@ -140,6 +140,7 @@ public class EndToEndTransferParticipant extends Participant {
                 .when()
                 .get()
                 .then()
+                .log().ifError()
                 .statusCode(200)
                 .body("message", bodyMatcher);
     }
@@ -238,6 +239,7 @@ public class EndToEndTransferParticipant extends Participant {
                 put("edc.keystore", resourceAbsolutePath("certs/cert.pfx"));
                 put("edc.keystore.password", "123456");
                 put("edc.dataplane.token.validation.endpoint", controlPlaneControl + "/token");
+                put("edc.dataplane.http.sink.partition.size", "1");
             }
         };
     }

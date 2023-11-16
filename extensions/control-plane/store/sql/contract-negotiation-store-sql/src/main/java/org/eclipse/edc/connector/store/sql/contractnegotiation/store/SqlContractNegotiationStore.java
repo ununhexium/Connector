@@ -18,13 +18,13 @@ package org.eclipse.edc.connector.store.sql.contractnegotiation.store;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.eclipse.edc.connector.contract.spi.negotiation.store.ContractNegotiationStore;
-import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreement;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiation;
 import org.eclipse.edc.connector.store.sql.contractnegotiation.store.schema.ContractNegotiationStatements;
 import org.eclipse.edc.spi.persistence.EdcPersistenceException;
 import org.eclipse.edc.spi.query.Criterion;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.eclipse.edc.spi.result.StoreResult;
+import org.eclipse.edc.spi.types.domain.agreement.ContractAgreement;
 import org.eclipse.edc.sql.QueryExecutor;
 import org.eclipse.edc.sql.ResultSetMapper;
 import org.eclipse.edc.sql.lease.SqlLeaseContextBuilder;
@@ -174,9 +174,8 @@ public class SqlContractNegotiationStore extends AbstractSqlStore implements Con
         return transactionContext.execute(() -> {
             var filter = Arrays.stream(criteria).toList();
             var querySpec = QuerySpec.Builder.newInstance().filter(filter).limit(max).build();
-            var statement = statements.createNegotiationsQuery(querySpec);
-            statement.addWhereClause(statements.getNotLeasedFilter());
-            statement.addParameter(clock.millis());
+            var statement = statements.createNegotiationsQuery(querySpec)
+                    .addWhereClause(statements.getNotLeasedFilter(), clock.millis());
 
             try (
                     var connection = getConnection();

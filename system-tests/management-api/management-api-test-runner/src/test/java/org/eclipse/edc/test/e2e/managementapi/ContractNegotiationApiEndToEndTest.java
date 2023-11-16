@@ -18,13 +18,13 @@ import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
 import org.eclipse.edc.connector.contract.spi.negotiation.store.ContractNegotiationStore;
-import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreement;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiation;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationStates;
-import org.eclipse.edc.connector.contract.spi.types.offer.ContractOffer;
 import org.eclipse.edc.junit.annotations.EndToEndTest;
 import org.eclipse.edc.policy.model.Policy;
+import org.eclipse.edc.spi.types.domain.agreement.ContractAgreement;
 import org.eclipse.edc.spi.types.domain.callback.CallbackAddress;
+import org.eclipse.edc.spi.types.domain.offer.ContractOffer;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -66,11 +66,11 @@ public class ContractNegotiationApiEndToEndTest extends BaseManagementApiEndToEn
                 .body("size()", is(2))
                 .extract().jsonPath();
 
-        assertThat(jsonPath.getString("[0]['edc:counterPartyAddress']")).isEqualTo(protocolUrl);
+        assertThat(jsonPath.getString("[0].counterPartyAddress")).isEqualTo(protocolUrl);
         assertThat(jsonPath.getString("[0].@id")).isIn("cn1", "cn2");
         assertThat(jsonPath.getString("[1].@id")).isIn("cn1", "cn2");
-        assertThat(jsonPath.getString("[0]['edc:protocol']")).isEqualTo("dataspace-protocol-http");
-        assertThat(jsonPath.getString("[1]['edc:protocol']")).isEqualTo("dataspace-protocol-http");
+        assertThat(jsonPath.getString("[0].protocol")).isEqualTo("dataspace-protocol-http");
+        assertThat(jsonPath.getString("[1].protocol")).isEqualTo("dataspace-protocol-http");
     }
 
     @Test
@@ -87,7 +87,7 @@ public class ContractNegotiationApiEndToEndTest extends BaseManagementApiEndToEn
                 .extract().jsonPath();
 
         assertThat((String) json.get("@id")).isEqualTo("cn1");
-        assertThat(json.getString("'edc:protocol'")).isEqualTo("dataspace-protocol-http");
+        assertThat(json.getString("protocol")).isEqualTo("dataspace-protocol-http");
     }
 
     @Test
@@ -102,7 +102,7 @@ public class ContractNegotiationApiEndToEndTest extends BaseManagementApiEndToEn
                 .then()
                 .statusCode(200)
                 .contentType(JSON)
-                .body("'edc:state'", is("FINALIZED"));
+                .body("state", is("FINALIZED"));
     }
 
     @Test
@@ -120,8 +120,8 @@ public class ContractNegotiationApiEndToEndTest extends BaseManagementApiEndToEn
                 .extract().jsonPath();
 
         assertThat(json.getString("@id")).isEqualTo("cn1");
-        assertThat((Object) json.get("'edc:policy'")).isNotNull().isInstanceOf(Map.class);
-        assertThat(json.getString("'edc:assetId'")).isEqualTo(agreement.getAssetId());
+        assertThat((Object) json.get("policy")).isNotNull().isInstanceOf(Map.class);
+        assertThat(json.getString("assetId")).isEqualTo(agreement.getAssetId());
     }
 
     @Test
@@ -171,30 +171,6 @@ public class ContractNegotiationApiEndToEndTest extends BaseManagementApiEndToEn
                 .post("/v2/contractnegotiations/cn1/terminate")
                 .then()
                 .log().ifError()
-                .statusCode(204);
-    }
-
-    @Test
-    void cancel() {
-        var store = controlPlane.getContext().getService(ContractNegotiationStore.class);
-        store.save(createContractNegotiationBuilder("cn1").build());
-
-        baseRequest()
-                .contentType(JSON)
-                .post("/v2/contractnegotiations/cn1/cancel")
-                .then()
-                .statusCode(204);
-    }
-
-    @Test
-    void decline() {
-        var store = controlPlane.getContext().getService(ContractNegotiationStore.class);
-        store.save(createContractNegotiationBuilder("cn1").build());
-
-        baseRequest()
-                .contentType(JSON)
-                .post("/v2/contractnegotiations/cn1/decline")
-                .then()
                 .statusCode(204);
     }
 

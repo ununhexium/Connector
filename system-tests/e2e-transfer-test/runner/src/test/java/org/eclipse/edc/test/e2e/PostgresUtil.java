@@ -31,28 +31,26 @@ import static org.eclipse.edc.test.e2e.PostgresConstants.USER;
 
 public class PostgresUtil {
 
-    public static void createDatabase(EndToEndTransferParticipant consumer) throws ClassNotFoundException, SQLException, IOException {
+    public static void createDatabase(EndToEndTransferParticipant participant) throws ClassNotFoundException, SQLException, IOException {
         Class.forName("org.postgresql.Driver");
 
-        var helper = new PostgresqlLocalInstance(USER, PASSWORD, JDBC_URL_PREFIX, consumer.getName());
-        helper.createDatabase(consumer.getName());
+        var helper = new PostgresqlLocalInstance(USER, PASSWORD, JDBC_URL_PREFIX, participant.getName());
+        helper.createDatabase(participant.getName());
 
-        var controlPlaneScripts = Stream.of(
-                        "asset-index-sql",
-                        "contract-definition-store-sql",
-                        "contract-negotiation-store-sql",
-                        "policy-definition-store-sql",
-                        "transfer-process-store-sql")
-                .map(module -> "../../../extensions/control-plane/store/sql/" + module + "/docs/schema.sql")
-                .map(Paths::get);
+        var scripts = Stream.of(
+                "extensions/control-plane/store/sql/asset-index-sql",
+                "extensions/control-plane/store/sql/contract-definition-store-sql",
+                "extensions/control-plane/store/sql/contract-negotiation-store-sql",
+                "extensions/control-plane/store/sql/policy-definition-store-sql",
+                "extensions/control-plane/store/sql/transfer-process-store-sql",
+                "extensions/data-plane/store/sql/data-plane-store-sql",
+                "extensions/policy-monitor/store/sql/policy-monitor-store-sql"
+        )
+                .map("../../../%s/docs/schema.sql"::formatted)
+                .map(Paths::get)
+                .toList();
 
-        var dataPlaneScripts = Stream.of("data-plane-store-sql")
-                .map(module -> "../../../extensions/data-plane/store/sql/" + module + "/docs/schema.sql")
-                .map(Paths::get);
-
-        var scripts = Stream.concat(controlPlaneScripts, dataPlaneScripts).toList();
-
-        try (var connection = DriverManager.getConnection(consumer.jdbcUrl(), USER, PASSWORD)) {
+        try (var connection = DriverManager.getConnection(participant.jdbcUrl(), USER, PASSWORD)) {
             for (var script : scripts) {
                 var sql = Files.readString(script);
 

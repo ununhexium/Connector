@@ -17,7 +17,6 @@ package org.eclipse.edc.connector.contract.spi.testfixtures.negotiation.store;
 
 import org.eclipse.edc.connector.contract.spi.ContractOfferId;
 import org.eclipse.edc.connector.contract.spi.negotiation.store.ContractNegotiationStore;
-import org.eclipse.edc.connector.contract.spi.types.agreement.ContractAgreement;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiation;
 import org.eclipse.edc.connector.contract.spi.types.negotiation.ContractNegotiationStates;
 import org.eclipse.edc.policy.model.Action;
@@ -30,6 +29,7 @@ import org.eclipse.edc.spi.query.Criterion;
 import org.eclipse.edc.spi.query.QuerySpec;
 import org.eclipse.edc.spi.query.SortOrder;
 import org.eclipse.edc.spi.result.StoreFailure;
+import org.eclipse.edc.spi.types.domain.agreement.ContractAgreement;
 import org.eclipse.edc.spi.types.domain.callback.CallbackAddress;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -63,6 +63,7 @@ import static org.eclipse.edc.spi.result.StoreFailure.Reason.NOT_FOUND;
 public abstract class ContractNegotiationStoreTestBase {
 
     protected static final String CONNECTOR_NAME = "test-connector";
+    protected final Clock clock = Clock.systemUTC();
     private static final String ASSET_ID = "TEST_ASSET_ID";
 
     @Nested
@@ -240,7 +241,7 @@ public abstract class ContractNegotiationStoreTestBase {
             var newNegotiation = builder
                     .stateCount(420) //modified
                     .state(800) //modified
-                    .updatedAt(Clock.systemUTC().millis())
+                    .updatedAt(clock.millis())
                     .build();
 
             // update should break lease
