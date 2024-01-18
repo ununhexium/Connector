@@ -46,6 +46,9 @@ public class JsonObjectToVerifiablePresentationTransformer extends AbstractJsonL
                     vpBuilder.holder(transformString(jsonValue, context));
             case VerifiablePresentation.VERIFIABLE_PRESENTATION_VC_PROPERTY ->
                     transformCredential(jsonValue, vpBuilder, context);
+            case VerifiablePresentation.VERIFIABLE_PRESENTATION_PROOF_PROPERTY -> {
+                //noop
+            }
             default ->
                     context.reportProblem("Unknown property: %s type: %s".formatted(key, jsonValue.getValueType().name()));
         }
@@ -55,13 +58,13 @@ public class JsonObjectToVerifiablePresentationTransformer extends AbstractJsonL
      * Credentials appear to be defined as "@graph", so that's what they're expanded to.
      */
     private void transformCredential(JsonValue jsonValue, VerifiablePresentation.Builder vpBuilder, TransformerContext context) {
-        if (jsonValue instanceof JsonArray) {
-            var content = ((JsonArray) jsonValue).get(0);
-            if (content instanceof JsonObject) {
-                var credArray = ((JsonObject) content).getJsonArray(JsonLdKeywords.GRAPH);
-                transformArrayOrObject(credArray, VerifiableCredential.class, vpBuilder::credential, context);
-
-            }
+        if (jsonValue instanceof JsonArray array) {
+            array.forEach(content -> {
+                if (content instanceof JsonObject) {
+                    var credArray = ((JsonObject) content).getJsonArray(JsonLdKeywords.GRAPH);
+                    transformArrayOrObject(credArray, VerifiableCredential.class, vpBuilder::credential, context);
+                }
+            });
         }
     }
 }

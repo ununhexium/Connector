@@ -47,6 +47,25 @@ class CriterionToPredicateConverterImplTest {
     }
 
     @Test
+    void equal_enumShouldCheckOrdinal() {
+        var predicate = converter.convert(new Criterion("enumValue", "=", ENTRY2.ordinal()));
+
+        assertThat(predicate)
+                .accepts(new TestObject("any", ENTRY2))
+                .rejects(new TestObject("any", ENTRY1), new TestObject("any", null));
+    }
+
+    @Test
+    void equal_enumShouldRejectInvalidOrdinal() {
+        var predicate = converter.convert(new Criterion("enumValue", "=", -42));
+
+        assertThat(predicate)
+                .rejects(new TestObject("any", ENTRY2))
+                .rejects(new TestObject("any", ENTRY1), new TestObject("any", null));
+    }
+
+
+    @Test
     void equal_integerAndDouble() {
         var predicate = converter.convert(new Criterion("intValue", "=", 42));
 
@@ -129,6 +148,39 @@ class CriterionToPredicateConverterImplTest {
         assertThat(predicate).rejects(new TestObject(List.of(new NestedObject("any"))));
     }
 
+    @Test
+    void contains_success() {
+        var predicate = converter.convert(new Criterion("values", "contains", "bar"));
+        assertThat(predicate).accepts(new StringTestObject(List.of("foo", "bar")));
+    }
+
+    @Test
+    void contains_typesNotMatch() {
+        var predicate = converter.convert(new Criterion("values", "contains", 42));
+        assertThat(predicate).rejects(new StringTestObject(List.of("foo", "bar")));
+
+        var predicate2 = converter.convert(new Criterion("values", "contains", "42"));
+        assertThat(predicate2).accepts(new StringTestObject(List.of("foo", "bar", "42")));
+    }
+
+    @Test
+    void contains_notCollection() {
+        var predicate = converter.convert(new Criterion("value", "contains", 42));
+        assertThat(predicate).rejects(new TestObject("someval"));
+    }
+
+    @Test
+    void contains_notContained() {
+        var predicate = converter.convert(new Criterion("values", "contains", "baz"));
+        assertThat(predicate).rejects(new StringTestObject(List.of("foo", "bar")));
+    }
+
+    @Test
+    void contains_propertyDoesNotExist() {
+        var predicate = converter.convert(new Criterion("notexist", "contains", "bar"));
+        assertThat(predicate).rejects(new StringTestObject(List.of("foo", "bar")));
+    }
+
     public enum TestEnum {
         ENTRY1, ENTRY2
     }
@@ -167,6 +219,10 @@ class CriterionToPredicateConverterImplTest {
         }
     }
 
-    private record NestedObject(String value) { }
+    private record NestedObject(String value) {
+    }
 
+    private record StringTestObject(List<String> values) {
+
+    }
 }

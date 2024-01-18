@@ -20,6 +20,7 @@ import org.eclipse.edc.util.reflection.ReflectionException;
 import org.eclipse.edc.util.reflection.ReflectionUtil;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Predicate;
@@ -40,6 +41,7 @@ public class CriterionToPredicateConverterImpl implements CriterionToPredicateCo
             case "=" -> equalPredicate(criterion);
             case "in" -> inPredicate(criterion);
             case "like" -> likePredicate(criterion);
+            case "contains" -> containsPredicate(criterion);
             default ->
                     throw new IllegalArgumentException(format("Operator [%s] is not supported by this converter!", criterion.getOperator()));
         };
@@ -53,6 +55,23 @@ public class CriterionToPredicateConverterImpl implements CriterionToPredicateCo
         }
     }
 
+    private <T> Predicate<T> containsPredicate(Criterion criterion) {
+        return t -> {
+            var operandLeft = (String) criterion.getOperandLeft();
+            var operandRight = criterion.getOperandRight();
+            var property = property(operandLeft, t);
+            if (property == null) {
+                return false;
+            }
+
+            if (property instanceof Collection<?> collection) {
+                return collection.contains(operandRight);
+            }
+
+            return false;
+        };
+    }
+
     @NotNull
     private <T> Predicate<T> equalPredicate(Criterion criterion) {
         return t -> {
@@ -62,9 +81,13 @@ public class CriterionToPredicateConverterImpl implements CriterionToPredicateCo
                 return false;
             }
 
-            if (property.getClass().isEnum() && criterion.getOperandRight() instanceof String) {
+            if (property.getClass().isEnum()) {
                 var enumProperty = (Enum<?>) property;
-                return Objects.equals(enumProperty.name(), criterion.getOperandRight());
+                if (criterion.getOperandRight() instanceof String) {
+                    return Objects.equals(enumProperty.name(), criterion.getOperandRight());
+                } else if (criterion.getOperandRight() instanceof Number) {
+                    return Objects.equals(enumProperty.ordinal(), criterion.getOperandRight());
+                }
             }
 
             if (property instanceof Number c1 && criterion.getOperandRight() instanceof Number c2) {

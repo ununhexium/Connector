@@ -9,6 +9,7 @@
  *
  *  Contributors:
  *       Microsoft Corporation - initial API and implementation
+ *       Mercedes-Benz Tech Innovation GmbH - connector id removal
  *
  */
 
@@ -29,6 +30,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
@@ -46,6 +48,7 @@ import static org.eclipse.edc.connector.transfer.spi.testfixtures.store.TestFunc
 import static org.eclipse.edc.connector.transfer.spi.testfixtures.store.TestFunctions.createTransferProcess;
 import static org.eclipse.edc.connector.transfer.spi.testfixtures.store.TestFunctions.createTransferProcessBuilder;
 import static org.eclipse.edc.connector.transfer.spi.testfixtures.store.TestFunctions.initialTransferProcess;
+import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.COMPLETED;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.INITIAL;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.PROVISIONING;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcessStates.STARTED;
@@ -59,6 +62,7 @@ import static org.hamcrest.Matchers.hasSize;
 public abstract class TransferProcessStoreTestBase {
 
     protected static final String CONNECTOR_NAME = "test-connector";
+    protected final Clock clock = Clock.systemUTC();
 
     @Nested
     class Create {
@@ -87,6 +91,17 @@ public abstract class TransferProcessStoreTestBase {
             assertThat(all).containsExactly(t);
             assertThat(all.get(0)).usingRecursiveComparison().isEqualTo(t);
             assertThat(all.get(0).getCallbackAddresses()).hasSize(1).usingRecursiveFieldByFieldElementComparator().containsAll(callbacks);
+        }
+
+        @Test
+        void verifyTransferType() {
+            var t = createTransferProcessBuilder("test-id").transferType("transferType").dataRequest(createDataRequestBuilder().build()).build();
+            getTransferProcessStore().save(t);
+
+            var all = getTransferProcessStore().findAll(QuerySpec.none()).collect(Collectors.toList());
+            assertThat(all).containsExactly(t);
+            assertThat(all.get(0)).usingRecursiveComparison().isEqualTo(t);
+            assertThat(all.get(0).getTransferType()).isEqualTo("transferType");
         }
 
         @Test
@@ -312,32 +327,23 @@ public abstract class TransferProcessStoreTestBase {
 
     @Nested
     class Update {
-        @Test
-        void exists_shouldUpdate() {
-            var t1 = createTransferProcess("id1", STARTED);
-            getTransferProcessStore().save(t1);
 
-            t1.transitionCompleted(); //modify
-            getTransferProcessStore().save(t1);
+        @Test
+        void shouldUpdate() {
+            var transferProcess = createTransferProcess("id1", STARTED);
+            getTransferProcessStore().save(transferProcess);
+            //modify
+            transferProcess.transitionCompleted();
+            transferProcess.protocolMessageReceived("messageId");
+
+            getTransferProcessStore().save(transferProcess);
 
             assertThat(getTransferProcessStore().findAll(QuerySpec.none()))
                     .hasSize(1)
-                    .usingRecursiveFieldByFieldElementComparator()
-                    .containsExactly(t1);
-        }
-
-        @Test
-        void notExist_shouldCreate() {
-            var t1 = createTransferProcess("id1", STARTED);
-
-            t1.transitionCompleted(); //modify
-            getTransferProcessStore().save(t1);
-
-            var result = getTransferProcessStore().findAll(QuerySpec.none()).collect(Collectors.toList());
-            assertThat(result)
-                    .hasSize(1)
-                    .usingRecursiveFieldByFieldElementComparator()
-                    .containsExactly(t1);
+                    .first().satisfies(actual -> {
+                        assertThat(actual.getState()).isEqualTo(COMPLETED.code());
+                        assertThat(actual.getProtocolMessages().isAlreadyReceived("messageId")).isTrue();
+                    });
         }
 
         @Test
@@ -371,33 +377,24 @@ public abstract class TransferProcessStoreTestBase {
         }
 
         @Test
-        void dataRequestWithNewId_replacesOld() {
-            var bldr = createTransferProcessBuilder("id1").state(STARTED.code());
-            var t1 = bldr.build();
-            getTransferProcessStore().save(t1);
-
-            var t2 = bldr
-                    .dataRequest(TestFunctions.createDataRequestBuilder()
-                            .id("new-dr-id")
-                            .assetId("new-asset")
-                            .contractId("new-contract")
-                            .protocol("test-protocol")
-                            .connectorId("new-connector")
-                            .build())
+        void shouldReplaceDataRequest_whenItGetsTheIdUpdated() {
+            var builder = createTransferProcessBuilder("id1").state(STARTED.code());
+            var newDataRequest = createDataRequestBuilder()
+                    .id("new-dr-id")
+                    .assetId("new-asset")
+                    .contractId("new-contract")
+                    .protocol("test-protocol")
                     .build();
-            getTransferProcessStore().save(t2);
+            getTransferProcessStore().save(builder.build());
+            getTransferProcessStore().save(builder.dataRequest(newDataRequest).build());
 
-            var all = getTransferProcessStore().findAll(QuerySpec.none()).collect(Collectors.toList());
-            assertThat(all)
+            var result = getTransferProcessStore().findAll(QuerySpec.none());
+
+            assertThat(result)
                     .hasSize(1)
                     .usingRecursiveFieldByFieldElementComparator()
-                    .containsExactly(t2);
-
-
-            var drs = all.stream().map(TransferProcess::getDataRequest).collect(Collectors.toList());
-            assertThat(drs).hasSize(1)
-                    .usingRecursiveFieldByFieldElementComparator()
-                    .containsOnly(t2.getDataRequest());
+                    .map(TransferProcess::getDataRequest)
+                    .containsExactly(newDataRequest);
         }
     }
 
@@ -480,6 +477,18 @@ public abstract class TransferProcessStoreTestBase {
 
             var result = getTransferProcessStore().findAll(query).toList();
             assertThat(result).hasSize(1).usingRecursiveFieldByFieldElementComparator().containsExactly(tp);
+        }
+
+        @Test
+        void queryByTransferType() {
+            range(0, 10).forEach(i -> getTransferProcessStore().save(createTransferProcessBuilder("test-tp-" + i)
+                    .transferType("type" + i)
+                    .build()));
+            var querySpec = QuerySpec.Builder.newInstance().filter(Criterion.criterion("transferType", "=", "type4")).build();
+
+            var result = getTransferProcessStore().findAll(querySpec);
+
+            assertThat(result).extracting(TransferProcess::getTransferType).containsOnly("type4");
         }
 
         @Test

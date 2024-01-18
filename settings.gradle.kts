@@ -12,6 +12,7 @@
  *       Fraunhofer Institute for Software and Systems Engineering - refactoring
  *       ZF Friedrichshafen AG - add dependency & reorder entries
  *       Fraunhofer Institute for Software and Systems Engineering - refactoring
+ *       Mercedes-Benz Tech Innovation GmbH - publish public api context into dedicated swagger hub page
  *
  */
 
@@ -44,7 +45,7 @@ include(":core:common:boot")
 include(":core:common:connector-core")
 include(":core:common:jersey-providers")
 include(":core:common:junit")
-include(":core:common:jwt-core")
+include(":core:common:token-core")
 include(":core:common:policy-engine")
 include(":core:common:policy-evaluator")
 include(":core:common:state-machine")
@@ -88,7 +89,7 @@ include(":extensions:common:api:api-core")
 include(":extensions:common:api:api-observability")
 include(":extensions:common:auth:auth-basic")
 include(":extensions:common:auth:auth-tokenbased")
-include(":extensions:common:crypto:crypto-core")
+include(":extensions:common:crypto:crypto-common")
 include(":extensions:common:crypto:ldp-verifiable-credentials")
 include(":extensions:common:crypto:jwt-verifiable-credentials")
 include(":extensions:common:crypto:jws2020")
@@ -102,10 +103,7 @@ include(":extensions:common:http:jersey-micrometer")
 include(":extensions:common:http:jetty-core")
 include(":extensions:common:http:jetty-micrometer")
 include(":extensions:common:iam:decentralized-identity")
-include(":extensions:common:iam:decentralized-identity:identity-did-test")
 include(":extensions:common:iam:decentralized-identity:identity-did-core")
-include(":extensions:common:iam:decentralized-identity:identity-did-crypto")
-include(":extensions:common:iam:decentralized-identity:identity-did-service")
 include(":extensions:common:iam:decentralized-identity:identity-did-web")
 include(":extensions:common:iam:iam-mock")
 include(":extensions:common:iam:oauth2:oauth2-daps")
@@ -169,8 +167,9 @@ include(":extensions:control-plane:callback:callback-http-dispatcher")
 include(":extensions:control-plane:callback:callback-static-endpoint")
 
 
-include(":extensions:data-plane:data-plane-api")
 include(":extensions:data-plane:data-plane-client")
+include(":extensions:data-plane:data-plane-control-api")
+include(":extensions:data-plane:data-plane-public-api")
 
 include(":extensions:data-plane:data-plane-http")
 include(":extensions:data-plane:data-plane-http-oauth2")
@@ -201,6 +200,7 @@ include(":spi:common:http-spi")
 include(":spi:common:identity-did-spi")
 include(":spi:common:json-ld-spi")
 include(":spi:common:jwt-spi")
+include(":spi:common:token-spi")
 include(":spi:common:oauth2-spi")
 include(":spi:common:policy-engine-spi")
 include(":spi:common:policy-model")

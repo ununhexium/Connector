@@ -21,11 +21,6 @@ import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.jwk.Curve;
 import com.nimbusds.jose.jwk.ECKey;
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator;
-import org.eclipse.edc.iam.did.spi.document.DidConstants;
-import org.eclipse.edc.iam.did.spi.document.DidDocument;
-import org.eclipse.edc.iam.did.spi.document.Service;
-import org.eclipse.edc.iam.did.spi.document.VerificationMethod;
-import org.eclipse.edc.iam.did.spi.resolution.DidResolverRegistry;
 import org.eclipse.edc.identitytrust.model.CredentialFormat;
 import org.eclipse.edc.identitytrust.model.VerifiablePresentationContainer;
 import org.eclipse.edc.identitytrust.verification.SignatureSuiteRegistry;
@@ -34,13 +29,14 @@ import org.eclipse.edc.jsonld.util.JacksonJsonLd;
 import org.eclipse.edc.security.signature.jws2020.JwsSignature2020Suite;
 import org.eclipse.edc.security.signature.jws2020.TestDocumentLoader;
 import org.eclipse.edc.security.signature.jws2020.TestFunctions;
+import org.eclipse.edc.spi.iam.PublicKeyResolver;
 import org.eclipse.edc.spi.result.Result;
+import org.eclipse.edc.token.spi.TokenValidationService;
 import org.eclipse.edc.verifiablecredentials.jwt.JwtCreationUtils;
 import org.eclipse.edc.verifiablecredentials.jwt.JwtPresentationVerifier;
 import org.eclipse.edc.verifiablecredentials.linkeddata.LdpVerifier;
 import org.eclipse.edc.verifiablecredentials.verfiablecredentials.LdpCreationUtils;
 import org.eclipse.edc.verifiablecredentials.verfiablecredentials.TestData;
-import org.eclipse.edc.verification.jwt.SelfIssuedIdTokenVerifier;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -52,10 +48,11 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.time.Instant;
 import java.util.Collections;
-import java.util.List;
 import java.util.Map;
 
 import static org.eclipse.edc.junit.assertions.AbstractResultAssert.assertThat;
+import static org.eclipse.edc.spi.result.Result.success;
+import static org.eclipse.edc.verifiablecredentials.TestFunctions.createPublicKey;
 import static org.eclipse.edc.verifiablecredentials.jwt.TestConstants.CENTRAL_ISSUER_DID;
 import static org.eclipse.edc.verifiablecredentials.jwt.TestConstants.CENTRAL_ISSUER_KEY_ID;
 import static org.eclipse.edc.verifiablecredentials.jwt.TestConstants.MY_OWN_DID;
@@ -66,6 +63,10 @@ import static org.eclipse.edc.verifiablecredentials.verfiablecredentials.TestDat
 import static org.eclipse.edc.verifiablecredentials.verfiablecredentials.TestData.VP_CONTENT_TEMPLATE;
 import static org.eclipse.edc.verifiablecredentials.verfiablecredentials.TestData.createMembershipCredential;
 import static org.eclipse.edc.verifiablecredentials.verfiablecredentials.TestData.createNameCredential;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.endsWith;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -73,14 +74,15 @@ import static org.mockito.Mockito.when;
 
 class MultiFormatPresentationVerifierTest {
     public static final String INVALID_SIGNATURE = "Invalid signature";
-    private static final DidResolverRegistry DID_RESOLVER_REGISTRY = mock();
     private static final SignatureSuiteRegistry SIGNATURE_SUITE_REGISTRY = mock();
     private static final ObjectMapper MAPPER = JacksonJsonLd.createObjectMapper();
     private static final JwsSignature2020Suite JWS_SIGNATURE_SUITE = new JwsSignature2020Suite(MAPPER);
     private static ECKey vpSigningKey;
     private static ECKey vcSigningKey;
     private static TitaniumJsonLd jsonLd;
+    private final PublicKeyResolver publicKeyResolverMock = mock();
     private final TestDocumentLoader testDocLoader = new TestDocumentLoader("https://org.eclipse.edc/", "", SchemeRouter.defaultInstance());
+    private final TokenValidationService tokenValidationService = mock();
     private MultiFormatPresentationVerifier multiFormatVerifier;
 
     @BeforeAll
@@ -95,37 +97,25 @@ class MultiFormatPresentationVerifierTest {
 
         vpSigningKey = new ECKeyGenerator(Curve.P_256).keyID(PRESENTER_KEY_ID).generate();
         vcSigningKey = new ECKeyGenerator(Curve.P_256).keyID(CENTRAL_ISSUER_KEY_ID).generate();
-        // the DID document of the VP presenter (i.e. a participant agent)
-        var vpPresenterDid = DidDocument.Builder.newInstance()
-                .verificationMethod(List.of(VerificationMethod.Builder.create()
-                        .id(PRESENTER_KEY_ID)
-                        .type(DidConstants.ECDSA_SECP_256_K_1_VERIFICATION_KEY_2019)
-                        .publicKeyJwk(vpSigningKey.toPublicJWK().toJSONObject())
-                        .build()))
-                .service(Collections.singletonList(new Service("#my-service1", "MyService", "http://doesnotexi.st")))
-                .build();
-
-        // the DID document of the central issuer, e.g. a government body, etc.
-        var vcIssuerDid = DidDocument.Builder.newInstance()
-                .verificationMethod(List.of(VerificationMethod.Builder.create()
-                        .id(CENTRAL_ISSUER_KEY_ID)
-                        .type(DidConstants.ECDSA_SECP_256_K_1_VERIFICATION_KEY_2019)
-                        .publicKeyJwk(vcSigningKey.toPublicJWK().toJSONObject())
-                        .build()))
-                .build();
-
-        when(DID_RESOLVER_REGISTRY.resolve(eq(VP_HOLDER_ID))).thenReturn(Result.success(vpPresenterDid));
-        when(DID_RESOLVER_REGISTRY.resolve(eq(CENTRAL_ISSUER_DID))).thenReturn(Result.success(vcIssuerDid));
     }
 
     @BeforeEach
     void setup() {
+        when(publicKeyResolverMock.resolveKey(endsWith(PRESENTER_KEY_ID))).thenReturn(success(createPublicKey(vpSigningKey.toPublicJWK())));
+        when(publicKeyResolverMock.resolveKey(endsWith(CENTRAL_ISSUER_KEY_ID))).thenReturn(success(createPublicKey(vcSigningKey.toPublicJWK())));
+
+        when(tokenValidationService.validate(anyString(), any(PublicKeyResolver.class), anyList()))
+                .thenReturn(Result.success(null));
+
+
         var ldpVerifier = LdpVerifier.Builder.newInstance()
                 .signatureSuites(SIGNATURE_SUITE_REGISTRY)
                 .jsonLd(jsonLd)
                 .objectMapper(MAPPER)
                 .build();
-        multiFormatVerifier = new MultiFormatPresentationVerifier(MY_OWN_DID, new JwtPresentationVerifier(new SelfIssuedIdTokenVerifier(DID_RESOLVER_REGISTRY), MAPPER), ldpVerifier);
+
+        var jwtPresentationVerifier = new JwtPresentationVerifier(MAPPER, tokenValidationService, mock(), publicKeyResolverMock);
+        multiFormatVerifier = new MultiFormatPresentationVerifier(MY_OWN_DID, jwtPresentationVerifier, ldpVerifier);
     }
 
     private DataIntegrityProofOptions generateEmbeddedProofOptions(ECKey vcKey, String proofPurpose) {
@@ -220,6 +210,9 @@ class MultiFormatPresentationVerifierTest {
             var spoofedKey = new ECKeyGenerator(Curve.P_256).keyID(CENTRAL_ISSUER_KEY_ID).generate();
             var vcJwt1 = JwtCreationUtils.createJwt(spoofedKey, CENTRAL_ISSUER_DID, "degreeSub", VP_HOLDER_ID, Map.of("vc", TestData.VC_CONTENT_DEGREE_EXAMPLE));
 
+            when(tokenValidationService.validate(eq(vcJwt1), any(PublicKeyResolver.class), anyList()))
+                    .thenReturn(Result.failure("Invalid signature"));
+
             var vpContent = VP_CONTENT_TEMPLATE.formatted("\"" + vcJwt1 + "\"");
             var vpJwt = JwtCreationUtils.createJwt(vpSigningKey, VP_HOLDER_ID, "testSub", MY_OWN_DID, Map.of("vp", vpContent));
 
@@ -236,6 +229,9 @@ class MultiFormatPresentationVerifierTest {
 
             // create first VC-JWT (signed by the central issuer)
             var vcJwt2 = JwtCreationUtils.createJwt(spoofedKey, CENTRAL_ISSUER_DID, "isoCred", VP_HOLDER_ID, Map.of("vc", TestData.VC_CONTENT_CERTIFICATE_EXAMPLE));
+
+            when(tokenValidationService.validate(eq(vcJwt2), any(PublicKeyResolver.class), anyList()))
+                    .thenReturn(Result.failure("Invalid signature"));
 
             // create VP-JWT (signed by the presenter) that contains the VP as a claim
             var vpContent = "\"%s\", \"%s\"".formatted(vcJwt1, vcJwt2);
@@ -302,6 +298,8 @@ class MultiFormatPresentationVerifierTest {
             var spoofedKey = new ECKeyGenerator(Curve.P_256).keyID(CENTRAL_ISSUER_KEY_ID).generate();
 
             var vcJwt1 = JwtCreationUtils.createJwt(spoofedKey, CENTRAL_ISSUER_DID, "degreeSub", VP_HOLDER_ID, Map.of("vc", TestData.VC_CONTENT_DEGREE_EXAMPLE));
+            when(tokenValidationService.validate(eq(vcJwt1), any(PublicKeyResolver.class), anyList()))
+                    .thenReturn(Result.failure("Invalid signature"));
 
             var nameCredential = createNameCredential();
             var signedNameCredential = LdpCreationUtils.signDocument(nameCredential, vcSigningKey, generateEmbeddedProofOptions(vcSigningKey, NAME_CREDENTIAL_ISSUER), testDocLoader);

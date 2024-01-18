@@ -9,6 +9,7 @@
  *
  *  Contributors:
  *       Microsoft Corporation - initial API and implementation
+ *       Mercedes-Benz Tech Innovation GmbH - connector id removal
  *
  */
 
@@ -22,6 +23,7 @@ import org.eclipse.edc.connector.transfer.spi.types.DataRequest;
 import org.eclipse.edc.connector.transfer.spi.types.ProvisionedResourceSet;
 import org.eclipse.edc.connector.transfer.spi.types.ResourceManifest;
 import org.eclipse.edc.connector.transfer.spi.types.TransferProcess;
+import org.eclipse.edc.spi.entity.ProtocolMessages;
 import org.eclipse.edc.spi.persistence.EdcPersistenceException;
 import org.eclipse.edc.spi.query.Criterion;
 import org.eclipse.edc.spi.query.QuerySpec;
@@ -215,7 +217,6 @@ public class SqlTransferProcessStore extends AbstractSqlStore implements Transfe
                 .assetId(resultSet.getString(statements.getAssetIdColumn()))
                 .protocol(resultSet.getString(statements.getProtocolColumn()))
                 .dataDestination(fromJson(resultSet.getString(statements.getDataDestinationColumn()), DataAddress.class))
-                .connectorId(resultSet.getString(statements.getConnectorIdColumn()))
                 .connectorAddress(resultSet.getString(statements.getConnectorAddressColumn()))
                 .contractId(resultSet.getString(statements.getContractIdColumn()))
                 .processId(resultSet.getString(statements.getProcessIdColumn()))
@@ -254,6 +255,8 @@ public class SqlTransferProcessStore extends AbstractSqlStore implements Transfe
                 toJson(process.getDeprovisionedResources()),
                 toJson(process.getCallbackAddresses()),
                 process.isPending(),
+                process.getTransferType(),
+                toJson(process.getProtocolMessages()),
                 process.getId());
 
         var newDr = process.getDataRequest();
@@ -268,7 +271,6 @@ public class SqlTransferProcessStore extends AbstractSqlStore implements Transfe
                 dataRequest.getProcessId(),
                 dataRequest.getConnectorAddress(),
                 dataRequest.getProtocol(),
-                dataRequest.getConnectorId(),
                 dataRequest.getAssetId(),
                 dataRequest.getContractId(),
                 toJson(dataRequest.getDataDestination()),
@@ -309,7 +311,9 @@ public class SqlTransferProcessStore extends AbstractSqlStore implements Transfe
                 toJson(process.getDeprovisionedResources()),
                 toJson(process.getPrivateProperties()),
                 toJson(process.getCallbackAddresses()),
-                process.isPending());
+                process.isPending(),
+                process.getTransferType(),
+                toJson(process.getProtocolMessages()));
 
         //insert DataRequest
         var dr = process.getDataRequest();
@@ -324,7 +328,6 @@ public class SqlTransferProcessStore extends AbstractSqlStore implements Transfe
                 dr.getId(),
                 dr.getProcessId(),
                 dr.getConnectorAddress(),
-                dr.getConnectorId(),
                 dr.getAssetId(),
                 dr.getContractId(),
                 toJson(dr.getDataDestination()),
@@ -353,6 +356,8 @@ public class SqlTransferProcessStore extends AbstractSqlStore implements Transfe
                 }))
                 .privateProperties(fromJson(resultSet.getString(statements.getPrivatePropertiesColumn()), getTypeRef()))
                 .pending(resultSet.getBoolean(statements.getPendingColumn()))
+                .transferType(resultSet.getString(statements.getTransferTypeColumn()))
+                .protocolMessages(fromJson(resultSet.getString(statements.getProtocolMessagesColumn()), ProtocolMessages.class))
                 .build();
     }
 

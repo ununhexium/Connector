@@ -14,7 +14,7 @@
 
 package org.eclipse.edc.connector.transfer.dataplane.flow;
 
-import org.eclipse.edc.connector.dataplane.selector.spi.client.DataPlaneSelectorClient;
+import org.eclipse.edc.connector.dataplane.selector.spi.DataPlaneSelectorService;
 import org.eclipse.edc.connector.dataplane.selector.spi.instance.DataPlaneInstance;
 import org.eclipse.edc.connector.transfer.dataplane.proxy.ConsumerPullDataPlaneProxyResolver;
 import org.eclipse.edc.connector.transfer.spi.types.DataRequest;
@@ -23,6 +23,7 @@ import org.eclipse.edc.policy.model.Policy;
 import org.eclipse.edc.spi.result.Failure;
 import org.eclipse.edc.spi.result.Result;
 import org.eclipse.edc.spi.types.domain.DataAddress;
+import org.eclipse.edc.spi.types.domain.asset.Asset;
 import org.junit.jupiter.api.Test;
 
 import java.util.UUID;
@@ -37,14 +38,18 @@ import static org.mockito.Mockito.when;
 
 class ConsumerPullTransferDataFlowControllerTest {
 
-    private final DataPlaneSelectorClient selectorClient = mock(DataPlaneSelectorClient.class);
-    private final ConsumerPullDataPlaneProxyResolver resolver = mock(ConsumerPullDataPlaneProxyResolver.class);
+    private final DataPlaneSelectorService selectorService = mock();
+    private final ConsumerPullDataPlaneProxyResolver resolver = mock();
 
-    private final ConsumerPullTransferDataFlowController flowController = new ConsumerPullTransferDataFlowController(selectorClient, resolver);
+    private final ConsumerPullTransferDataFlowController flowController = new ConsumerPullTransferDataFlowController(selectorService, resolver);
+
+    private static final String HTTP_DATA_PULL = "HttpData-PULL";
 
     @Test
     void verifyCanHandle() {
         assertThat(flowController.canHandle(transferProcess(HTTP_PROXY))).isTrue();
+        assertThat(flowController.canHandle(transferProcess(HTTP_DATA_PULL, HTTP_DATA_PULL))).isTrue();
+        assertThat(flowController.canHandle(transferProcess(HTTP_DATA_PULL, null))).isFalse();
         assertThat(flowController.canHandle(transferProcess("not-http-proxy"))).isFalse();
     }
 
@@ -57,7 +62,27 @@ class ConsumerPullTransferDataFlowControllerTest {
                 .contentDataAddress(dataAddress())
                 .build();
 
-        when(selectorClient.find(any(), argThat(destination -> destination.getType().equals(HTTP_PROXY)))).thenReturn(instance);
+        when(selectorService.select(any(), argThat(destination -> destination.getType().equals(HTTP_PROXY)))).thenReturn(instance);
+        when(resolver.toDataAddress(any(), any(), any())).thenReturn(Result.success(proxyAddress));
+
+        var result = flowController.initiateFlow(transferProcess, null);
+
+        assertThat(result).isSucceeded().satisfies(response -> {
+            assertThat(response.getDataAddress()).isEqualTo(proxyAddress);
+        });
+    }
+
+    @Test
+    void initiateFlow_success_withTransferType() {
+        var proxyAddress = dataAddress();
+        var instance = mock(DataPlaneInstance.class);
+        var transferProcess = TransferProcess.Builder.newInstance()
+                .transferType(HTTP_DATA_PULL)
+                .dataRequest(dataRequest())
+                .contentDataAddress(dataAddress())
+                .build();
+
+        when(selectorService.select(any(), argThat(destination -> destination.getType().equals(HTTP_PROXY)))).thenReturn(instance);
         when(resolver.toDataAddress(any(), any(), any())).thenReturn(Result.success(proxyAddress));
 
         var result = flowController.initiateFlow(transferProcess, null);
@@ -90,7 +115,7 @@ class ConsumerPullTransferDataFlowControllerTest {
                 .contentDataAddress(dataAddress())
                 .build();
 
-        when(selectorClient.find(any(), argThat(destination -> destination.getType().equals(HTTP_PROXY)))).thenReturn(instance);
+        when(selectorService.select(any(), argThat(destination -> destination.getType().equals(HTTP_PROXY)))).thenReturn(instance);
         when(resolver.toDataAddress(any(), any(), any())).thenReturn(Result.failure(errorMsg));
 
         var result = flowController.initiateFlow(transferProcess, Policy.Builder.newInstance().build());
@@ -110,8 +135,22 @@ class ConsumerPullTransferDataFlowControllerTest {
         assertThat(result).isSucceeded();
     }
 
+    @Test
+    void transferTypes_shouldReturnHttpPull() {
+        var asset = Asset.Builder.newInstance().dataAddress(DataAddress.Builder.newInstance().type("any").build()).build();
+
+        var transferTypes = flowController.transferTypesFor(asset);
+
+        assertThat(transferTypes).hasSize(1).contains(HTTP_DATA_PULL);
+    }
+
     private TransferProcess transferProcess(String destinationType) {
+        return transferProcess(destinationType, null);
+    }
+
+    private TransferProcess transferProcess(String destinationType, String transferType) {
         return TransferProcess.Builder.newInstance()
+                .transferType(transferType)
                 .dataRequest(DataRequest.Builder.newInstance().destinationType(destinationType).build())
                 .build();
     }

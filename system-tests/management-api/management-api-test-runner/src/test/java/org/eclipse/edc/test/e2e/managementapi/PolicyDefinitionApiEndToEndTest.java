@@ -23,6 +23,9 @@ import org.eclipse.edc.policy.model.Policy;
 import org.eclipse.edc.spi.entity.Entity;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import static io.restassured.http.ContentType.JSON;
 import static jakarta.json.Json.createArrayBuilder;
 import static jakarta.json.Json.createObjectBuilder;
@@ -75,6 +78,99 @@ public class PolicyDefinitionApiEndToEndTest extends BaseManagementApiEndToEndTe
     }
 
     @Test
+    void shouldStorePolicyDefinitionWithPrivateProperties() {
+        var requestBody = createObjectBuilder()
+                .add(CONTEXT, createObjectBuilder()
+                        .add("edc", EDC_NAMESPACE)
+                        .build())
+                .add(TYPE, "PolicyDefinition")
+                .add("policy", sampleOdrlPolicy())
+                .add("privateProperties", createObjectBuilder()
+                        .add("newKey", "newValue")
+                        .build())
+                .build();
+
+        var id = baseRequest()
+                .body(requestBody)
+                .contentType(JSON)
+                .post("/v2/policydefinitions")
+                .then()
+                .contentType(JSON)
+                .extract().jsonPath().getString(ID);
+
+        PolicyDefinition result = store().findById(id);
+        assertThat(result).isNotNull()
+                .extracting(PolicyDefinition::getPolicy).isNotNull()
+                .extracting(Policy::getPermissions).asList().hasSize(1);
+        Map<String, Object> privateProp = new HashMap<>();
+        privateProp.put("https://w3id.org/edc/v0.0.1/ns/newKey", "newValue");
+        assertThat(result).isNotNull()
+                .extracting(PolicyDefinition::getPrivateProperties).isEqualTo(privateProp);
+
+        baseRequest()
+                .get("/v2/policydefinitions/" + id)
+                .then()
+                .statusCode(200)
+                .contentType(JSON)
+                .body(ID, is(id))
+                .body(CONTEXT, hasEntry(EDC_PREFIX, EDC_NAMESPACE))
+                .body(CONTEXT, hasEntry(ODRL_PREFIX, ODRL_SCHEMA))
+                .log().all()
+                .body("policy.'odrl:permission'.'odrl:constraint'.'odrl:operator'.@id", is("odrl:eq"));
+    }
+
+    @Test
+    void queryPolicyDefinitionWithSimplePrivateProperties() {
+        var requestBody = createObjectBuilder()
+                .add(CONTEXT, createObjectBuilder()
+                        .add("edc", EDC_NAMESPACE)
+                        .build())
+                .add(TYPE, "PolicyDefinition")
+                .add("policy", sampleOdrlPolicy())
+                .add("edc:privateProperties", createObjectBuilder()
+                        .add("newKey", "newValue")
+                        .build())
+                .build();
+
+        baseRequest()
+                .body(requestBody)
+                .contentType(JSON)
+                .post("/v2/policydefinitions")
+                .then()
+                .contentType(JSON)
+                .extract().jsonPath().getString(ID);
+
+        var query = createSingleFilterQuery(
+                "privateProperties.'https://w3id.org/edc/v0.0.1/ns/newKey'",
+                "=",
+                "newValue");
+
+        baseRequest()
+                .body(query)
+                .contentType(JSON)
+                .post("/v2/policydefinitions/request")
+                .then()
+                .log().ifError()
+                .statusCode(200)
+                .body("size()", is(1));
+
+
+        query = createSingleFilterQuery(
+                "privateProperties.'https://w3id.org/edc/v0.0.1/ns/newKey'",
+                "=",
+                "somethingElse");
+
+        baseRequest()
+                .body(query)
+                .contentType(JSON)
+                .post("/v2/policydefinitions/request")
+                .then()
+                .log().ifError()
+                .statusCode(200)
+                .body("size()", is(0));
+    }
+
+    @Test
     void shouldUpdate() {
         var requestBody = createObjectBuilder()
                 .add(CONTEXT, createObjectBuilder()
@@ -114,6 +210,70 @@ public class PolicyDefinitionApiEndToEndTest extends BaseManagementApiEndToEndTe
     }
 
     @Test
+    void shouldUpdateWithProperties() {
+        var requestBody = createObjectBuilder()
+                .add(CONTEXT, createObjectBuilder()
+                        .add("edc", EDC_NAMESPACE)
+                        .build())
+                .add(TYPE, "PolicyDefinition")
+                .add("policy", sampleOdrlPolicy())
+                .add("privateProperties", createObjectBuilder()
+                        .add("newKey", "newValue")
+                        .build())
+                .build();
+
+        var updatedBody = createObjectBuilder()
+                .add(CONTEXT, createObjectBuilder()
+                        .add("edc", EDC_NAMESPACE)
+                        .build())
+                .add(TYPE, "PolicyDefinition")
+                .add("policy", sampleOdrlPolicy())
+                .add("privateProperties", createObjectBuilder()
+                        .add("newKey", "updatedValue")
+                        .build())
+                .build();
+
+        var id = baseRequest()
+                .body(requestBody)
+                .contentType(JSON)
+                .post("/v2/policydefinitions")
+                .then()
+                .statusCode(200)
+                .extract().jsonPath().getString(ID);
+
+        var createdAt = baseRequest()
+                .contentType(JSON)
+                .post("/v2/policydefinitions/request")
+                .then()
+                .statusCode(200)
+                .extract().as(JsonArray.class)
+                .get(0).asJsonObject()
+                .getJsonNumber("createdAt").longValue();
+
+        baseRequest()
+                .contentType(JSON)
+                .body(createObjectBuilder(updatedBody).add(ID, id).build())
+                .put("/v2/policydefinitions/" + id)
+                .then()
+                .statusCode(204);
+
+        var result = store().findById(id);
+        assertThat(result)
+                .extracting(Entity::getCreatedAt)
+                .isNotEqualTo(createdAt);
+
+
+        Map<String, Object> privateProp = new HashMap<>();
+        privateProp.put("https://w3id.org/edc/v0.0.1/ns/newKey", "updatedValue");
+        assertThat(result).isNotNull()
+                .extracting(PolicyDefinition::getPrivateProperties).isEqualTo(privateProp);
+
+        assertThat(store().findById(id))
+                .extracting(Entity::getCreatedAt)
+                .isNotEqualTo(createdAt);
+    }
+
+    @Test
     void shouldDelete() {
         var requestBody = createObjectBuilder()
                 .add(CONTEXT, createObjectBuilder()
@@ -121,6 +281,39 @@ public class PolicyDefinitionApiEndToEndTest extends BaseManagementApiEndToEndTe
                         .build())
                 .add(TYPE, "PolicyDefinition")
                 .add("policy", sampleOdrlPolicy())
+                .build();
+
+        var id = baseRequest()
+                .body(requestBody)
+                .contentType(JSON)
+                .post("/v2/policydefinitions")
+                .then()
+                .statusCode(200)
+                .extract().jsonPath().getString(ID);
+
+        baseRequest()
+                .delete("/v2/policydefinitions/" + id)
+                .then()
+                .statusCode(204);
+
+        baseRequest()
+                .get("/v2/policydefinitions/" + id)
+                .then()
+                .statusCode(404);
+    }
+
+
+    @Test
+    void shouldDeleteWithProperties() {
+        var requestBody = createObjectBuilder()
+                .add(CONTEXT, createObjectBuilder()
+                        .add("edc", EDC_NAMESPACE)
+                        .build())
+                .add(TYPE, "PolicyDefinition")
+                .add("policy", sampleOdrlPolicy())
+                .add("privateProperties", createObjectBuilder()
+                        .add("newKey", "newValue")
+                        .build())
                 .build();
 
         var id = baseRequest()
@@ -161,6 +354,21 @@ public class PolicyDefinitionApiEndToEndTest extends BaseManagementApiEndToEndTe
 
     private PolicyDefinitionStore store() {
         return controlPlane.getContext().getService(PolicyDefinitionStore.class);
+    }
+
+    private JsonObject createSingleFilterQuery(String leftOperand, String operator, String rightOperand) {
+        var criteria =
+                (createObjectBuilder()
+                        .add("operandLeft", leftOperand)
+                        .add("operator", operator)
+                        .add("operandRight", rightOperand)
+                );
+
+        return createObjectBuilder()
+                .add(CONTEXT, createObjectBuilder().add(EDC_PREFIX, EDC_NAMESPACE))
+                .add(TYPE, "QuerySpec")
+                .add("filterExpression", criteria)
+                .build();
     }
 
 }

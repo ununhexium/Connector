@@ -29,13 +29,13 @@ import static java.util.stream.Collectors.collectingAndThen;
 import static java.util.stream.Collectors.toList;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcess.TRANSFER_PROCESS_ASSET_ID;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcess.TRANSFER_PROCESS_CALLBACK_ADDRESSES;
-import static org.eclipse.edc.connector.transfer.spi.types.TransferProcess.TRANSFER_PROCESS_CONNECTOR_ID;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcess.TRANSFER_PROCESS_CONTRACT_ID;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcess.TRANSFER_PROCESS_CORRELATION_ID;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcess.TRANSFER_PROCESS_DATA_DESTINATION;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcess.TRANSFER_PROCESS_ERROR_DETAIL;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcess.TRANSFER_PROCESS_STATE;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcess.TRANSFER_PROCESS_STATE_TIMESTAMP;
+import static org.eclipse.edc.connector.transfer.spi.types.TransferProcess.TRANSFER_PROCESS_TRANSFER_TYPE;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcess.TRANSFER_PROCESS_TYPE;
 import static org.eclipse.edc.connector.transfer.spi.types.TransferProcess.TRANSFER_PROCESS_TYPE_TYPE;
 import static org.eclipse.edc.jsonld.spi.JsonLdKeywords.ID;
@@ -70,7 +70,7 @@ public class JsonObjectFromTransferProcessTransformer extends AbstractJsonLdTran
                 .add(TRANSFER_PROCESS_CALLBACK_ADDRESSES, callbackAddresses)
                 .add(TRANSFER_PROCESS_DATA_DESTINATION, dataDestination);
 
-        Optional.ofNullable(input.getConnectorId()).ifPresent(it -> builder.add(TRANSFER_PROCESS_CONNECTOR_ID, it));
+        Optional.ofNullable(input.getTransferType()).ifPresent(it -> builder.add(TRANSFER_PROCESS_TRANSFER_TYPE, it));
         Optional.ofNullable(input.getErrorDetail()).ifPresent(it -> builder.add(TRANSFER_PROCESS_ERROR_DETAIL, it));
 
         return builder.build();

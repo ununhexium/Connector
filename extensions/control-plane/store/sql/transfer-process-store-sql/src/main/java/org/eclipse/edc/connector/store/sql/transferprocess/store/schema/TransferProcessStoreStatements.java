@@ -9,6 +9,7 @@
  *
  *  Contributors:
  *       Microsoft Corporation - initial API and implementation
+ *       Mercedes-Benz Tech Innovation GmbH - connector id removal
  *
  */
 
@@ -70,12 +71,12 @@ public interface TransferProcessStoreStatements extends StatefulEntityStatements
         return "protocol";
     }
 
-    default String getConnectorIdColumn() {
-        return "connector_id";
-    }
-
     default String getConnectorAddressColumn() {
         return "connector_address";
+    }
+
+    default String getTransferTypeColumn() {
+        return "transfer_type";
     }
 
     default String getContractIdColumn() {
@@ -116,6 +117,10 @@ public interface TransferProcessStoreStatements extends StatefulEntityStatements
 
     default String getPendingColumn() {
         return "pending";
+    }
+
+    default String getProtocolMessagesColumn() {
+        return "protocol_messages";
     }
 
     SqlQueryStatement createQuery(QuerySpec querySpec);

@@ -9,6 +9,7 @@
  *
  *  Contributors:
  *       Microsoft Corporation - initial API and implementation
+ *       Mercedes-Benz Tech Innovation GmbH - connector id removal
  *
  */
 
@@ -16,7 +17,7 @@ package org.eclipse.edc.connector.store.sql.transferprocess.store.schema.postgre
 
 import org.eclipse.edc.connector.store.sql.transferprocess.store.schema.TransferProcessStoreStatements;
 import org.eclipse.edc.connector.transfer.spi.types.DataRequest;
-import org.eclipse.edc.sql.translation.JsonFieldMapping;
+import org.eclipse.edc.sql.translation.JsonFieldTranslator;
 import org.eclipse.edc.sql.translation.TranslationMapping;
 
 /**
@@ -29,7 +30,6 @@ class DataRequestMapping extends TranslationMapping {
     private static final String FIELD_PROCESS_ID = "processId";
     private static final String FIELD_CONNECTOR_ADDRESS = "connectorAddress";
     private static final String FIELD_PROTOCOL = "protocol";
-    private static final String FIELD_CONNECTOR_ID = "connectorId";
     private static final String FIELD_ASSET_ID = "assetId";
     private static final String FIELD_CONTRACT_ID = "contractId";
     private static final String FIELD_DATA_DESTINATION = "dataDestination";
@@ -40,10 +40,9 @@ class DataRequestMapping extends TranslationMapping {
         add(FIELD_PROCESS_ID, statements.getProcessIdColumn());
         add(FIELD_CONNECTOR_ADDRESS, statements.getConnectorAddressColumn());
         add(FIELD_PROTOCOL, statements.getProtocolColumn());
-        add(FIELD_CONNECTOR_ID, statements.getConnectorIdColumn());
         add(FIELD_ASSET_ID, statements.getAssetIdColumn());
         add(FIELD_CONTRACT_ID, statements.getContractIdColumn());
-        add(FIELD_DATA_DESTINATION, new JsonFieldMapping(statements.getDataDestinationColumn()));
+        add(FIELD_DATA_DESTINATION, new JsonFieldTranslator(statements.getDataDestinationColumn()));
         add(FIELD_TRANSFER_PROCESS_ID, statements.getTransferProcessIdFkColumn());
     }
 }

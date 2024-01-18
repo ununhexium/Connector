@@ -15,19 +15,24 @@
 package org.eclipse.edc.iam.identitytrust.service;
 
 
+import com.nimbusds.jwt.JWTClaimsSet;
+import org.assertj.core.api.Assertions;
 import org.eclipse.edc.iam.identitytrust.IdentityAndTrustService;
 import org.eclipse.edc.identitytrust.CredentialServiceClient;
+import org.eclipse.edc.identitytrust.CredentialServiceUrlResolver;
 import org.eclipse.edc.identitytrust.SecureTokenService;
 import org.eclipse.edc.identitytrust.TrustedIssuerRegistry;
 import org.eclipse.edc.identitytrust.model.CredentialFormat;
 import org.eclipse.edc.identitytrust.model.CredentialSubject;
 import org.eclipse.edc.identitytrust.model.Issuer;
 import org.eclipse.edc.identitytrust.model.VerifiablePresentationContainer;
-import org.eclipse.edc.identitytrust.validation.JwtValidator;
-import org.eclipse.edc.identitytrust.verification.JwtVerifier;
+import org.eclipse.edc.identitytrust.validation.TokenValidationAction;
 import org.eclipse.edc.identitytrust.verification.PresentationVerifier;
+import org.eclipse.edc.policy.model.Policy;
 import org.eclipse.edc.spi.iam.ClaimToken;
 import org.eclipse.edc.spi.iam.TokenParameters;
+import org.eclipse.edc.spi.iam.TokenRepresentation;
+import org.eclipse.edc.spi.iam.VerificationContext;
 import org.eclipse.edc.spi.result.Result;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
@@ -43,12 +48,17 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
+import static org.eclipse.edc.identitytrust.SelfIssuedTokenConstants.PRESENTATION_ACCESS_TOKEN_CLAIM;
+import static org.eclipse.edc.identitytrust.TestFunctions.TRUSTED_ISSUER;
 import static org.eclipse.edc.identitytrust.TestFunctions.createCredentialBuilder;
 import static org.eclipse.edc.identitytrust.TestFunctions.createJwt;
 import static org.eclipse.edc.identitytrust.TestFunctions.createPresentationBuilder;
 import static org.eclipse.edc.identitytrust.TestFunctions.createPresentationContainer;
 import static org.eclipse.edc.junit.assertions.AbstractResultAssert.assertThat;
+import static org.eclipse.edc.jwt.spi.JwtRegisteredClaimNames.AUDIENCE;
+import static org.eclipse.edc.jwt.spi.JwtRegisteredClaimNames.SCOPE;
 import static org.eclipse.edc.spi.result.Result.failure;
 import static org.eclipse.edc.spi.result.Result.success;
 import static org.mockito.ArgumentMatchers.any;
@@ -68,16 +78,30 @@ class IdentityAndTrustServiceTest {
     private final SecureTokenService mockedSts = mock();
     private final PresentationVerifier mockedVerifier = mock();
     private final CredentialServiceClient mockedClient = mock();
-    private final JwtValidator jwtValidatorMock = mock();
-    private final JwtVerifier jwtVerfierMock = mock();
     private final TrustedIssuerRegistry trustedIssuerRegistryMock = mock();
+    private final CredentialServiceUrlResolver credentialServiceUrlResolverMock = mock();
+    private final TokenValidationAction actionMock = mock();
     private final IdentityAndTrustService service = new IdentityAndTrustService(mockedSts, EXPECTED_OWN_DID, EXPECTED_PARTICIPANT_ID, mockedVerifier, mockedClient,
-            jwtValidatorMock, jwtVerfierMock, trustedIssuerRegistryMock, Clock.systemUTC());
+            actionMock, trustedIssuerRegistryMock, Clock.systemUTC(), credentialServiceUrlResolverMock, i -> i);
 
     @BeforeEach
     void setup() {
-        when(jwtValidatorMock.validateToken(any(), any())).thenReturn(success(ClaimToken.Builder.newInstance().claim("iss", CONSUMER_DID).build()));
-        when(jwtVerfierMock.verify(any(), any())).thenReturn(success());
+        when(credentialServiceUrlResolverMock.resolve(any())).thenReturn(success("foobar"));
+        var jwt = createJwt(new JWTClaimsSet.Builder().claim("scope", "foo-scope").build());
+
+        when(actionMock.apply(any())).thenReturn(success(ClaimToken.Builder.newInstance()
+                .claim("iss", CONSUMER_DID)
+                .claim("client_id", "sender-id")
+                .claim(PRESENTATION_ACCESS_TOKEN_CLAIM, jwt.getToken()).build()));
+
+        when(mockedSts.createToken(any(), any())).thenReturn(success(TokenRepresentation.Builder.newInstance().build()));
+    }
+
+    private VerificationContext verificationContext() {
+        return VerificationContext.Builder.newInstance()
+                .audience("test-audience")
+                .policy(Policy.Builder.newInstance().build())
+                .build();
     }
 
     @Nested
@@ -87,8 +111,8 @@ class IdentityAndTrustServiceTest {
                 "org.eclipse.edc:fooCredential:+" })
         void obtainClientCredentials_invalidScopeString(String scope) {
             var tp = TokenParameters.Builder.newInstance()
-                    .scope(scope)
-                    .audience("test-audience")
+                    .claims(SCOPE, scope)
+                    .claims(AUDIENCE, "test-audience")
                     .build();
             assertThat(service.obtainClientCredentials(tp))
                     .isNotNull()
@@ -103,8 +127,8 @@ class IdentityAndTrustServiceTest {
         @EmptySource
         void obtainClientCredentials_validScopeString(String scope) {
             var tp = TokenParameters.Builder.newInstance()
-                    .scope(scope)
-                    .audience("test-audience")
+                    .claims(SCOPE, scope)
+                    .claims(AUDIENCE, "test-audience")
                     .build();
             assertThat(service.obtainClientCredentials(tp))
                     .isNotNull()
@@ -117,14 +141,14 @@ class IdentityAndTrustServiceTest {
         void obtainClientCredentials_stsFails() {
             var scope = "org.eclipse.edc.vp.type:TestCredential:read";
             var tp = TokenParameters.Builder.newInstance()
-                    .scope(scope)
-                    .audience("test-audience")
+                    .claims(SCOPE, scope)
+                    .claims(AUDIENCE, "test-audience")
                     .build();
             when(mockedSts.createToken(any(), any())).thenReturn(success(createJwt()));
             assertThat(service.obtainClientCredentials(tp)).isSucceeded();
             verify(mockedSts).createToken(argThat(m -> m.get("iss").equals(EXPECTED_OWN_DID) &&
                     m.get("sub").equals(EXPECTED_OWN_DID) &&
-                    m.get("aud").equals(tp.getAudience()) &&
+                    m.get("aud").equals(tp.getStringClaim(AUDIENCE)) &&
                     m.get("client_id").equals(EXPECTED_PARTICIPANT_ID)), eq(scope));
         }
     }
@@ -137,7 +161,7 @@ class IdentityAndTrustServiceTest {
         void presentationRequestFails() {
             when(mockedClient.requestPresentation(any(), any(), any())).thenReturn(failure("test-failure"));
             var token = createJwt();
-            var result = service.verifyJwtToken(token, "test-audience");
+            var result = service.verifyJwtToken(token, verificationContext());
             assertThat(result).isFailed().detail().isEqualTo("test-failure");
             verifyNoInteractions(mockedVerifier);
             verify(mockedClient).requestPresentation(any(), any(), any());
@@ -149,7 +173,7 @@ class IdentityAndTrustServiceTest {
             when(mockedVerifier.verifyPresentation(any())).thenReturn(Result.failure("Cryptographic error"));
             when(mockedClient.requestPresentation(any(), any(), any())).thenReturn(success(List.of(createPresentationContainer())));
             var token = createJwt();
-            var result = service.verifyJwtToken(token, "test-audience");
+            var result = service.verifyJwtToken(token, verificationContext());
             assertThat(result).isFailed().detail().isEqualTo("Cryptographic error");
         }
 
@@ -165,7 +189,7 @@ class IdentityAndTrustServiceTest {
             when(mockedVerifier.verifyPresentation(any())).thenReturn(success());
             when(mockedClient.requestPresentation(any(), any(), any())).thenReturn(success(List.of(vpContainer)));
             var token = createJwt(CONSUMER_DID, EXPECTED_OWN_DID);
-            var result = service.verifyJwtToken(token, "test-audience");
+            var result = service.verifyJwtToken(token, verificationContext());
             assertThat(result).isFailed().messages()
                     .hasSizeGreaterThanOrEqualTo(1)
                     .contains("Credential is not yet valid.");
@@ -186,7 +210,7 @@ class IdentityAndTrustServiceTest {
             when(mockedVerifier.verifyPresentation(any())).thenReturn(success());
             when(mockedClient.requestPresentation(any(), any(), any())).thenReturn(success(List.of(vpContainer)));
             var token = createJwt(CONSUMER_DID, EXPECTED_OWN_DID);
-            var result = service.verifyJwtToken(token, "test-audience");
+            var result = service.verifyJwtToken(token, verificationContext());
             assertThat(result).isFailed().messages()
                     .hasSizeGreaterThanOrEqualTo(1)
                     .contains("Not all subject IDs match the expected subject ID %s".formatted(CONSUMER_DID));
@@ -211,7 +235,7 @@ class IdentityAndTrustServiceTest {
             when(mockedVerifier.verifyPresentation(any())).thenReturn(success());
             when(mockedClient.requestPresentation(any(), any(), any())).thenReturn(success(List.of(vpContainer)));
             var token = createJwt(consumerDid, EXPECTED_OWN_DID);
-            var result = service.verifyJwtToken(token, "test-audience");
+            var result = service.verifyJwtToken(token, verificationContext());
             assertThat(result).isFailed().messages()
                     .hasSizeGreaterThanOrEqualTo(1)
                     .contains("Issuer 'invalid-issuer' is not in the list of trusted issuers");
@@ -219,9 +243,10 @@ class IdentityAndTrustServiceTest {
 
         @Test
         void jwtTokenNotValid() {
-            when(jwtValidatorMock.validateToken(any(), any())).thenReturn(failure("test failure"));
+            when(actionMock.apply(any())).thenReturn(failure("test failure"));
+
             var token = createJwt();
-            assertThat(service.verifyJwtToken(token, "test-audience"))
+            assertThat(service.verifyJwtToken(token, verificationContext()))
                     .isFailed()
                     .messages().hasSize(1)
                     .containsExactly("test failure");
@@ -229,12 +254,124 @@ class IdentityAndTrustServiceTest {
 
         @Test
         void jwtTokenNotVerified() {
-            when(jwtVerfierMock.verify(any(), any())).thenReturn(failure("test-failure"));
+            when(actionMock.apply(any())).thenReturn(failure("test-failure"));
             var token = createJwt();
-            assertThat(service.verifyJwtToken(token, "test-audience"))
+            assertThat(service.verifyJwtToken(token, verificationContext()))
                     .isFailed()
                     .messages().hasSize(1)
                     .containsExactly("test-failure");
+        }
+
+        @Test
+        void cannotResolveCredentialServiceUrl() {
+            when(credentialServiceUrlResolverMock.resolve(any())).thenReturn(Result.failure("test-failure"));
+            assertThat(service.verifyJwtToken(createJwt(), verificationContext()))
+                    .isFailed()
+                    .detail()
+                    .isEqualTo("test-failure");
+
+            verifyNoInteractions(mockedClient);
+        }
+
+        @Test
+        void verify_singlePresentation_singleCredential() {
+            var presentation = createPresentationBuilder()
+                    .type("VerifiablePresentation")
+                    .credentials(List.of(createCredentialBuilder()
+                            .credentialSubjects(List.of(CredentialSubject.Builder.newInstance()
+                                    .id(CONSUMER_DID)
+                                    .claim("some-claim", "some-val")
+                                    .build()))
+                            .build()))
+                    .build();
+            var vpContainer = new VerifiablePresentationContainer("test-vp", CredentialFormat.JSON_LD, presentation);
+            when(mockedVerifier.verifyPresentation(any())).thenReturn(success());
+            when(mockedClient.requestPresentation(any(), any(), any())).thenReturn(success(List.of(vpContainer)));
+            when(trustedIssuerRegistryMock.getTrustedIssuers()).thenReturn(Set.of(TRUSTED_ISSUER));
+            var token = createJwt(CONSUMER_DID, EXPECTED_OWN_DID);
+            var result = service.verifyJwtToken(token, verificationContext());
+            assertThat(result).isSucceeded()
+                    .satisfies(ct -> Assertions.assertThat(ct.getClaims()).containsEntry("some-claim", "some-val"));
+        }
+
+        @Test
+        void verify_singlePresentation_multipleCredentials() {
+            var presentation = createPresentationBuilder()
+                    .type("VerifiablePresentation")
+                    .credentials(List.of(createCredentialBuilder()
+                                    .credentialSubjects(List.of(CredentialSubject.Builder.newInstance()
+                                            .id(CONSUMER_DID)
+                                            .claim("some-claim", "some-val")
+                                            .build()))
+                                    .build(),
+                            createCredentialBuilder()
+                                    .credentialSubjects(List.of(CredentialSubject.Builder.newInstance()
+                                            .id(CONSUMER_DID)
+                                            .claim("some-other-claim", "some-other-val")
+                                            .build()))
+                                    .build()))
+                    .build();
+            var vpContainer = new VerifiablePresentationContainer("test-vp", CredentialFormat.JSON_LD, presentation);
+            when(mockedVerifier.verifyPresentation(any())).thenReturn(success());
+            when(mockedClient.requestPresentation(any(), any(), any())).thenReturn(success(List.of(vpContainer)));
+            when(trustedIssuerRegistryMock.getTrustedIssuers()).thenReturn(Set.of(TRUSTED_ISSUER));
+            var token = createJwt(CONSUMER_DID, EXPECTED_OWN_DID);
+            var result = service.verifyJwtToken(token, verificationContext());
+            assertThat(result).isSucceeded()
+                    .satisfies(ct -> Assertions.assertThat(ct.getClaims())
+                            .containsEntry("some-claim", "some-val")
+                            .containsEntry("some-other-claim", "some-other-val"));
+        }
+
+        @Test
+        void verify_multiplePresentations_multipleCredentialsEach() {
+            var presentation1 = createPresentationBuilder()
+                    .type("VerifiablePresentation")
+                    .credentials(List.of(createCredentialBuilder()
+                                    .credentialSubjects(List.of(CredentialSubject.Builder.newInstance()
+                                            .id(CONSUMER_DID)
+                                            .claim("some-claim", "some-val")
+                                            .build()))
+                                    .build(),
+                            createCredentialBuilder()
+                                    .credentialSubjects(List.of(CredentialSubject.Builder.newInstance()
+                                            .id(CONSUMER_DID)
+                                            .claim("some-other-claim", "some-other-val")
+                                            .build()))
+                                    .build()))
+                    .build();
+            var vpContainer1 = new VerifiablePresentationContainer("test-vp", CredentialFormat.JSON_LD, presentation1);
+
+            var presentation2 = createPresentationBuilder()
+                    .type("VerifiablePresentation")
+                    .credentials(List.of(createCredentialBuilder()
+                                    .credentialSubjects(List.of(CredentialSubject.Builder.newInstance()
+                                            .id(CONSUMER_DID)
+                                            .claim("some-claim-2", "some-val-2")
+                                            .build()))
+                                    .build(),
+                            createCredentialBuilder()
+                                    .credentialSubjects(List.of(CredentialSubject.Builder.newInstance()
+                                            .id(CONSUMER_DID)
+                                            .claim("some-other-claim-2", "some-other-val-2")
+                                            .build()))
+                                    .build()))
+                    .build();
+            var vpContainer2 = new VerifiablePresentationContainer("test-vp", CredentialFormat.JSON_LD, presentation2);
+
+            when(mockedVerifier.verifyPresentation(any())).thenReturn(success());
+            when(mockedClient.requestPresentation(any(), any(), any())).thenReturn(success(List.of(vpContainer1, vpContainer2)));
+            when(trustedIssuerRegistryMock.getTrustedIssuers()).thenReturn(Set.of(TRUSTED_ISSUER));
+
+
+            var token = createJwt(CONSUMER_DID, EXPECTED_OWN_DID);
+            var result = service.verifyJwtToken(token, verificationContext());
+            assertThat(result).isSucceeded()
+                    .satisfies(ct -> Assertions.assertThat(ct.getClaims())
+                            .containsEntry("some-claim", "some-val")
+                            .containsEntry("some-other-claim", "some-other-val")
+                            .containsEntry("some-claim-2", "some-val-2")
+                            .containsEntry("some-other-claim-2", "some-other-val-2"));
         }
     }
 }

@@ -9,6 +9,7 @@
  *
  *  Contributors:
  *       Bayerische Motoren Werke Aktiengesellschaft (BMW AG) - initial API and implementation
+ *       Mercedes-Benz Tech Innovation GmbH - connector id removal
  *
  */
 
@@ -32,10 +33,12 @@ public class TransferRequest {
     public static final String TRANSFER_REQUEST_COUNTER_PARTY_ADDRESS = EDC_NAMESPACE + "counterPartyAddress";
     public static final String TRANSFER_REQUEST_CONTRACT_ID = EDC_NAMESPACE + "contractId";
     public static final String TRANSFER_REQUEST_DATA_DESTINATION = EDC_NAMESPACE + "dataDestination";
+    public static final String TRANSFER_REQUEST_TRANSFER_TYPE = EDC_NAMESPACE + "transferType";
     @Deprecated(since = "0.2.0")
     public static final String TRANSFER_REQUEST_PROPERTIES = EDC_NAMESPACE + "properties";
     public static final String TRANSFER_REQUEST_PRIVATE_PROPERTIES = EDC_NAMESPACE + "privateProperties";
     public static final String TRANSFER_REQUEST_PROTOCOL = EDC_NAMESPACE + "protocol";
+    @Deprecated(since = "0.3.2")
     public static final String TRANSFER_REQUEST_CONNECTOR_ID = EDC_NAMESPACE + "connectorId";
     public static final String TRANSFER_REQUEST_ASSET_ID = EDC_NAMESPACE + "assetId";
     public static final String TRANSFER_REQUEST_CALLBACK_ADDRESSES = EDC_NAMESPACE + "callbackAddresses";
@@ -43,9 +46,9 @@ public class TransferRequest {
     private String id;
     private String protocol;
     private String counterPartyAddress;
-    private String connectorId;
     private String contractId;
     private String assetId;
+    private String transferType;
     private DataAddress dataDestination;
     @Deprecated(since = "0.2.0")
     private Map<String, String> properties = new HashMap<>();
@@ -81,16 +84,16 @@ public class TransferRequest {
         return protocol;
     }
 
-    public String getConnectorId() {
-        return connectorId;
-    }
-
     public String getAssetId() {
         return assetId;
     }
 
     public List<CallbackAddress> getCallbackAddresses() {
         return callbackAddresses;
+    }
+
+    public String getTransferType() {
+        return transferType;
     }
 
     public static final class Builder {
@@ -119,6 +122,11 @@ public class TransferRequest {
             return this;
         }
 
+        public Builder transferType(String transferType) {
+            request.transferType = transferType;
+            return this;
+        }
+
         public Builder dataDestination(DataAddress dataDestination) {
             request.dataDestination = dataDestination;
             return this;
@@ -137,11 +145,6 @@ public class TransferRequest {
 
         public Builder protocol(String protocol) {
             request.protocol = protocol;
-            return this;
-        }
-
-        public Builder connectorId(String connectorId) {
-            request.connectorId = connectorId;
             return this;
         }
 

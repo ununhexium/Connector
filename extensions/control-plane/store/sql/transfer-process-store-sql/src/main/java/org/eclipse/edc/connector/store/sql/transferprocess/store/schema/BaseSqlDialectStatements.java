@@ -9,6 +9,7 @@
  *
  *  Contributors:
  *       Microsoft Corporation - initial API and implementation
+ *       Mercedes-Benz Tech Innovation GmbH - connector id removal
  *
  */
 
@@ -72,6 +73,8 @@ public abstract class BaseSqlDialectStatements implements TransferProcessStoreSt
                 .jsonColumn(getPrivatePropertiesColumn())
                 .jsonColumn(getCallbackAddressesColumn())
                 .column(getPendingColumn())
+                .column(getTransferTypeColumn())
+                .jsonColumn(getProtocolMessagesColumn())
                 .insertInto(getTransferProcessTableName());
     }
 
@@ -95,6 +98,8 @@ public abstract class BaseSqlDialectStatements implements TransferProcessStoreSt
                 .jsonColumn(getDeprovisionedResourcesColumn())
                 .jsonColumn(getCallbackAddressesColumn())
                 .column(getPendingColumn())
+                .column(getTransferTypeColumn())
+                .jsonColumn(getProtocolMessagesColumn())
                 .update(getTransferProcessTableName(), getIdColumn());
     }
 
@@ -104,7 +109,6 @@ public abstract class BaseSqlDialectStatements implements TransferProcessStoreSt
                 .column(getDataRequestIdColumn())
                 .column(getProcessIdColumn())
                 .column(getConnectorAddressColumn())
-                .column(getConnectorIdColumn())
                 .column(getAssetIdColumn())
                 .column(getContractIdColumn())
                 .jsonColumn(getDataDestinationColumn())
@@ -126,7 +130,6 @@ public abstract class BaseSqlDialectStatements implements TransferProcessStoreSt
                 .column(getProcessIdColumn())
                 .column(getConnectorAddressColumn())
                 .column(getProtocolColumn())
-                .column(getConnectorIdColumn())
                 .column(getAssetIdColumn())
                 .column(getContractIdColumn())
                 .jsonColumn(getDataDestinationColumn())

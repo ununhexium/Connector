@@ -36,8 +36,11 @@ import java.util.Date;
 import java.util.Map;
 
 import static java.time.Instant.now;
+import static org.eclipse.edc.identitytrust.SelfIssuedTokenConstants.PRESENTATION_ACCESS_TOKEN_CLAIM;
 
 public class TestFunctions {
+
+    public static final Issuer TRUSTED_ISSUER = new Issuer("http://test.issuer", Map.of());
 
     public static VerifiableCredential createCredential() {
         return createCredentialBuilder().build();
@@ -50,7 +53,7 @@ public class TestFunctions {
                         .claim("test-claim", "test-value")
                         .build())
                 .type("test-type")
-                .issuer(new Issuer("http://test.issuer", Map.of()))
+                .issuer(TRUSTED_ISSUER)
                 .issuanceDate(now());
     }
 
@@ -78,6 +81,7 @@ public class TestFunctions {
         var claimsSet = new JWTClaimsSet.Builder()
                 .subject(subject)
                 .issuer(issuer)
+                .claim(PRESENTATION_ACCESS_TOKEN_CLAIM, createJwt(new JWTClaimsSet.Builder().claim("scope", "fooscope").build()).getToken())
                 .expirationTime(new Date(new Date().getTime() + 60 * 1000))
                 .build();
         return createJwt(claimsSet);

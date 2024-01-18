@@ -10,6 +10,7 @@
  *  Contributors:
  *       Microsoft Corporation - initial API and implementation
  *       Bayerische Motoren Werke Aktiengesellschaft (BMW AG) - improvements
+ *       Mercedes-Benz Tech Innovation GmbH - connector id removal
  *
  */
 
@@ -21,6 +22,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonTypeName;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonPOJOBuilder;
+import org.eclipse.edc.spi.entity.ProtocolMessages;
 import org.eclipse.edc.spi.entity.StatefulEntity;
 import org.eclipse.edc.spi.types.domain.DataAddress;
 import org.eclipse.edc.spi.types.domain.callback.CallbackAddress;
@@ -112,9 +114,9 @@ public class TransferProcess extends StatefulEntity<TransferProcess> {
     public static final String TRANSFER_PROCESS_STATE_TIMESTAMP = EDC_NAMESPACE + "stateTimestamp";
     public static final String TRANSFER_PROCESS_ASSET_ID = EDC_NAMESPACE + "assetId";
     public static final String TRANSFER_PROCESS_CONTRACT_ID = EDC_NAMESPACE + "contractId";
-    public static final String TRANSFER_PROCESS_CONNECTOR_ID = EDC_NAMESPACE + "connectorId";
     public static final String TRANSFER_PROCESS_PRIVATE_PROPERTIES = EDC_NAMESPACE + "privateProperties";
     public static final String TRANSFER_PROCESS_TYPE_TYPE = EDC_NAMESPACE + "type";
+    public static final String TRANSFER_PROCESS_TRANSFER_TYPE = EDC_NAMESPACE + "transferType";
     public static final String TRANSFER_PROCESS_ERROR_DETAIL = EDC_NAMESPACE + "errorDetail";
     public static final String TRANSFER_PROCESS_DATA_DESTINATION = EDC_NAMESPACE + "dataDestination";
     public static final String TRANSFER_PROCESS_CALLBACK_ADDRESSES = EDC_NAMESPACE + "callbackAddresses";
@@ -126,6 +128,9 @@ public class TransferProcess extends StatefulEntity<TransferProcess> {
     private List<DeprovisionedResource> deprovisionedResources = new ArrayList<>();
     private Map<String, Object> privateProperties = new HashMap<>();
     private List<CallbackAddress> callbackAddresses = new ArrayList<>();
+    private ProtocolMessages protocolMessages = new ProtocolMessages();
+
+    private String transferType;
 
     private TransferProcess() {
     }
@@ -228,6 +233,26 @@ public class TransferProcess extends StatefulEntity<TransferProcess> {
 
     public boolean deprovisionComplete() {
         return getResourcesToDeprovision().isEmpty();
+    }
+
+    public boolean shouldIgnoreIncomingMessage(@NotNull String messageId) {
+        return protocolMessages.isAlreadyReceived(messageId) || TransferProcessStates.isFinal(state);
+    }
+
+    public ProtocolMessages getProtocolMessages() {
+        return protocolMessages;
+    }
+
+    public String lastSentProtocolMessage() {
+        return protocolMessages.getLastSent();
+    }
+
+    public void lastSentProtocolMessage(String id) {
+        protocolMessages.setLastSent(id);
+    }
+
+    public void protocolMessageReceived(String id) {
+        protocolMessages.addReceived(id);
     }
 
     public void transitionProvisioningRequested() {
@@ -348,6 +373,15 @@ public class TransferProcess extends StatefulEntity<TransferProcess> {
         return dataRequest.getConnectorAddress();
     }
 
+
+    /**
+     * The transfer type to use for the requested data
+     */
+    @JsonIgnore
+    public String getTransferType() {
+        return transferType;
+    }
+
     @JsonIgnore
     public String getAssetId() {
         return dataRequest.getAssetId();
@@ -374,11 +408,6 @@ public class TransferProcess extends StatefulEntity<TransferProcess> {
     }
 
     @JsonIgnore
-    public String getConnectorId() {
-        return dataRequest.getConnectorId();
-    }
-
-    @JsonIgnore
     public String getDestinationType() {
         return dataRequest.getDestinationType();
     }
@@ -393,7 +422,9 @@ public class TransferProcess extends StatefulEntity<TransferProcess> {
                 .deprovisionedResources(deprovisionedResources)
                 .privateProperties(privateProperties)
                 .callbackAddresses(callbackAddresses)
-                .type(type);
+                .transferType(transferType)
+                .type(type)
+                .protocolMessages(protocolMessages);
         return copy(builder);
     }
 
@@ -444,10 +475,26 @@ public class TransferProcess extends StatefulEntity<TransferProcess> {
      * @param canTransitTo Tells if the negotiation can transit to that state.
      */
     private void transition(TransferProcessStates end, Predicate<TransferProcessStates> canTransitTo) {
+        var targetState = end.code();
         if (!canTransitTo.test(TransferProcessStates.from(state))) {
-            throw new IllegalStateException(format("Cannot transition from state %s to %s", TransferProcessStates.from(state), TransferProcessStates.from(end.code())));
+            throw new IllegalStateException(format("Cannot transition from state %s to %s", TransferProcessStates.from(state), TransferProcessStates.from(targetState)));
         }
-        transitionTo(end.code());
+
+        if (state != targetState) {
+            protocolMessages.setLastSent(null);
+        }
+
+        transitionTo(targetState);
+    }
+
+    /**
+     * Set the correlationId, operation that's needed on the consumer side when it receives the first message with the
+     * provider process id.
+     *
+     * @param correlationId the correlation id.
+     */
+    public void setCorrelationId(String correlationId) {
+        dataRequest.setId(correlationId);
     }
 
     public enum Type {
@@ -506,6 +553,16 @@ public class TransferProcess extends StatefulEntity<TransferProcess> {
             return this;
         }
 
+        public Builder transferType(String transferType) {
+            entity.transferType = transferType;
+            return this;
+        }
+
+        public Builder protocolMessages(ProtocolMessages protocolMessages) {
+            entity.protocolMessages = protocolMessages;
+            return this;
+        }
+
         @Override
         public Builder self() {
             return this;
@@ -535,6 +592,5 @@ public class TransferProcess extends StatefulEntity<TransferProcess> {
 
             return entity;
         }
-
     }
 }

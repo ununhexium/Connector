@@ -68,17 +68,16 @@ public abstract class ContractNegotiationStoreTestBase {
 
     @Nested
     class FindById {
+
         @Test
-        @DisplayName("Verify that an entity is found by ID")
         void shouldFindEntityById() {
             var id = "test-cn1";
             var negotiation = createNegotiation(id);
-
             getContractNegotiationStore().save(negotiation);
 
-            assertThat(getContractNegotiationStore().findById(id))
-                    .usingRecursiveComparison()
-                    .isEqualTo(negotiation);
+            var actual = getContractNegotiationStore().findById(id);
+
+            assertThat(actual).usingRecursiveComparison().isEqualTo(negotiation);
         }
 
         @Test
@@ -214,7 +213,7 @@ public abstract class ContractNegotiationStoreTestBase {
                     .id(id)
                     .stateCount(420) //modified
                     .state(800) //modified
-                    .correlationId("corr-test-id1")
+                    .correlationId("corr-test-id2")
                     .counterPartyAddress("consumer")
                     .counterPartyId("consumerId")
                     .protocol("protocol")
@@ -224,6 +223,7 @@ public abstract class ContractNegotiationStoreTestBase {
 
             var actual = getContractNegotiationStore().findById(negotiation.getId());
             assertThat(actual).isNotNull();
+            assertThat(actual.getCorrelationId()).isEqualTo("corr-test-id2");
             assertThat(actual.getStateCount()).isEqualTo(420);
             assertThat(actual.getState()).isEqualTo(800);
         }
@@ -834,6 +834,7 @@ public abstract class ContractNegotiationStoreTestBase {
         }
     }
 
+    @Deprecated(since = "0.4.1")
     @Nested
     class FindByCorrelationIdAndLease {
         @Test

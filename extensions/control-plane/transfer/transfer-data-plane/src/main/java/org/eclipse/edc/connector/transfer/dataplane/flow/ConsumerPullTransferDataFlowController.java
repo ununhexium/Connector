@@ -14,43 +14,52 @@
 
 package org.eclipse.edc.connector.transfer.dataplane.flow;
 
-import org.eclipse.edc.connector.dataplane.selector.spi.client.DataPlaneSelectorClient;
+import org.eclipse.edc.connector.dataplane.selector.spi.DataPlaneSelectorService;
 import org.eclipse.edc.connector.transfer.dataplane.proxy.ConsumerPullDataPlaneProxyResolver;
 import org.eclipse.edc.connector.transfer.spi.flow.DataFlowController;
 import org.eclipse.edc.connector.transfer.spi.types.DataFlowResponse;
+import org.eclipse.edc.connector.transfer.spi.types.DataRequest;
 import org.eclipse.edc.connector.transfer.spi.types.TransferProcess;
 import org.eclipse.edc.policy.model.Policy;
 import org.eclipse.edc.spi.response.StatusResult;
 import org.eclipse.edc.spi.types.domain.DataAddress;
+import org.eclipse.edc.spi.types.domain.asset.Asset;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Optional;
+import java.util.Set;
 
 import static java.lang.String.format;
 import static org.eclipse.edc.connector.transfer.dataplane.spi.TransferDataPlaneConstants.HTTP_PROXY;
+import static org.eclipse.edc.connector.transfer.spi.flow.FlowType.PULL;
 import static org.eclipse.edc.spi.response.ResponseStatus.FATAL_ERROR;
 import static org.eclipse.edc.spi.response.StatusResult.failure;
 
 public class ConsumerPullTransferDataFlowController implements DataFlowController {
 
-    private final DataPlaneSelectorClient selectorClient;
+    private final DataPlaneSelectorService selectorService;
     private final ConsumerPullDataPlaneProxyResolver resolver;
 
-    public ConsumerPullTransferDataFlowController(DataPlaneSelectorClient selectorClient, ConsumerPullDataPlaneProxyResolver resolver) {
-        this.selectorClient = selectorClient;
+    private final Set<String> transferTypes = Set.of("%s-%s".formatted("HttpData", PULL));
+
+    public ConsumerPullTransferDataFlowController(DataPlaneSelectorService selectorService, ConsumerPullDataPlaneProxyResolver resolver) {
+        this.selectorService = selectorService;
         this.resolver = resolver;
     }
 
     @Override
     public boolean canHandle(TransferProcess transferProcess) {
-        return HTTP_PROXY.equals(transferProcess.getDestinationType());
+        // Backward compatibility: can handle if destination type is `HttpProxy` or the transfer type is `Http-PULL`
+        return HTTP_PROXY.equals(transferProcess.getDestinationType()) ||
+                (Optional.ofNullable(transferProcess.getTransferType()).map(transferTypes::contains).orElse(false));
     }
 
     @Override
     public @NotNull StatusResult<DataFlowResponse> initiateFlow(TransferProcess transferProcess, Policy policy) {
         var contentAddress = transferProcess.getContentDataAddress();
         var dataRequest = transferProcess.getDataRequest();
-        return Optional.ofNullable(selectorClient.find(contentAddress, dataRequest.getDataDestination()))
+
+        return Optional.ofNullable(selectorService.select(contentAddress, destinationAddress(dataRequest)))
                 .map(instance -> resolver.toDataAddress(dataRequest, contentAddress, instance)
                         .map(this::toResponse)
                         .map(StatusResult::success)
@@ -58,9 +67,25 @@ public class ConsumerPullTransferDataFlowController implements DataFlowControlle
                 .orElse(failure(FATAL_ERROR, format("Failed to find DataPlaneInstance for source/destination: %s/%s", contentAddress.getType(), HTTP_PROXY)));
     }
 
+    // Shim translation from "Http-PULL" to HttpProxy dataAddress
+    private DataAddress destinationAddress(DataRequest dataRequest) {
+        if (transferTypes.contains(dataRequest.getDestinationType())) {
+            var dadBuilder = DataAddress.Builder.newInstance();
+            dataRequest.getDataDestination().getProperties().forEach(dadBuilder::property);
+            return dadBuilder.type(HTTP_PROXY).build();
+        } else {
+            return dataRequest.getDataDestination();
+        }
+    }
+
     @Override
     public StatusResult<Void> terminate(TransferProcess transferProcess) {
         return StatusResult.success();
+    }
+
+    @Override
+    public Set<String> transferTypesFor(Asset asset) {
+        return transferTypes;
     }
 
     private DataFlowResponse toResponse(DataAddress address) {

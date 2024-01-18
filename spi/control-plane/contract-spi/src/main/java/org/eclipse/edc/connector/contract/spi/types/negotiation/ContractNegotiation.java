@@ -20,6 +20,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonTypeName;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonPOJOBuilder;
+import org.eclipse.edc.spi.entity.ProtocolMessages;
 import org.eclipse.edc.spi.entity.StatefulEntity;
 import org.eclipse.edc.spi.types.domain.agreement.ContractAgreement;
 import org.eclipse.edc.spi.types.domain.callback.CallbackAddress;
@@ -84,6 +85,7 @@ public class ContractNegotiation extends StatefulEntity<ContractNegotiation> {
     private Type type = CONSUMER;
     private ContractAgreement contractAgreement;
     private List<ContractOffer> contractOffers = new ArrayList<>();
+    private ProtocolMessages protocolMessages = new ProtocolMessages();
 
     public Type getType() {
         return type;
@@ -167,6 +169,26 @@ public class ContractNegotiation extends StatefulEntity<ContractNegotiation> {
     public void setContractAgreement(ContractAgreement agreement) {
         contractAgreement = agreement;
         setModified();
+    }
+
+    public boolean shouldIgnoreIncomingMessage(@NotNull String messageId) {
+        return protocolMessages.isAlreadyReceived(messageId) || ContractNegotiationStates.isFinal(state);
+    }
+
+    public ProtocolMessages getProtocolMessages() {
+        return protocolMessages;
+    }
+
+    public String lastSentProtocolMessage() {
+        return protocolMessages.getLastSent();
+    }
+
+    public void lastSentProtocolMessage(String id) {
+        protocolMessages.setLastSent(id);
+    }
+
+    public void protocolMessageReceived(String id) {
+        protocolMessages.addReceived(id);
     }
 
     /**
@@ -345,7 +367,8 @@ public class ContractNegotiation extends StatefulEntity<ContractNegotiation> {
                 .type(type)
                 .contractAgreement(contractAgreement)
                 .contractOffers(contractOffers)
-                .callbackAddresses(callbackAddresses);
+                .callbackAddresses(callbackAddresses)
+                .protocolMessages(protocolMessages);
         return copy(builder);
     }
 
@@ -394,10 +417,26 @@ public class ContractNegotiation extends StatefulEntity<ContractNegotiation> {
      * @param canTransitTo Tells if the negotiation can transit to that state.
      */
     private void transition(ContractNegotiationStates end, Predicate<ContractNegotiationStates> canTransitTo) {
+        var targetState = end.code();
         if (!canTransitTo.test(ContractNegotiationStates.from(state))) {
-            throw new IllegalStateException(format("Cannot transition from state %s to %s", ContractNegotiationStates.from(state), ContractNegotiationStates.from(end.code())));
+            throw new IllegalStateException(format("Cannot transition from state %s to %s", ContractNegotiationStates.from(state), ContractNegotiationStates.from(targetState)));
         }
-        transitionTo(end.code());
+
+        if (state != targetState) {
+            protocolMessages.setLastSent(null);
+        }
+
+        transitionTo(targetState);
+    }
+
+    /**
+     * Set the correlationId, operation that's needed on the consumer side when it receives the first message with the
+     * provider process id.
+     *
+     * @param correlationId the correlation id.
+     */
+    public void setCorrelationId(String correlationId) {
+        this.correlationId = correlationId;
     }
 
     public enum Type {
@@ -409,7 +448,6 @@ public class ContractNegotiation extends StatefulEntity<ContractNegotiation> {
      */
     @JsonPOJOBuilder(withPrefix = "")
     public static class Builder extends StatefulEntity.Builder<ContractNegotiation, Builder> {
-
 
         private Builder(ContractNegotiation negotiation) {
             super(negotiation);
@@ -464,6 +502,11 @@ public class ContractNegotiation extends StatefulEntity<ContractNegotiation> {
         public Builder type(Type type) {
             entity.type = type;
             return this;
+        }
+
+        public Builder protocolMessages(ProtocolMessages protocolMessages) {
+            entity.protocolMessages = protocolMessages;
+            return self();
         }
 
         @Override

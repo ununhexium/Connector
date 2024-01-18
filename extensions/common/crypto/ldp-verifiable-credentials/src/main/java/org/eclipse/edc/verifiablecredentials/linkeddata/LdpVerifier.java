@@ -30,7 +30,6 @@ import com.apicatalog.ld.signature.SignatureSuiteProvider;
 import com.apicatalog.ld.signature.VerificationError;
 import com.apicatalog.ld.signature.VerificationError.Code;
 import com.apicatalog.ld.signature.key.VerificationKey;
-import com.apicatalog.ld.signature.method.DidUrlMethodResolver;
 import com.apicatalog.ld.signature.method.HttpMethodResolver;
 import com.apicatalog.ld.signature.method.MethodResolver;
 import com.apicatalog.ld.signature.method.VerificationMethod;
@@ -48,6 +47,7 @@ import org.eclipse.edc.identitytrust.verification.VerifierContext;
 import org.eclipse.edc.jsonld.spi.JsonLd;
 import org.eclipse.edc.jsonld.spi.JsonLdKeywords;
 import org.eclipse.edc.spi.result.Result;
+import org.eclipse.edc.util.uri.UriUtils;
 
 import java.io.IOException;
 import java.net.URI;
@@ -67,7 +67,7 @@ public class LdpVerifier implements CredentialVerifier {
     private ObjectMapper jsonLdMapper;
     private SignatureSuiteProvider suiteProvider;
     private Map<String, Object> params;
-    private Collection<MethodResolver> methodResolvers = new ArrayList<>(List.of(new DidUrlMethodResolver(), new HttpMethodResolver()));
+    private Collection<MethodResolver> methodResolvers = new ArrayList<>(List.of(new HttpMethodResolver()));
     private DocumentLoader loader;
     private URI base;
 
@@ -133,7 +133,7 @@ public class LdpVerifier implements CredentialVerifier {
             if (issuerUri.isEmpty()) {
                 return failure("Document must contain an 'issuer' property.");
             }
-            if (!issuerUri.get().equals(verificationMethod.id())) {
+            if (!UriUtils.equalsIgnoreFragment(issuerUri.get(), verificationMethod.id())) {
                 return failure("Issuer and proof.verificationMethod mismatch: %s <> %s".formatted(issuerUri.get(), verificationMethod.id()));
             }
         } catch (InvalidJsonLdValue e) {
