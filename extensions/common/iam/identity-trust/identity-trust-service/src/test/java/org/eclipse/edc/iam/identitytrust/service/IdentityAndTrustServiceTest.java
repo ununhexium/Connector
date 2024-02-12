@@ -72,8 +72,6 @@ import static org.mockito.Mockito.when;
 class IdentityAndTrustServiceTest {
     public static final String EXPECTED_OWN_DID = "did:web:test";
 
-    public static final String EXPECTED_PARTICIPANT_ID = "participantId";
-
     public static final String CONSUMER_DID = "did:web:consumer";
     private final SecureTokenService mockedSts = mock();
     private final PresentationVerifier mockedVerifier = mock();
@@ -81,8 +79,8 @@ class IdentityAndTrustServiceTest {
     private final TrustedIssuerRegistry trustedIssuerRegistryMock = mock();
     private final CredentialServiceUrlResolver credentialServiceUrlResolverMock = mock();
     private final TokenValidationAction actionMock = mock();
-    private final IdentityAndTrustService service = new IdentityAndTrustService(mockedSts, EXPECTED_OWN_DID, EXPECTED_PARTICIPANT_ID, mockedVerifier, mockedClient,
-            actionMock, trustedIssuerRegistryMock, Clock.systemUTC(), credentialServiceUrlResolverMock, i -> i);
+    private final IdentityAndTrustService service = new IdentityAndTrustService(mockedSts, EXPECTED_OWN_DID, mockedVerifier, mockedClient,
+            actionMock, trustedIssuerRegistryMock, Clock.systemUTC(), credentialServiceUrlResolverMock);
 
     @BeforeEach
     void setup() {
@@ -91,7 +89,6 @@ class IdentityAndTrustServiceTest {
 
         when(actionMock.apply(any())).thenReturn(success(ClaimToken.Builder.newInstance()
                 .claim("iss", CONSUMER_DID)
-                .claim("client_id", "sender-id")
                 .claim(PRESENTATION_ACCESS_TOKEN_CLAIM, jwt.getToken()).build()));
 
         when(mockedSts.createToken(any(), any())).thenReturn(success(TokenRepresentation.Builder.newInstance().build()));
@@ -99,7 +96,6 @@ class IdentityAndTrustServiceTest {
 
     private VerificationContext verificationContext() {
         return VerificationContext.Builder.newInstance()
-                .audience("test-audience")
                 .policy(Policy.Builder.newInstance().build())
                 .build();
     }
@@ -148,8 +144,7 @@ class IdentityAndTrustServiceTest {
             assertThat(service.obtainClientCredentials(tp)).isSucceeded();
             verify(mockedSts).createToken(argThat(m -> m.get("iss").equals(EXPECTED_OWN_DID) &&
                     m.get("sub").equals(EXPECTED_OWN_DID) &&
-                    m.get("aud").equals(tp.getStringClaim(AUDIENCE)) &&
-                    m.get("client_id").equals(EXPECTED_PARTICIPANT_ID)), eq(scope));
+                    m.get("aud").equals(tp.getStringClaim(AUDIENCE))), eq(scope));
         }
     }
 

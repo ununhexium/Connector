@@ -17,32 +17,33 @@ package org.eclipse.edc.iam.did.resolution;
 import com.nimbusds.jose.jwk.JWK;
 import com.nimbusds.jose.jwk.JWKParameterNames;
 import org.eclipse.edc.iam.did.spi.document.VerificationMethod;
+import org.eclipse.edc.iam.did.spi.resolution.DidPublicKeyResolver;
 import org.eclipse.edc.iam.did.spi.resolution.DidResolverRegistry;
-import org.eclipse.edc.spi.monitor.Monitor;
 import org.eclipse.edc.spi.result.Result;
 import org.eclipse.edc.spi.security.AbstractPublicKeyResolver;
 import org.eclipse.edc.spi.security.KeyParserRegistry;
-import org.eclipse.edc.spi.system.configuration.Config;
 import org.jetbrains.annotations.Nullable;
 
 import java.text.ParseException;
+import java.util.HashMap;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 
 import static org.eclipse.edc.iam.did.spi.document.DidConstants.ALLOWED_VERIFICATION_TYPES;
 
-public class DidPublicKeyResolverImpl extends AbstractPublicKeyResolver {
+public class DidPublicKeyResolverImpl extends AbstractPublicKeyResolver implements DidPublicKeyResolver {
     /**
      * this regex pattern matches both DIDs and DIDs with a fragment (e.g. key-ID).
      * Group 1 ("did")      = the did:method:identifier portion
      * Group 2 ("fragment") = the #fragment portion
      */
-    private static final Pattern PATTERN_DID_WITH_OPTIONAL_FRAGMENT = Pattern.compile("(?<did>did:.*:[^#]*)(?<fragment>#.*)?");
+    private static final Pattern PATTERN_DID_WITH_OPTIONAL_FRAGMENT = Pattern.compile("(?<did>did:.*:[^#]*)((#)(?<fragment>.*))?");
     private static final String GROUP_DID = "did";
     private static final String GROUP_FRAGMENT = "fragment";
     private final DidResolverRegistry resolverRegistry;
 
-    public DidPublicKeyResolverImpl(KeyParserRegistry registry, DidResolverRegistry resolverRegistry, Config config, Monitor monitor) {
-        super(registry, config, monitor);
+    public DidPublicKeyResolverImpl(KeyParserRegistry registry, DidResolverRegistry resolverRegistry) {
+        super(registry);
         this.resolverRegistry = resolverRegistry;
     }
 
@@ -58,10 +59,10 @@ public class DidPublicKeyResolverImpl extends AbstractPublicKeyResolver {
         if (matcher.groupCount() > 1) {
             key = matcher.group(GROUP_FRAGMENT);
         }
-        return resolveDidPublicKey(did, key);
+        return resolveDidPublicKey(did, id, key);
     }
 
-    private Result<String> resolveDidPublicKey(String didUrl, @Nullable String keyId) {
+    private Result<String> resolveDidPublicKey(String didUrl, String verificationMethodUrl, @Nullable String keyId) {
         var didResult = resolverRegistry.resolve(didUrl);
         if (didResult.failed()) {
             return didResult.mapTo();
@@ -76,7 +77,7 @@ public class DidPublicKeyResolverImpl extends AbstractPublicKeyResolver {
                 .toList();
 
         // if there are more than 1 verification methods with the same ID
-        if (verificationMethods.stream().map(VerificationMethod::getId).distinct().count() != verificationMethods.size()) {
+        if (verificationMethods.stream().map(verificationMethodIdMapper(didUrl)).distinct().count() != verificationMethods.size()) {
             return Result.failure("Every verification method must have a unique ID");
         }
         Result<VerificationMethod> verificationMethod;
@@ -86,14 +87,14 @@ public class DidPublicKeyResolverImpl extends AbstractPublicKeyResolver {
                 return Result.failure("The key ID ('kid') is mandatory if DID contains >1 verification methods.");
             }
             verificationMethod = Result.from(verificationMethods.stream().findFirst());
-        } else { // look up VerificationMEthods by key ID
-            verificationMethod = verificationMethods.stream().filter(vm -> vm.getId().equals(keyId))
+        } else { // look up VerificationMethods by key ID or didUrl + key ID
+            verificationMethod = verificationMethods.stream().filter(vm -> vm.getId().equals(keyId) || vm.getId().equals(verificationMethodUrl))
                     .findFirst()
                     .map(Result::success)
                     .orElseGet(() -> Result.failure("No verification method found with key ID '%s'".formatted(keyId)));
         }
         return verificationMethod.compose(vm -> {
-            var key = vm.getPublicKeyJwk();
+            var key = new HashMap<>(vm.getPublicKeyJwk());
             key.put(JWKParameterNames.KEY_ID, vm.getId());
             try {
                 return Result.success(JWK.parse(key).toJSONString());
@@ -102,5 +103,16 @@ public class DidPublicKeyResolverImpl extends AbstractPublicKeyResolver {
             }
 
         });
+    }
+
+    // If the verification method id is relative uri we map it to didUrl + id
+    private Function<VerificationMethod, String> verificationMethodIdMapper(String didUrl) {
+        return (vm) -> {
+            if (vm.getId().startsWith(didUrl)) {
+                return vm.getId();
+            } else {
+                return didUrl + vm.getId();
+            }
+        };
     }
 }
