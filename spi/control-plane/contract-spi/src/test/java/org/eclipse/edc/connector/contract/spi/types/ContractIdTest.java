@@ -43,11 +43,31 @@ class ContractIdTest {
 
     @Test
     void parseId_shouldNotDecodePartsIfTheyArentBase64() {
-        var result = ContractId.parseId("not:base64:" + UUID.randomUUID());
+        var result = ContractId.parseId("not:base64:" + Base64.getEncoder().encodeToString(UUID.randomUUID().toString().getBytes()));
 
         assertThat(result).isSucceeded().satisfies(it -> {
             assertThat(it.definitionPart()).isEqualTo("not");
             assertThat(it.assetIdPart()).isEqualTo("base64");
+        });
+    }
+
+    @Test
+    void parse_duck() {
+        var result = ContractId.parseId("ente:ente:" + Base64.getEncoder().encodeToString(UUID.randomUUID().toString().getBytes()));
+
+        assertThat(result).isSucceeded().satisfies(it -> {
+            assertThat(it.definitionPart()).isEqualTo("ente");
+            assertThat(it.assetIdPart()).isEqualTo("ente");
+        });
+    }
+
+    @Test
+    void parse_ducks() {
+        var result = ContractId.parseId("enten:enten:" + Base64.getEncoder().encodeToString(UUID.randomUUID().toString().getBytes()));
+
+        assertThat(result).isSucceeded().satisfies(it -> {
+            assertThat(it.definitionPart()).isEqualTo("enten");
+            assertThat(it.assetIdPart()).isEqualTo("enten");
         });
     }
 
