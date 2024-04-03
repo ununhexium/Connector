@@ -35,7 +35,6 @@ import static org.eclipse.edc.connector.dataplane.spi.schema.DataFlowRequestSche
 import static org.eclipse.edc.connector.dataplane.spi.schema.DataFlowRequestSchema.QUERY_PARAMS;
 
 // TODO: enable
-@Disabled
 class HttpRequestParamsProviderImplSourceTest {
 
     private final HttpRequestParamsProvider provider = new HttpRequestParamsProviderImpl(null, new TypeManager());
@@ -82,10 +81,7 @@ class HttpRequestParamsProviderImplSourceTest {
         var dataFlowRequest = DataFlowRequest.Builder.newInstance()
                 .processId(UUID.randomUUID().toString())
                 .sourceDataAddress(source)
-                .destinationDataAddress(
-                        HttpDataAddress.Builder.newInstance()
-                                .baseUrl("http://dummy")
-                                .property(DataAddress.EDC_DATA_ADDRESS_TYPE_PROPERTY, "HttpProxy").build())
+                .destinationDataAddress(DataAddress.Builder.newInstance().type("HttpProxy").build())
                 .properties(Map.of(
                         METHOD, "proxy-method",
                         PATH, "proxy-path",
@@ -128,7 +124,7 @@ class HttpRequestParamsProviderImplSourceTest {
     }
 
     @Test
-    void shouldThrowExceptionWhenProxyMethodIsMissing() {
+    void shouldThrowException_whenProxyMethodIsMissingAndDestinationIsHttpProxy() {
         var source = HttpDataAddress.Builder.newInstance()
                 .baseUrl("http://source")
                 .proxyMethod("true")
@@ -140,7 +136,7 @@ class HttpRequestParamsProviderImplSourceTest {
         var dataFlowRequest = DataFlowRequest.Builder.newInstance()
                 .processId(UUID.randomUUID().toString())
                 .sourceDataAddress(source)
-                .destinationDataAddress(dummyAddress())
+                .destinationDataAddress(DataAddress.Builder.newInstance().type("HttpProxy").build())
                 .build();
 
         assertThatExceptionOfType(EdcException.class).isThrownBy(() -> provider.provideSourceParams(dataFlowRequest));
