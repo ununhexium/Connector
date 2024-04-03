@@ -20,7 +20,6 @@ import org.eclipse.edc.spi.types.TypeManager;
 import org.eclipse.edc.spi.types.domain.DataAddress;
 import org.eclipse.edc.spi.types.domain.HttpDataAddress;
 import org.eclipse.edc.spi.types.domain.transfer.DataFlowRequest;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -140,6 +139,28 @@ class HttpRequestParamsProviderImplSourceTest {
                 .build();
 
         assertThatExceptionOfType(EdcException.class).isThrownBy(() -> provider.provideSourceParams(dataFlowRequest));
+    }
+
+    @Test
+    void shouldUseSourceMethod_whenProxyMethodIsMissingAndDestinationIsNotHttpProxy() {
+        var source = HttpDataAddress.Builder.newInstance()
+                .baseUrl("http://source")
+                .proxyMethod("true")
+                .path("test-path")
+                .queryParams("foo=bar")
+                .contentType("test/content-type")
+                .nonChunkedTransfer(true)
+                .method("POST")
+                .build();
+        var dataFlowRequest = DataFlowRequest.Builder.newInstance()
+                .processId(UUID.randomUUID().toString())
+                .sourceDataAddress(source)
+                .destinationDataAddress(dummyAddress())
+                .build();
+
+        var params = provider.provideSourceParams(dataFlowRequest);
+
+        assertThat(params.getMethod()).isEqualTo("POST");
     }
 
     private HttpDataAddress dummyAddress() {
