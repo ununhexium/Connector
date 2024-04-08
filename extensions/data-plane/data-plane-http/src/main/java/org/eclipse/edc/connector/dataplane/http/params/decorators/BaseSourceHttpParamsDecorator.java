@@ -66,7 +66,8 @@ public class BaseSourceHttpParamsDecorator implements HttpParamsDecorator {
     }
 
     private @Nullable String extractPath(HttpDataAddress address, DataFlowRequest request) {
-        return Boolean.parseBoolean(address.getProxyPath()) ? request.getProperties().get(PATH) : address.getPath();
+        boolean useParamedPath = Boolean.parseBoolean(address.getProxyPath()) || request.getProperties().get(PATH) != null;
+        return useParamedPath ? request.getProperties().get(PATH) : address.getPath();
     }
 
     private @Nullable String extractQueryParams(HttpDataAddress address, DataFlowRequest request) {

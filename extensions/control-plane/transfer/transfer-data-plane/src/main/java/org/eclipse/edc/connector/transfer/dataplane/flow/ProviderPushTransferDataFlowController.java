@@ -60,18 +60,23 @@ public class ProviderPushTransferDataFlowController implements DataFlowControlle
     private DataFlowRequest createRequest(DataRequest dataRequest, DataAddress sourceAddress) {
         Map<String, String> parameterization = new HashMap<>();
         Object methodParameterization = dataRequest.getDataDestination().getProperties().get("https://sovity.de/method");
-        if(methodParameterization!=null) {
+        if (methodParameterization != null) {
             parameterization.put("method", methodParameterization.toString());
         }
 
         Object bodyParameterization = dataRequest.getDataDestination().getProperties().get("https://sovity.de/body");
-        if(bodyParameterization!=null) {
+        if (bodyParameterization != null) {
             parameterization.put("body", bodyParameterization.toString());
         }
 
         Object mediaTypeParameterization = dataRequest.getDataDestination().getProperties().get("https://sovity.de/mediaType");
-        if(mediaTypeParameterization!=null) {
+        if (mediaTypeParameterization != null) {
             parameterization.put("mediaType", mediaTypeParameterization.toString());
+        }
+
+        Object pathParameterization = dataRequest.getDataDestination().getProperties().get("https://sovity.de/pathSegments");
+        if (pathParameterization != null) {
+            parameterization.put("pathSegments", pathParameterization.toString());
         }
 
         return DataFlowRequest.Builder.newInstance()
