@@ -38,6 +38,10 @@ public class BaseSourceHttpParamsDecorator implements HttpParamsDecorator {
 
     private static final String DEFAULT_METHOD = "GET";
 
+    // TODO: sovity.de/source/meethod
+    //  check what the naming convention is. Should it be in something like /transfer/parametered/source/method?
+    private static final String SOVITY_PARAM_METHOD = "https://sovity.de/method";
+
     @Override
     public HttpRequestParams.Builder decorate(DataFlowRequest request, HttpDataAddress address, HttpRequestParams.Builder params) {
         params.method(extractMethod(address, request));
@@ -53,8 +57,9 @@ public class BaseSourceHttpParamsDecorator implements HttpParamsDecorator {
     }
 
     private @NotNull String extractMethod(HttpDataAddress address, DataFlowRequest request) {
-        if (Boolean.parseBoolean(address.getProxyMethod()) && "HttpProxy".equals(request.getDestinationDataAddress().getType())) {
+        if (Boolean.parseBoolean(address.getProxyMethod())) {
             return Optional.ofNullable(request.getProperties().get(METHOD))
+                    .or(() -> Optional.ofNullable(request.getDestinationDataAddress().getProperties().get(SOVITY_PARAM_METHOD)).map(Object::toString))
                     .orElseThrow(() -> new EdcException(format("DataFlowRequest %s: 'method' property is missing", request.getId())));
         }
         return Optional.ofNullable(address.getMethod()).orElse(DEFAULT_METHOD);
@@ -73,12 +78,22 @@ public class BaseSourceHttpParamsDecorator implements HttpParamsDecorator {
 
     @Nullable
     private String extractContentType(HttpDataAddress address, DataFlowRequest request) {
-        return Boolean.parseBoolean(address.getProxyBody()) ? request.getProperties().get(MEDIA_TYPE) : address.getContentType();
+        boolean providerParameterizationWorkaroundBody = request.getProperties().get(MEDIA_TYPE) != null && request.getProperties().get(BODY) != null;
+        if (Boolean.parseBoolean(address.getProxyBody()) || providerParameterizationWorkaroundBody) {
+            return request.getProperties().get(MEDIA_TYPE);
+        } else {
+            return address.getContentType();
+        }
     }
 
     @Nullable
     private String extractBody(HttpDataAddress address, DataFlowRequest request) {
-        return Boolean.parseBoolean(address.getProxyBody()) ? request.getProperties().get(BODY) : null;
+        boolean providerParameterizationWorkaroundBody = request.getProperties().get(MEDIA_TYPE) != null && request.getProperties().get(BODY) != null;
+        if (Boolean.parseBoolean(address.getProxyBody()) || providerParameterizationWorkaroundBody) {
+            return request.getProperties().get(BODY);
+        } else {
+            return null;
+        }
     }
 
     @Nullable

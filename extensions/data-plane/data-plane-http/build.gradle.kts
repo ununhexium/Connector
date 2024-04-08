@@ -27,6 +27,7 @@ dependencies {
     testImplementation(project(":core:data-plane:data-plane-core"))
     testImplementation(libs.restAssured)
     testImplementation(libs.mockserver.netty)
+    testImplementation(libs.assertj)
 
     testImplementation(testFixtures(project(":spi:data-plane:data-plane-spi")))
 }

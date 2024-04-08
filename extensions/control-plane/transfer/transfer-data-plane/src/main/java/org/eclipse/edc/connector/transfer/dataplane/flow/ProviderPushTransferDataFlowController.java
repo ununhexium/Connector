@@ -26,6 +26,8 @@ import org.eclipse.edc.spi.types.domain.DataAddress;
 import org.eclipse.edc.spi.types.domain.transfer.DataFlowRequest;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.eclipse.edc.connector.transfer.dataplane.spi.TransferDataPlaneConstants.HTTP_PROXY;
@@ -56,6 +58,22 @@ public class ProviderPushTransferDataFlowController implements DataFlowControlle
     }
 
     private DataFlowRequest createRequest(DataRequest dataRequest, DataAddress sourceAddress) {
+        Map<String, String> parameterization = new HashMap<>();
+        Object methodParameterization = dataRequest.getDataDestination().getProperties().get("https://sovity.de/method");
+        if(methodParameterization!=null) {
+            parameterization.put("method", methodParameterization.toString());
+        }
+
+        Object bodyParameterization = dataRequest.getDataDestination().getProperties().get("https://sovity.de/body");
+        if(bodyParameterization!=null) {
+            parameterization.put("body", bodyParameterization.toString());
+        }
+
+        Object mediaTypeParameterization = dataRequest.getDataDestination().getProperties().get("https://sovity.de/mediaType");
+        if(mediaTypeParameterization!=null) {
+            parameterization.put("mediaType", mediaTypeParameterization.toString());
+        }
+
         return DataFlowRequest.Builder.newInstance()
                 .id(UUID.randomUUID().toString())
                 .processId(dataRequest.getProcessId())
@@ -64,6 +82,7 @@ public class ProviderPushTransferDataFlowController implements DataFlowControlle
                 .destinationType(dataRequest.getDestinationType())
                 .destinationDataAddress(dataRequest.getDataDestination())
                 .callbackAddress(callbackUrl != null ? callbackUrl.get() : null)
+                .properties(parameterization)
                 .build();
     }
 }
