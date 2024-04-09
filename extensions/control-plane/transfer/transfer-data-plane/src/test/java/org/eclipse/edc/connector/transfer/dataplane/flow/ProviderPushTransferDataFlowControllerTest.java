@@ -115,6 +115,19 @@ class ProviderPushTransferDataFlowControllerTest {
         assertThat(captured.getCallbackAddress()).isNotNull();
     }
 
+    /**
+     * Sovity workaround for
+     */
+    @Test
+    void canUseWorkaroundToPassProviderProxyParameters() {
+        var request = createDataRequest("test");
+        var source = testDataAddress();
+
+        when(dataPlaneClientMock.transfer(any(DataFlowRequest.class))).thenReturn(StatusResult.success());
+
+        var result = flowController.initiateFlow(request, source, Policy.Builder.newInstance().build());
+    }
+
     private DataAddress testDataAddress() {
         return DataAddress.Builder.newInstance().type("test-type").build();
     }

@@ -15,6 +15,7 @@
 package org.eclipse.edc.connector.transfer.dataplane.flow;
 
 import org.eclipse.edc.connector.dataplane.spi.client.DataPlaneClient;
+import org.eclipse.edc.connector.dataplane.spi.schema.DataFlowRequestSchema;
 import org.eclipse.edc.connector.transfer.spi.callback.ControlPlaneApiUrl;
 import org.eclipse.edc.connector.transfer.spi.flow.DataFlowController;
 import org.eclipse.edc.connector.transfer.spi.types.DataFlowResponse;
@@ -30,6 +31,11 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import static org.eclipse.edc.connector.dataplane.spi.schema.DataFlowRequestSchema.BODY;
+import static org.eclipse.edc.connector.dataplane.spi.schema.DataFlowRequestSchema.MEDIA_TYPE;
+import static org.eclipse.edc.connector.dataplane.spi.schema.DataFlowRequestSchema.METHOD;
+import static org.eclipse.edc.connector.dataplane.spi.schema.DataFlowRequestSchema.PATH;
+import static org.eclipse.edc.connector.dataplane.spi.schema.DataFlowRequestSchema.QUERY_PARAMS;
 import static org.eclipse.edc.connector.transfer.dataplane.spi.TransferDataPlaneConstants.HTTP_PROXY;
 
 public class ProviderPushTransferDataFlowController implements DataFlowController {
@@ -59,24 +65,30 @@ public class ProviderPushTransferDataFlowController implements DataFlowControlle
 
     private DataFlowRequest createRequest(DataRequest dataRequest, DataAddress sourceAddress) {
         Map<String, String> parameterization = new HashMap<>();
-        Object methodParameterization = dataRequest.getDataDestination().getProperties().get("https://sovity.de/method");
+        String root = "https://sovity.de/";
+        Object methodParameterization = dataRequest.getDataDestination().getProperties().get(root + METHOD);
         if (methodParameterization != null) {
-            parameterization.put("method", methodParameterization.toString());
+            parameterization.put(METHOD, methodParameterization.toString());
         }
 
-        Object bodyParameterization = dataRequest.getDataDestination().getProperties().get("https://sovity.de/body");
+        Object bodyParameterization = dataRequest.getDataDestination().getProperties().get(root + BODY);
         if (bodyParameterization != null) {
-            parameterization.put("body", bodyParameterization.toString());
+            parameterization.put(BODY, bodyParameterization.toString());
         }
 
-        Object mediaTypeParameterization = dataRequest.getDataDestination().getProperties().get("https://sovity.de/mediaType");
+        Object mediaTypeParameterization = dataRequest.getDataDestination().getProperties().get(root + MEDIA_TYPE);
         if (mediaTypeParameterization != null) {
-            parameterization.put("mediaType", mediaTypeParameterization.toString());
+            parameterization.put(MEDIA_TYPE, mediaTypeParameterization.toString());
         }
 
-        Object pathParameterization = dataRequest.getDataDestination().getProperties().get("https://sovity.de/pathSegments");
+        Object pathParameterization = dataRequest.getDataDestination().getProperties().get(root + PATH);
         if (pathParameterization != null) {
-            parameterization.put("pathSegments", pathParameterization.toString());
+            parameterization.put(PATH, pathParameterization.toString());
+        }
+
+        Object queryParameterization = dataRequest.getDataDestination().getProperties().get(root + QUERY_PARAMS);
+        if (queryParameterization != null) {
+            parameterization.put(QUERY_PARAMS, queryParameterization.toString());
         }
 
         return DataFlowRequest.Builder.newInstance()

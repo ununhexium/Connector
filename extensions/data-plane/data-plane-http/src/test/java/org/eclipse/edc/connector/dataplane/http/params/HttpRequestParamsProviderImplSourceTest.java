@@ -80,7 +80,7 @@ class HttpRequestParamsProviderImplSourceTest {
         var dataFlowRequest = DataFlowRequest.Builder.newInstance()
                 .processId(UUID.randomUUID().toString())
                 .sourceDataAddress(source)
-                .destinationDataAddress(DataAddress.Builder.newInstance().type("HttpProxy").build())
+                .destinationDataAddress(dummyAddress())
                 .properties(Map.of(
                         METHOD, "proxy-method",
                         PATH, "proxy-path",
@@ -123,7 +123,7 @@ class HttpRequestParamsProviderImplSourceTest {
     }
 
     @Test
-    void shouldThrowException_whenProxyMethodIsMissingAndDestinationIsHttpProxy() {
+    void shouldThrowExceptionWhenProxyMethodIsMissing() {
         var source = HttpDataAddress.Builder.newInstance()
                 .baseUrl("http://source")
                 .proxyMethod("true")
@@ -135,7 +135,7 @@ class HttpRequestParamsProviderImplSourceTest {
         var dataFlowRequest = DataFlowRequest.Builder.newInstance()
                 .processId(UUID.randomUUID().toString())
                 .sourceDataAddress(source)
-                .destinationDataAddress(DataAddress.Builder.newInstance().type("HttpProxy").build())
+                .destinationDataAddress(dummyAddress())
                 .build();
 
         assertThatExceptionOfType(EdcException.class).isThrownBy(() -> provider.provideSourceParams(dataFlowRequest));
