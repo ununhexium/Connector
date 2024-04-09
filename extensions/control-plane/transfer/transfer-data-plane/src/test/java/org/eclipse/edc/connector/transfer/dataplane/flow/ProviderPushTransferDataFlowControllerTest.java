@@ -15,7 +15,6 @@
 package org.eclipse.edc.connector.transfer.dataplane.flow;
 
 import org.eclipse.edc.connector.dataplane.spi.client.DataPlaneClient;
-import org.eclipse.edc.connector.dataplane.spi.schema.DataFlowRequestSchema;
 import org.eclipse.edc.connector.transfer.spi.callback.ControlPlaneApiUrl;
 import org.eclipse.edc.connector.transfer.spi.types.DataRequest;
 import org.eclipse.edc.policy.model.Policy;
@@ -33,7 +32,11 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.eclipse.edc.connector.dataplane.spi.schema.DataFlowRequestSchema.*;
+import static org.eclipse.edc.connector.dataplane.spi.schema.DataFlowRequestSchema.BODY;
+import static org.eclipse.edc.connector.dataplane.spi.schema.DataFlowRequestSchema.MEDIA_TYPE;
+import static org.eclipse.edc.connector.dataplane.spi.schema.DataFlowRequestSchema.METHOD;
+import static org.eclipse.edc.connector.dataplane.spi.schema.DataFlowRequestSchema.PATH;
+import static org.eclipse.edc.connector.dataplane.spi.schema.DataFlowRequestSchema.QUERY_PARAMS;
 import static org.eclipse.edc.connector.transfer.dataplane.spi.TransferDataPlaneConstants.HTTP_PROXY;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;

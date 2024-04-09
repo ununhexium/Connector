@@ -15,7 +15,6 @@
 package org.eclipse.edc.connector.transfer.dataplane.flow;
 
 import org.eclipse.edc.connector.dataplane.spi.client.DataPlaneClient;
-import org.eclipse.edc.connector.dataplane.spi.schema.DataFlowRequestSchema;
 import org.eclipse.edc.connector.transfer.spi.callback.ControlPlaneApiUrl;
 import org.eclipse.edc.connector.transfer.spi.flow.DataFlowController;
 import org.eclipse.edc.connector.transfer.spi.types.DataFlowResponse;
@@ -40,7 +39,7 @@ import static org.eclipse.edc.connector.transfer.dataplane.spi.TransferDataPlane
 
 public class ProviderPushTransferDataFlowController implements DataFlowController {
 
-    private final static String ROOT_KEY = "https://sovity.de/workaround/proxy/param/";
+    private static final String ROOT_KEY = "https://sovity.de/workaround/proxy/param/";
     private final ControlPlaneApiUrl callbackUrl;
     private final DataPlaneClient dataPlaneClient;
 
