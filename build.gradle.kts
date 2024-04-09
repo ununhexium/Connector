@@ -15,6 +15,7 @@
 
 plugins {
     `java-library`
+    `maven-publish`
 }
 
 val javaVersion: String by project
@@ -69,4 +70,21 @@ allprojects {
         }
     }
     
+}
+
+subprojects {
+    apply(plugin = "maven-publish")
+
+    publishing {
+        repositories {
+            maven {
+                name = "GitHubPackages"
+                url = uri("https://maven.pkg.github.com/sovity/edc-extensions")
+                credentials {
+                    username = project.findProperty("gpr.user") as String? ?: System.getenv("USERNAME")
+                    password = project.findProperty("gpr.key") as String? ?: System.getenv("TOKEN")
+                }
+            }
+        }
+    }
 }
