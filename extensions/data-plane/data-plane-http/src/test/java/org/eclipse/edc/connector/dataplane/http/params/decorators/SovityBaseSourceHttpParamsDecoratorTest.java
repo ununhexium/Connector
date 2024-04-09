@@ -15,7 +15,6 @@
 package org.eclipse.edc.connector.dataplane.http.params.decorators;
 
 import org.eclipse.edc.connector.dataplane.http.spi.HttpRequestParams;
-import org.eclipse.edc.connector.dataplane.spi.schema.DataFlowRequestSchema;
 import org.eclipse.edc.spi.types.domain.DataAddress;
 import org.eclipse.edc.spi.types.domain.HttpDataAddress;
 import org.eclipse.edc.spi.types.domain.transfer.DataFlowRequest;
@@ -24,21 +23,23 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.eclipse.edc.connector.dataplane.spi.schema.DataFlowRequestSchema.*;
+import static org.eclipse.edc.connector.dataplane.spi.schema.DataFlowRequestSchema.METHOD;
+import static org.eclipse.edc.connector.dataplane.spi.schema.DataFlowRequestSchema.PATH;
 
 class SovityBaseSourceHttpParamsDecoratorTest {
 
-    String ROOT_KEY = "https://sovity.de/workaround/proxy/param/";
+    private final String ROOT_KEY = "https://sovity.de/workaround/proxy/param/";
 
     @Test
     void shouldFindHttpMethodParam() {
         // arrange
         final var method = "METHOD";
         final var dstAddress = HttpDataAddress.Builder.newInstance()
-                .property("https://w3id.org/edc/v0.0.1/ns/" + METHOD, "true")
-                .property(ROOT_KEY + METHOD, method)
+                .property("https://w3id.org/edc/v0.0.1/ns/proxyMethod", "true")
                 .build();
-        final var edcRequest = processBuilderPreFilled(dstAddress).build();
+        final var edcRequest = processBuilderPreFilled(dstAddress)
+                .properties(Map.of(METHOD, method))
+                .build();
         final var decorator = new BaseSourceHttpParamsDecorator();
         final var params = HttpRequestParams.Builder.newInstance().baseUrl("http://example.com");
 
@@ -56,10 +57,11 @@ class SovityBaseSourceHttpParamsDecoratorTest {
         // arrange
         final var path = "segment1/segment2/segment3";
         final var dstAddress = HttpDataAddress.Builder.newInstance()
-                .property("https://w3id.org/edc/v0.0.1/ns/" + PATH, "true")
-                .properties(Map.of(ROOT_KEY + PATH, path))
+                .property("https://w3id.org/edc/v0.0.1/ns/proxyPath", "true")
                 .build();
-        final var edcRequest = processBuilderPreFilled(dstAddress).build();
+        final var edcRequest = processBuilderPreFilled(dstAddress)
+                .properties(Map.of(PATH, path))
+                .build();
         final var decorator = new BaseSourceHttpParamsDecorator();
         final var params = HttpRequestParams.Builder.newInstance().baseUrl("http://example.com/base");
 

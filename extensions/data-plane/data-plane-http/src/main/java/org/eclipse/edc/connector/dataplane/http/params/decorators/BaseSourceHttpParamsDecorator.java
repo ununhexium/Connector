@@ -38,9 +38,7 @@ public class BaseSourceHttpParamsDecorator implements HttpParamsDecorator {
 
     private static final String DEFAULT_METHOD = "GET";
 
-    // TODO: sovity.de/source/method
-    //  check what the naming convention is. Should it be in something like /transfer/parametered/source/method?
-    private static final String SOVITY_PARAM_METHOD = "https://sovity.de/method";
+    // TODO private static final String ROOT_KEY = "https://sovity.de/workaround/proxy/param/";
 
     @Override
     public HttpRequestParams.Builder decorate(DataFlowRequest request, HttpDataAddress address, HttpRequestParams.Builder params) {
@@ -59,15 +57,13 @@ public class BaseSourceHttpParamsDecorator implements HttpParamsDecorator {
     private @NotNull String extractMethod(HttpDataAddress address, DataFlowRequest request) {
         if (Boolean.parseBoolean(address.getProxyMethod())) {
             return Optional.ofNullable(request.getProperties().get(METHOD))
-                    .or(() -> Optional.ofNullable(request.getDestinationDataAddress().getProperties().get(SOVITY_PARAM_METHOD)).map(Object::toString))
                     .orElseThrow(() -> new EdcException(format("DataFlowRequest %s: 'method' property is missing", request.getId())));
         }
         return Optional.ofNullable(address.getMethod()).orElse(DEFAULT_METHOD);
     }
 
     private @Nullable String extractPath(HttpDataAddress address, DataFlowRequest request) {
-        boolean useParamedPath = Boolean.parseBoolean(address.getProxyPath()) || request.getProperties().get(PATH) != null;
-        return useParamedPath ? request.getProperties().get(PATH) : address.getPath();
+        return Boolean.parseBoolean(address.getProxyPath()) ? request.getProperties().get(PATH) : address.getPath();
     }
 
     private @Nullable String extractQueryParams(HttpDataAddress address, DataFlowRequest request) {
