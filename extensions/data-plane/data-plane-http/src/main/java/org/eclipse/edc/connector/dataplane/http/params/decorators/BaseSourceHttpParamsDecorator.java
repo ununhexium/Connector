@@ -38,7 +38,7 @@ public class BaseSourceHttpParamsDecorator implements HttpParamsDecorator {
 
     private static final String DEFAULT_METHOD = "GET";
 
-    // TODO: sovity.de/source/meethod
+    // TODO: sovity.de/source/method
     //  check what the naming convention is. Should it be in something like /transfer/parametered/source/method?
     private static final String SOVITY_PARAM_METHOD = "https://sovity.de/method";
 
