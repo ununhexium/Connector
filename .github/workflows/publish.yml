@@ -17,7 +17,7 @@ jobs:
       packages: write
     steps:
       - name: "Gradle: Build"
-        uses: gradle/gradle-build-action@v2.10.0
+        uses: ./.github/actions/run-tests
         with:
           command: ./gradlew build check ${{ env.GRADLE_ARGS }}
       - name: "Gradle: Publish (Main & Release Only)"
