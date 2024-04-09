@@ -17,7 +17,6 @@ package org.eclipse.edc.connector.dataplane.http.params;
 import org.eclipse.edc.connector.dataplane.http.spi.HttpRequestParamsProvider;
 import org.eclipse.edc.spi.EdcException;
 import org.eclipse.edc.spi.types.TypeManager;
-import org.eclipse.edc.spi.types.domain.DataAddress;
 import org.eclipse.edc.spi.types.domain.HttpDataAddress;
 import org.eclipse.edc.spi.types.domain.transfer.DataFlowRequest;
 import org.junit.jupiter.api.Test;
@@ -33,7 +32,6 @@ import static org.eclipse.edc.connector.dataplane.spi.schema.DataFlowRequestSche
 import static org.eclipse.edc.connector.dataplane.spi.schema.DataFlowRequestSchema.PATH;
 import static org.eclipse.edc.connector.dataplane.spi.schema.DataFlowRequestSchema.QUERY_PARAMS;
 
-// TODO: enable
 class HttpRequestParamsProviderImplSourceTest {
 
     private final HttpRequestParamsProvider provider = new HttpRequestParamsProviderImpl(null, new TypeManager());

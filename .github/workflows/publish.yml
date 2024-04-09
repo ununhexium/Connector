@@ -1,0 +1,29 @@
+on:
+  push:
+    branches: [ main ]
+  release:
+    types: [ published ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-gradle-project:
+    name: Build Gradle Project
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: "Gradle: Build"
+        uses: gradle/gradle-build-action@v2.10.0
+        with:
+          arguments: build check ${{ env.GRADLE_ARGS }}
+      - name: "Gradle: Publish (Main & Release Only)"
+        uses: gradle/gradle-build-action@v2.10.0
+        if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
+        with:
+          arguments: publish ${{ env.GRADLE_ARGS }}
+        env:
+          USERNAME: ${{ github.actor }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -15,6 +15,7 @@
 package org.eclipse.edc.connector.dataplane.http.params.decorators;
 
 import org.eclipse.edc.connector.dataplane.http.spi.HttpRequestParams;
+import org.eclipse.edc.connector.dataplane.spi.schema.DataFlowRequestSchema;
 import org.eclipse.edc.spi.types.domain.DataAddress;
 import org.eclipse.edc.spi.types.domain.HttpDataAddress;
 import org.eclipse.edc.spi.types.domain.transfer.DataFlowRequest;
@@ -23,29 +24,52 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.eclipse.edc.connector.dataplane.spi.schema.DataFlowRequestSchema.*;
 
 class SovityBaseSourceHttpParamsDecoratorTest {
 
+    String ROOT_KEY = "https://sovity.de/workaround/proxy/param/";
+
     @Test
-    void shouldFindTheHttpMethodOnProxyTransfers() {
+    void shouldFindHttpMethodParam() {
         // arrange
         final var method = "METHOD";
-        final var address = HttpDataAddress.Builder.newInstance()
-                .property("https://w3id.org/edc/v0.0.1/ns/proxyMethod", "true")
-                .properties(Map.of("https://sovity.de/method", method))
+        final var dstAddress = HttpDataAddress.Builder.newInstance()
+                .property("https://w3id.org/edc/v0.0.1/ns/" + METHOD, "true")
+                .property(ROOT_KEY + METHOD, method)
                 .build();
-        final var edcRequest = processBuilderPreFilled(address)
-                .build();
+        final var edcRequest = processBuilderPreFilled(dstAddress).build();
         final var decorator = new BaseSourceHttpParamsDecorator();
         final var params = HttpRequestParams.Builder.newInstance().baseUrl("http://example.com");
 
         // act
         final var httpRequest = decorator
-                .decorate(edcRequest, address, params)
+                .decorate(edcRequest, dstAddress, params)
                 .build();
 
         // assert
         assertThat(httpRequest.getMethod()).isEqualTo(method);
+    }
+
+    @Test
+    void shouldFindThePathParam() {
+        // arrange
+        final var path = "segment1/segment2/segment3";
+        final var dstAddress = HttpDataAddress.Builder.newInstance()
+                .property("https://w3id.org/edc/v0.0.1/ns/" + PATH, "true")
+                .properties(Map.of(ROOT_KEY + PATH, path))
+                .build();
+        final var edcRequest = processBuilderPreFilled(dstAddress).build();
+        final var decorator = new BaseSourceHttpParamsDecorator();
+        final var params = HttpRequestParams.Builder.newInstance().baseUrl("http://example.com/base");
+
+        // act
+        final var httpRequest = decorator
+                .decorate(edcRequest, dstAddress, params)
+                .build();
+
+        // assert
+        assertThat(httpRequest.getPath()).isEqualTo(path);
     }
 
     private static DataFlowRequest.Builder processBuilderPreFilled(DataAddress destinationDataAddress) {
