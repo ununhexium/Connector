@@ -40,6 +40,7 @@ import static org.eclipse.edc.connector.transfer.dataplane.spi.TransferDataPlane
 
 public class ProviderPushTransferDataFlowController implements DataFlowController {
 
+    private final static String ROOT_KEY = "https://sovity.de/workaround/proxy/param/";
     private final ControlPlaneApiUrl callbackUrl;
     private final DataPlaneClient dataPlaneClient;
 
@@ -65,28 +66,28 @@ public class ProviderPushTransferDataFlowController implements DataFlowControlle
 
     private DataFlowRequest createRequest(DataRequest dataRequest, DataAddress sourceAddress) {
         Map<String, String> parameterization = new HashMap<>();
-        String root = "https://sovity.de/";
-        Object methodParameterization = dataRequest.getDataDestination().getProperties().get(root + METHOD);
+
+        Object methodParameterization = dataRequest.getDataDestination().getProperties().get(ROOT_KEY + METHOD);
         if (methodParameterization != null) {
             parameterization.put(METHOD, methodParameterization.toString());
         }
 
-        Object bodyParameterization = dataRequest.getDataDestination().getProperties().get(root + BODY);
+        Object bodyParameterization = dataRequest.getDataDestination().getProperties().get(ROOT_KEY + BODY);
         if (bodyParameterization != null) {
             parameterization.put(BODY, bodyParameterization.toString());
         }
 
-        Object mediaTypeParameterization = dataRequest.getDataDestination().getProperties().get(root + MEDIA_TYPE);
+        Object mediaTypeParameterization = dataRequest.getDataDestination().getProperties().get(ROOT_KEY + MEDIA_TYPE);
         if (mediaTypeParameterization != null) {
             parameterization.put(MEDIA_TYPE, mediaTypeParameterization.toString());
         }
 
-        Object pathParameterization = dataRequest.getDataDestination().getProperties().get(root + PATH);
+        Object pathParameterization = dataRequest.getDataDestination().getProperties().get(ROOT_KEY + PATH);
         if (pathParameterization != null) {
             parameterization.put(PATH, pathParameterization.toString());
         }
 
-        Object queryParameterization = dataRequest.getDataDestination().getProperties().get(root + QUERY_PARAMS);
+        Object queryParameterization = dataRequest.getDataDestination().getProperties().get(ROOT_KEY + QUERY_PARAMS);
         if (queryParameterization != null) {
             parameterization.put(QUERY_PARAMS, queryParameterization.toString());
         }

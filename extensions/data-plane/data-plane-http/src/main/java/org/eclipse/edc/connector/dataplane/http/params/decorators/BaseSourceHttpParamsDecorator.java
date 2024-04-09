@@ -38,8 +38,6 @@ public class BaseSourceHttpParamsDecorator implements HttpParamsDecorator {
 
     private static final String DEFAULT_METHOD = "GET";
 
-    // TODO private static final String ROOT_KEY = "https://sovity.de/workaround/proxy/param/";
-
     @Override
     public HttpRequestParams.Builder decorate(DataFlowRequest request, HttpDataAddress address, HttpRequestParams.Builder params) {
         params.method(extractMethod(address, request));
@@ -75,22 +73,12 @@ public class BaseSourceHttpParamsDecorator implements HttpParamsDecorator {
 
     @Nullable
     private String extractContentType(HttpDataAddress address, DataFlowRequest request) {
-        boolean providerParameterizationWorkaroundBody = request.getProperties().get(MEDIA_TYPE) != null && request.getProperties().get(BODY) != null;
-        if (Boolean.parseBoolean(address.getProxyBody()) || providerParameterizationWorkaroundBody) {
-            return request.getProperties().get(MEDIA_TYPE);
-        } else {
-            return address.getContentType();
-        }
+        return Boolean.parseBoolean(address.getProxyBody()) ? request.getProperties().get(MEDIA_TYPE) : address.getContentType();
     }
 
     @Nullable
     private String extractBody(HttpDataAddress address, DataFlowRequest request) {
-        boolean providerParameterizationWorkaroundBody = request.getProperties().get(MEDIA_TYPE) != null && request.getProperties().get(BODY) != null;
-        if (Boolean.parseBoolean(address.getProxyBody()) || providerParameterizationWorkaroundBody) {
-            return request.getProperties().get(BODY);
-        } else {
-            return null;
-        }
+        return Boolean.parseBoolean(address.getProxyBody()) ? request.getProperties().get(BODY) : null;
     }
 
     @Nullable

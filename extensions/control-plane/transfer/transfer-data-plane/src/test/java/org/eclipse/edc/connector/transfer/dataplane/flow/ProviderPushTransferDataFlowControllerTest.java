@@ -15,6 +15,7 @@
 package org.eclipse.edc.connector.transfer.dataplane.flow;
 
 import org.eclipse.edc.connector.dataplane.spi.client.DataPlaneClient;
+import org.eclipse.edc.connector.dataplane.spi.schema.DataFlowRequestSchema;
 import org.eclipse.edc.connector.transfer.spi.callback.ControlPlaneApiUrl;
 import org.eclipse.edc.connector.transfer.spi.types.DataRequest;
 import org.eclipse.edc.policy.model.Policy;
@@ -32,6 +33,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.eclipse.edc.connector.dataplane.spi.schema.DataFlowRequestSchema.*;
 import static org.eclipse.edc.connector.transfer.dataplane.spi.TransferDataPlaneConstants.HTTP_PROXY;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -120,12 +122,33 @@ class ProviderPushTransferDataFlowControllerTest {
      */
     @Test
     void canUseWorkaroundToPassProviderProxyParameters() {
-        var request = createDataRequest("test");
         var source = testDataAddress();
+        var destination = DataAddress.Builder.newInstance()
+                .type("test-type")
+                .properties(Map.of(
+                        "https://sovity.de/workaround/proxy/param/" + METHOD, "METHOD",
+                        "https://sovity.de/workaround/proxy/param/" + PATH, "segment1/segment2",
+                        "https://sovity.de/workaround/proxy/param/" + QUERY_PARAMS, "a=1&b=2",
+                        "https://sovity.de/workaround/proxy/param/" + MEDIA_TYPE, "application/json",
+                        "https://sovity.de/workaround/proxy/param/" + BODY, "[]"
+                ))
+                .build();
+        var request = createDataRequest("test", destination);
 
         when(dataPlaneClientMock.transfer(any(DataFlowRequest.class))).thenReturn(StatusResult.success());
 
         var result = flowController.initiateFlow(request, source, Policy.Builder.newInstance().build());
+
+        assertThat(result.succeeded()).isTrue();
+        var captor = ArgumentCaptor.forClass(DataFlowRequest.class);
+        verify(dataPlaneClientMock).transfer(captor.capture());
+        var captured = captor.getValue();
+
+        assertThat(captured.getProperties().get(METHOD)).isEqualTo("METHOD");
+        assertThat(captured.getProperties().get(PATH)).isEqualTo("segment1/segment2");
+        assertThat(captured.getProperties().get(QUERY_PARAMS)).isEqualTo("a=1&b=2");
+        assertThat(captured.getProperties().get(MEDIA_TYPE)).isEqualTo("application/json");
+        assertThat(captured.getProperties().get(BODY)).isEqualTo("[]");
     }
 
     private DataAddress testDataAddress() {
@@ -136,15 +159,24 @@ class ProviderPushTransferDataFlowControllerTest {
         return createDataRequest("test");
     }
 
-    private DataRequest createDataRequest(String destinationType) {
-        return DataRequest.Builder.newInstance()
+    private DataRequest createDataRequest(String destinationType, DataAddress dataDestination) {
+        DataRequest.Builder builder = DataRequest.Builder.newInstance()
                 .id(UUID.randomUUID().toString())
                 .protocol("test-protocol")
                 .contractId(UUID.randomUUID().toString())
                 .assetId(UUID.randomUUID().toString())
                 .connectorAddress("test.connector.address")
                 .processId(UUID.randomUUID().toString())
-                .destinationType(destinationType)
-                .build();
+                .destinationType(destinationType);
+
+        if (dataDestination != null) {
+            builder.dataDestination(dataDestination);
+        }
+
+        return builder.build();
+    }
+
+    private DataRequest createDataRequest(String destinationType) {
+        return createDataRequest(destinationType, null);
     }
 }
