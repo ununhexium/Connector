@@ -26,9 +26,6 @@ import org.eclipse.edc.spi.types.domain.HttpDataAddress;
 import org.eclipse.edc.spi.types.domain.transfer.DataFlowRequest;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.HashMap;
-import java.util.Map;
-
 import static org.eclipse.edc.spi.types.domain.HttpDataAddress.HTTP_DATA;
 
 /**
