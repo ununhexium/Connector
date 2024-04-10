@@ -24,7 +24,7 @@ jobs:
         run: echo ${{ github.ref }}
 
       - name: "Gradle: Publish"
-        run: ./gradlew --parallel check publishAllPublicationsToGitHubPackagesRepository ${{ env.GRADLE_ARGS }}
+        run: ./gradlew --parallel --info check publishAllPublicationsToGitHubPackagesRepository ${{ env.GRADLE_ARGS }}
         env:
           USERNAME: ${{ github.actor }}
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
