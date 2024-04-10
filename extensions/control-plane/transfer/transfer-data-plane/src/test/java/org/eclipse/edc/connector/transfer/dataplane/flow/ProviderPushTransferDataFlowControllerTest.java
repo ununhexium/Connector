@@ -121,7 +121,7 @@ class ProviderPushTransferDataFlowControllerTest {
     }
 
     /**
-     * Sovity workaround for
+     * Sovity workaround for provider push asset parameterization that got removed after EDC MS8 when changing the protocol to the IDS one.
      */
     @Test
     void canUseWorkaroundToPassProviderProxyParameters() {

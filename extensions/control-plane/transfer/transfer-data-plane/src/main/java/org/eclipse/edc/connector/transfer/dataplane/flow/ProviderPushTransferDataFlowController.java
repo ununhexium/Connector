@@ -64,32 +64,13 @@ public class ProviderPushTransferDataFlowController implements DataFlowControlle
     }
 
     private DataFlowRequest createRequest(DataRequest dataRequest, DataAddress sourceAddress) {
-        Map<String, String> parameterization = new HashMap<>();
+        Map<String, String> parameterizations = new HashMap<>();
 
-        Object methodParameterization = dataRequest.getDataDestination().getProperties().get(ROOT_KEY + METHOD);
-        if (methodParameterization != null) {
-            parameterization.put(METHOD, methodParameterization.toString());
-        }
-
-        Object bodyParameterization = dataRequest.getDataDestination().getProperties().get(ROOT_KEY + BODY);
-        if (bodyParameterization != null) {
-            parameterization.put(BODY, bodyParameterization.toString());
-        }
-
-        Object mediaTypeParameterization = dataRequest.getDataDestination().getProperties().get(ROOT_KEY + MEDIA_TYPE);
-        if (mediaTypeParameterization != null) {
-            parameterization.put(MEDIA_TYPE, mediaTypeParameterization.toString());
-        }
-
-        Object pathParameterization = dataRequest.getDataDestination().getProperties().get(ROOT_KEY + PATH);
-        if (pathParameterization != null) {
-            parameterization.put(PATH, pathParameterization.toString());
-        }
-
-        Object queryParameterization = dataRequest.getDataDestination().getProperties().get(ROOT_KEY + QUERY_PARAMS);
-        if (queryParameterization != null) {
-            parameterization.put(QUERY_PARAMS, queryParameterization.toString());
-        }
+        extractIfPresent(dataRequest, METHOD, parameterizations);
+        extractIfPresent(dataRequest, BODY, parameterizations);
+        extractIfPresent(dataRequest, MEDIA_TYPE, parameterizations);
+        extractIfPresent(dataRequest, PATH, parameterizations);
+        extractIfPresent(dataRequest, QUERY_PARAMS, parameterizations);
 
         return DataFlowRequest.Builder.newInstance()
                 .id(UUID.randomUUID().toString())
@@ -99,7 +80,14 @@ public class ProviderPushTransferDataFlowController implements DataFlowControlle
                 .destinationType(dataRequest.getDestinationType())
                 .destinationDataAddress(dataRequest.getDataDestination())
                 .callbackAddress(callbackUrl != null ? callbackUrl.get() : null)
-                .properties(parameterization)
+                .properties(parameterizations)
                 .build();
+    }
+
+    private static void extractIfPresent(DataRequest dataRequest, String key, Map<String, String> parameterizations) {
+        Object param = dataRequest.getDataDestination().getProperties().get(ROOT_KEY + key);
+        if (param != null) {
+            parameterizations.put(key, param.toString());
+        }
     }
 }
