@@ -11,7 +11,7 @@ jobs:
   build-gradle-project:
     name: Build Gradle Project
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 360
     permissions:
       contents: read
       packages: write
@@ -24,7 +24,7 @@ jobs:
         run: echo ${{ github.ref }}
 
       - name: "Gradle: Publish"
-        run: ./gradlew --parallel --info check publishAllPublicationsToGitHubPackagesRepository ${{ env.GRADLE_ARGS }}
+        run: ./gradlew check publishAllPublicationsToGitHubPackagesRepository ${{ env.GRADLE_ARGS }}
         env:
           USERNAME: ${{ github.actor }}
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
