@@ -9,6 +9,7 @@
  *
  *  Contributors:
  *       Microsoft Corporation - initial API and implementation
+ *       sovity - implementation of assets parameterization
  *
  */
 
@@ -69,7 +70,7 @@ allprojects {
             println(sourceSets["main"].runtimeClasspath.asPath)
         }
     }
-    
+
 }
 
 subprojects {

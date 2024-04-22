@@ -126,14 +126,15 @@ class ProviderPushTransferDataFlowControllerTest {
     @Test
     void canUseWorkaroundToPassProviderProxyParameters() {
         var source = testDataAddress();
+        String root = "https://sovity.de/workaround/proxy/param/";
         var destination = DataAddress.Builder.newInstance()
                 .type("test-type")
                 .properties(Map.of(
-                        "https://sovity.de/workaround/proxy/param/" + METHOD, "METHOD",
-                        "https://sovity.de/workaround/proxy/param/" + PATH, "segment1/segment2",
-                        "https://sovity.de/workaround/proxy/param/" + QUERY_PARAMS, "a=1&b=2",
-                        "https://sovity.de/workaround/proxy/param/" + MEDIA_TYPE, "application/json",
-                        "https://sovity.de/workaround/proxy/param/" + BODY, "[]"
+                        root + METHOD, "METHOD",
+                        root + PATH, "segment1/segment2",
+                        root + QUERY_PARAMS, "a=1&b=2",
+                        root + MEDIA_TYPE, "application/json",
+                        root + BODY, "[]"
                 ))
                 .build();
         var request = createDataRequest("test", destination);
